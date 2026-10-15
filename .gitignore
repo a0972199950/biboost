@@ -42,3 +42,17 @@ tools/report-worker/.wrangler/
 
 # 私人資料，只留本機
 promotions/
+
+# 私人資料，只留本機
+/growth-report/
+
+# 本機設定，只進私人 repo
+.claude/skills/
+.claude/settings.local.json
+
+# 私人資料，只進私人 repo
+/store/
+
+# 私人 repo（scripts/private-repo.mjs）：資料庫本身，與 setup 時被覆蓋前的本機檔案備份
+/.git-private/
+/.private-restore-backup/
