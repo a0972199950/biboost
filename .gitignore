@@ -38,6 +38,8 @@ release/
 
 # Cloudflare Worker 本機密鑰 / 暫存
 tools/report-worker/.dev.vars
+tools/site/.dev.vars
+tools/translate-worker/.dev.vars
 # 簽章憑證，只進私人 repo
 tools/cdn-speedtest-app/signing/
 tools/report-worker/.wrangler/
@@ -61,3 +63,6 @@ promotions/
 
 # 私人模組，只進私人 repo
 /admin/
+tools/site/public/
+tools/site/.wrangler/
+tools/translate-worker/.wrangler/
