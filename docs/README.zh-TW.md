@@ -65,6 +65,7 @@ bilibili-cdn-switcher/
 ├── tools/
 │   ├── cdn-speedtest-app/    ← 官方測速工具 CDNSpeedTest（Python，Windows／Mac）
 │   ├── report-worker/        ← api.biboost.app：問題回報、公告、贊助等 API（Cloudflare Worker）
+│   │                         同一網域上的帳號與雲端備份 API 由另一個私人 Worker 提供
 │   ├── site/                 ← biboost.app 網站（Cloudflare Worker）
 │   └── translate-worker/     ← 後台用的翻譯 API（Cloudflare Worker）
 ├── scripts/              ← 開發／打包／發版／營運腳本（Node 為主，少數 Python）
