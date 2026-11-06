@@ -69,3 +69,8 @@ tools/translate-worker/.wrangler/
 
 # 擴充的私人模組：只進私人 repo，也不打包（scripts/build.mjs 排除）
 /src/private/
+
+# 節點清單（伺服器下發，scripts/cdn-list.mjs）：本機工作檔、每次發布重建的靜態網站內容
+/.cdn-list/
+tools/static-site/public/
+tools/static-site/.wrangler/

@@ -42,7 +42,13 @@
     "admin": "npm --prefix admin run dev",
     "admin:hash": "node scripts/admin-hash.mjs",
     "admin:google": "node scripts/admin-google.mjs",
-    "translate:deploy": "npx wrangler deploy --config tools/translate-worker/wrangler.toml"
+    "translate:deploy": "npx wrangler deploy --config tools/translate-worker/wrangler.toml",
+    "cdn-list:pull": "node scripts/cdn-list.mjs pull",
+    "cdn-list:diff": "node scripts/cdn-list.mjs diff",
+    "cdn-list:publish": "node scripts/cdn-list.mjs publish",
+    "cdn-list:rollback": "node scripts/cdn-list.mjs rollback",
+    "cdn-list:history": "node scripts/cdn-list.mjs history",
+    "cdn-list:status": "node scripts/cdn-list.mjs status"
   },
   "devDependencies": {
     "jsdom": "^27.0.1",

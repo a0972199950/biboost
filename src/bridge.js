@@ -8,13 +8,15 @@
  *  3) 收集 MAIN 回报的 debug 快照，回应 popup 的查询。
  *  4) 問題回報：把 MAIN 的事件日誌／採樣轉給 background 存起來、每 5 秒存一份快照；
  *     回報頁（獨立視窗）開啟時回應「此刻」的快照（CDN_SWITCHER_GET_DEBUG_FRESH）。
+ *  5) 節點清單（伺服器下發，見 cdn-list.js）：還沒拿到清單時推給 MAIN 的 enabled 一律是 false（擴充不啟用、不改寫任何網址）；
+ *     使用者沒選過節點時用清單的全域預設（cdnListMeta.defaultHost＝OTHER 的第一個）。頁面打開時請 background 檢查新版本。
  */
 (function () {
   "use strict";
   var CFG_KEY = "__CDN_SWITCHER_CFG__";
   var DEFAULTS = {
     enabled: true,
-    cdnHost: "cn-bj-se-01-05.bilivideo.com", // 同 main-hook.js 的 DEFAULTS
+    cdnHost: "", // 沒選過＝節點清單的全域預設（cdnListMeta.defaultHost）
     autoFallback: true,
     showDebug: false,
     videoEnabled: true,
@@ -64,9 +66,16 @@
 
   function loadAndPush() {
     try {
-      chrome.storage.local.get(DEFAULTS, function (items) {
+      var keys = {}; for (var k0 in DEFAULTS) keys[k0] = DEFAULTS[k0];
+      keys.cdnListMeta = null;
+      chrome.storage.local.get(keys, function (items) {
         var cfg = {};
         for (var k in DEFAULTS) cfg[k] = items[k] === undefined ? DEFAULTS[k] : items[k];
+        var meta = items.cdnListMeta;
+        if (!cfg.cdnHost) cfg.cdnHost = (meta && meta.defaultHost) || "";
+        // 沒有節點清單（第一次安裝還沒拿到、或更新後還沒拿到）＝擴充不啟用
+        if (!meta || !meta.defaultHost || !cfg.cdnHost) cfg.enabled = false;
+        if (!cfg.cdnHost) delete cfg.cdnHost; // main-hook 不收空的節點（會整份設定都不收），不送就沿用它的佔位值，反正 enabled 是 false
         pushConfig(cfg);
       });
     } catch (e) {}
@@ -105,10 +114,12 @@
         if (!items.countryAutoDone && items.installTestPending) toBackground({ type: "CDN_SWITCHER_SELECT_COUNTRY" });
       });
     } catch (e) {}
+    // 節點清單有沒有新版本（background 6 小時內不重問；還沒有清單時會馬上再試）
+    toBackground({ type: "CDN_SWITCHER_CDN_LIST" });
   }
 
   // 測速工具（CDNSpeedTest.exe）測完後會用瀏覽器開 https://www.bilibili.com/#cdnsw-import=1.<host>,<host>…，
-  // 這裡把節點交給 background 接到「自訂節點列表」後面（background 只收 cdn-list.json 裡有的節點），
+  // 這裡把節點交給 background 接到「自訂節點列表」後面（background 只收節點清單裡有的節點），
   // 拿掉網址上的 hash 免得重新整理又匯入一次，再在頁面上提示結果
   var IMPORT_RE = /^#cdnsw-import=1\.([a-z0-9.,-]+)$/i;
   function importFromHash() {
@@ -213,9 +224,9 @@
       var install = p.reason === "install" && installTestArmed;
       if (p.reason === "install") installTestArmed = false;
       try {
-        chrome.storage.local.get({ autoFallback: DEFAULTS.autoFallback, cdnHost: DEFAULTS.cdnHost, autoSpeedHosts: [] }, function (items) {
+        chrome.storage.local.get({ autoFallback: DEFAULTS.autoFallback, cdnHost: DEFAULTS.cdnHost, autoSpeedHosts: [], cdnListMeta: null }, function (items) {
           if (!Array.isArray(items.autoSpeedHosts) || items.autoSpeedHosts.indexOf(p.host) < 0) return;
-          if (items.cdnHost !== p.from) return;
+          if ((items.cdnHost || (items.cdnListMeta && items.cdnListMeta.defaultHost) || "") !== p.from) return;
           if (!install && !(p.reason === "stall" && items.autoFallback)) return;
           chrome.storage.local.set({ cdnHost: p.host });
         });

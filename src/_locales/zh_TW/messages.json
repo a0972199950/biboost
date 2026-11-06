@@ -491,6 +491,21 @@
   "optimizingStop": {
     "message": "中斷優化"
   },
+  "listFailTitle": {
+    "message": "抱歉，節點清單載入失敗"
+  },
+  "listFailBody": {
+    "message": "暫時連不上伺服器。拿到節點清單之前，擴充先不啟用，B 站會照原本的方式播放。請確認網路連線。"
+  },
+  "listRetryBtn": {
+    "message": "重試"
+  },
+  "listRetrying": {
+    "message": "重試中…"
+  },
+  "listRetryIn": {
+    "message": "{n} 秒後自動重試"
+  },
   "reportTitle": {
     "message": "問題回報／功能許願"
   },

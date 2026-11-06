@@ -60,13 +60,14 @@ bilibili が標準で割り当てる CDN ノードは、海外ユーザーにと
 ```text
 bilibili-cdn-switcher/
 ├── src/                  ← 拡張機能本体（「パッケージ化されていない拡張機能を読み込む」／パッケージ化の対象はこの階層）：manifest、ポップアップ、bilibili のページに注入するスクリプト、
-│                            支援／お知らせ／問題報告ページ、ノード一覧 cdn-list.json、更新履歴 changelog.json、5 言語の _locales/
+│                            支援／お知らせ／問題報告ページ、ノード一覧の読み込み cdn-list.js（一覧そのものは static.biboost.app から配信）、更新履歴 changelog.json、5 言語の _locales/
 ├── safari/               ← Safari 拡張機能の Xcode プロジェクト（safari-web-extension-converter で生成。相対パスで ../../../src/ を直接参照）
 ├── tools/
 │   ├── cdn-speedtest-app/    ← 公式速度テストツール CDNSpeedTest（Python、Windows／Mac）
 │   ├── report-worker/        ← api.biboost.app：問題報告、お知らせ、支援などの API（Cloudflare Worker）
 │   │                         同じホスト上のアカウント／サブスクリプション API（/auth/*、/me、/play/*、/stripe/*、/config/*）は biboost-mobile リポジトリの api-worker が提供し、テーブルはこのプロジェクトの Neon Postgres（bilibili-cdn-switcher：production ブランチ＝api.biboost.app、staging ブランチ＝api-staging.biboost.app）に置く。拡張機能とアプリで同一バックエンド・同一データベースを共用
 │   ├── site/                 ← biboost.app のウェブサイト（Cloudflare Worker）
+│   ├── static-site/          ← static.biboost.app：静的ファイルのみ（署名済みのノード一覧。npm run cdn-list:publish で公開し、AWS S3＋CloudFront にもバックアップを置く）
 │   └── translate-worker/     ← 管理画面用の翻訳 API（Cloudflare Worker）
 ├── scripts/              ← 開発／パッケージ化／リリース／運用スクリプト（主に Node、一部 Python）
 ├── test/                 ← 単体テスト（npm test）

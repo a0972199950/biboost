@@ -36,7 +36,7 @@
 		2B5DF62A3066315B00949CE2 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6213066315B00949CE2 /* icons */; };
 		2B5DF62B3066315B00949CE2 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6223066315B00949CE2 /* manifest.json */; };
 		2B5DF62C3066315B00949CE2 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6233066315B00949CE2 /* _locales */; };
-		2B5DF62D3066315B00949CE2 /* cdn-list.json in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6243066315B00949CE2 /* cdn-list.json */; };
+		2B5DF62D3066315B00949CE2 /* cdn-list.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6243066315B00949CE2 /* cdn-list.js */; };
 		2B5DF62E3066315B00949CE2 /* main-hook.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6253066315B00949CE2 /* main-hook.js */; };
 		2B5DF62F3066315B00949CE2 /* popup.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF61D3066315B00949CE2 /* popup.js */; };
 		2B5DF6303066315B00949CE2 /* bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF61E3066315B00949CE2 /* bridge.js */; };
@@ -45,7 +45,7 @@
 		2B5DF6333066315B00949CE2 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6213066315B00949CE2 /* icons */; };
 		2B5DF6343066315B00949CE2 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6223066315B00949CE2 /* manifest.json */; };
 		2B5DF6353066315B00949CE2 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6233066315B00949CE2 /* _locales */; };
-		2B5DF6363066315B00949CE2 /* cdn-list.json in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6243066315B00949CE2 /* cdn-list.json */; };
+		2B5DF6363066315B00949CE2 /* cdn-list.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6243066315B00949CE2 /* cdn-list.js */; };
 		2B5DF6373066315B00949CE2 /* main-hook.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6253066315B00949CE2 /* main-hook.js */; };
 		2B5DF6393066315B00949CE2 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6383066315B00949CE2 /* background.js */; };
 		2B5DF63A3066315B00949CE2 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5DF6383066315B00949CE2 /* background.js */; };
@@ -154,7 +154,7 @@
 		2B5DF6213066315B00949CE2 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../src/icons; sourceTree = "<group>"; };
 		2B5DF6223066315B00949CE2 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../src/manifest.json; sourceTree = "<group>"; };
 		2B5DF6233066315B00949CE2 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = ../../../src/_locales; sourceTree = "<group>"; };
-		2B5DF6243066315B00949CE2 /* cdn-list.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "cdn-list.json"; path = "../../../src/cdn-list.json"; sourceTree = "<group>"; };
+		2B5DF6243066315B00949CE2 /* cdn-list.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "cdn-list.js"; path = "../../../src/cdn-list.js"; sourceTree = "<group>"; };
 		2B5DF6253066315B00949CE2 /* main-hook.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "main-hook.js"; path = "../../../src/main-hook.js"; sourceTree = "<group>"; };
 		2B5DF6383066315B00949CE2 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = ../../../src/background.js; sourceTree = "<group>"; };
 		2B5DF63B3066315B00949CE2 /* i18n.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = i18n.js; path = ../../../src/i18n.js; sourceTree = "<group>"; };
@@ -310,7 +310,7 @@
 				2B5DF6213066315B00949CE2 /* icons */,
 				2B5DF6223066315B00949CE2 /* manifest.json */,
 				2B5DF6233066315B00949CE2 /* _locales */,
-				2B5DF6243066315B00949CE2 /* cdn-list.json */,
+				2B5DF6243066315B00949CE2 /* cdn-list.js */,
 				2B5DF6253066315B00949CE2 /* main-hook.js */,
 				2B5DF6383066315B00949CE2 /* background.js */,
 				2B5DF63B3066315B00949CE2 /* i18n.js */,
@@ -504,7 +504,7 @@
 				2B5DF62F3066315B00949CE2 /* popup.js in Resources */,
 				2B5DF6323066315B00949CE2 /* manifest.firefox.json in Resources */,
 				2B5DF6313066315B00949CE2 /* popup.html in Resources */,
-				2B5DF6363066315B00949CE2 /* cdn-list.json in Resources */,
+				2B5DF6363066315B00949CE2 /* cdn-list.js in Resources */,
 				2B5DF6333066315B00949CE2 /* icons in Resources */,
 				2B5DF6343066315B00949CE2 /* manifest.json in Resources */,
 				2B5DF6353066315B00949CE2 /* _locales in Resources */,
@@ -535,7 +535,7 @@
 				2B5DF6263066315B00949CE2 /* popup.js in Resources */,
 				2B5DF6293066315B00949CE2 /* manifest.firefox.json in Resources */,
 				2B5DF6283066315B00949CE2 /* popup.html in Resources */,
-				2B5DF62D3066315B00949CE2 /* cdn-list.json in Resources */,
+				2B5DF62D3066315B00949CE2 /* cdn-list.js in Resources */,
 				2B5DF62A3066315B00949CE2 /* icons in Resources */,
 				2B5DF62B3066315B00949CE2 /* manifest.json in Resources */,
 				2B5DF62C3066315B00949CE2 /* _locales in Resources */,
