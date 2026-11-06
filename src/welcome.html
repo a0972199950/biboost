@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!-- 歡迎頁：全新安裝時 background 開（只在功能開關 cloud_sync 開啟時）。說明怎麼用，底下一個不顯眼的「已經有備份？從雲端恢復」連結，
+     點了開雲端備份視窗（cloud-ui.js）；還原後就不是新使用者，安裝後的自動優化取消（cloud.js 的 restore） -->
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title></title>
+  <script src="theme.js"></script>
+  <style>
+    :root,
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f4f5f7; --text: #18191c; --muted: #61666d; --border: #e3e5e7; --control-bg: #fff; --raised: #fff;
+      --accent: #fb7299; --accent-text: #fff; --danger: #d93025; --link: #00aeec;
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #141416; --text: #eaeaea; --muted: #a3a3aa; --border: rgba(128, 128, 128, .4); --control-bg: rgba(255, 255, 255, .04); --raised: #232326;
+      --accent: #00a1d6; --accent-text: #fff; --danger: #ff6b6b; --link: #00a1d6;
+    }
+    html, body { margin: 0; }
+    body {
+      font: 15px/1.7 -apple-system, "Segoe UI", "Microsoft JhengHei", "Microsoft YaHei", "Hiragino Sans", "Apple SD Gothic Neo", sans-serif;
+      color: var(--text); background: var(--bg); min-height: 100vh;
+    }
+    :lang(ja) { word-break: auto-phrase; line-break: strict; }
+    :lang(ko) { word-break: keep-all; overflow-wrap: anywhere; }
+    main { max-width: 520px; margin: 0 auto; padding: 14vh 20px 40px; text-align: center; }
+    img { width: 72px; height: 72px; }
+    h1 { font-size: 24px; margin: 14px 0 8px; }
+    p { color: var(--muted); margin: 0 auto; max-width: 440px; }
+    .restore { margin-top: 48px; }
+    .restore button { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--muted); text-decoration: underline; cursor: pointer; }
+    .restore button:hover { color: var(--link); }
+  </style>
+</head>
+
+<body>
+  <main>
+    <img src="logo128.png" alt="" />
+    <h1 id="welcomeTitle"></h1>
+    <p id="welcomeBody"></p>
+    <div class="restore" id="restoreRow" hidden><button type="button" id="restoreLink"></button></div>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="common.js"></script>
+  <script src="features.js"></script>
+  <script src="cloud.js"></script>
+  <script src="cloud-ui.js"></script>
+  <script src="welcome.js"></script>
+</body>
+
+</html>

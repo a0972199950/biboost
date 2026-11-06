@@ -856,5 +856,104 @@
   },
   "donateEmailBad": {
     "message": "Email 格式唔啱"
+  },
+  "cloudBtn": {
+    "message": "雲端備份"
+  },
+  "cloudTitle": {
+    "message": "雲端備份"
+  },
+  "cloudClose": {
+    "message": "關閉"
+  },
+  "cloudLoginHint": {
+    "message": "登入之後就可以將設定備份上雲端，換電腦或者重裝擴充都可以還原。帳號同 BiBoost 手機 App 共用。"
+  },
+  "cloudLoginGoogle": {
+    "message": "用 Google 登入"
+  },
+  "cloudLoginOpened": {
+    "message": "已經喺新分頁開咗 Google 登入，搞掂之後返嚟呢度就得。"
+  },
+  "cloudSignedInAs": {
+    "message": "已登入：{email}"
+  },
+  "cloudBackupBtn": {
+    "message": "備份上雲端"
+  },
+  "cloudBackupHint": {
+    "message": "用呢部電腦而家嘅設定蓋過雲端嘅備份"
+  },
+  "cloudRestoreBtn": {
+    "message": "由雲端同步返本機"
+  },
+  "cloudRestoreHint": {
+    "message": "用雲端嘅備份蓋過呢部電腦嘅設定"
+  },
+  "cloudLastBackup": {
+    "message": "上次備份：{time}（{by}）"
+  },
+  "cloudNoBackup": {
+    "message": "雲端仲未有備份"
+  },
+  "cloudByExt": {
+    "message": "瀏覽器擴充"
+  },
+  "cloudByApp": {
+    "message": "手機 App"
+  },
+  "cloudAutoLabel": {
+    "message": "自動同步"
+  },
+  "cloudAutoHint": {
+    "message": "設定一改就自動備份，每 15 分鐘由雲端更新一次。目前節點同國家每部電腦各自保留，唔會自動同步。"
+  },
+  "cloudLogout": {
+    "message": "登出"
+  },
+  "cloudBackupDone": {
+    "message": "已經備份上雲端"
+  },
+  "cloudRestoreDone": {
+    "message": "已經由雲端還原"
+  },
+  "cloudWorking": {
+    "message": "處理緊…"
+  },
+  "cloudErrNetwork": {
+    "message": "連唔到伺服器，請遲啲再試"
+  },
+  "cloudErrNoBackup": {
+    "message": "雲端仲未有備份"
+  },
+  "cloudErrLogin": {
+    "message": "登入已經失效，請重新登入"
+  },
+  "cloudErrUnavailable": {
+    "message": "雲端備份暫時用唔到"
+  },
+  "cloudErrGeneric": {
+    "message": "出咗錯（{code}），請遲啲再試"
+  },
+  "authTitle": {
+    "message": "登入 BiBoost"
+  },
+  "authDone": {
+    "message": "登入完成"
+  },
+  "authFail": {
+    "message": "登入失敗"
+  },
+  "authFailHint": {
+    "message": "請返去擴充重新登入（{code}）"
+  },
+  "welcomeTitle": {
+    "message": "安裝完成！"
+  },
+  "welcomeBody": {
+    "message": "打開任何 B 站影片，BiBoost 就會自動轉去較快嘅節點。㩒瀏覽器右上角嘅擴充圖示可以調整設定。"
+  },
+  "welcomeRestoreLink": {
+    "message": "已經有備份？由雲端恢復"
   }
 }

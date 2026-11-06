@@ -856,5 +856,104 @@
   },
   "donateEmailBad": {
     "message": "That email doesn't look right"
+  },
+  "cloudBtn": {
+    "message": "Cloud backup"
+  },
+  "cloudTitle": {
+    "message": "Cloud backup"
+  },
+  "cloudClose": {
+    "message": "Close"
+  },
+  "cloudLoginHint": {
+    "message": "Sign in to back up your settings to the cloud and restore them on a new computer or after reinstalling. Your account is shared with the BiBoost mobile app."
+  },
+  "cloudLoginGoogle": {
+    "message": "Sign in with Google"
+  },
+  "cloudLoginOpened": {
+    "message": "Google sign-in opened in a new tab. Come back here when you're done."
+  },
+  "cloudSignedInAs": {
+    "message": "Signed in as {email}"
+  },
+  "cloudBackupBtn": {
+    "message": "Back up to cloud"
+  },
+  "cloudBackupHint": {
+    "message": "Replace the cloud backup with this computer's settings"
+  },
+  "cloudRestoreBtn": {
+    "message": "Restore from cloud"
+  },
+  "cloudRestoreHint": {
+    "message": "Replace this computer's settings with the cloud backup"
+  },
+  "cloudLastBackup": {
+    "message": "Last backup: {time} ({by})"
+  },
+  "cloudNoBackup": {
+    "message": "No backup in the cloud yet"
+  },
+  "cloudByExt": {
+    "message": "browser extension"
+  },
+  "cloudByApp": {
+    "message": "mobile app"
+  },
+  "cloudAutoLabel": {
+    "message": "Auto sync"
+  },
+  "cloudAutoHint": {
+    "message": "Back up automatically whenever a setting changes, and update from the cloud every 15 minutes. The current node and country stay per computer and aren't synced."
+  },
+  "cloudLogout": {
+    "message": "Sign out"
+  },
+  "cloudBackupDone": {
+    "message": "Backed up to the cloud"
+  },
+  "cloudRestoreDone": {
+    "message": "Restored from the cloud"
+  },
+  "cloudWorking": {
+    "message": "Working…"
+  },
+  "cloudErrNetwork": {
+    "message": "Can't reach the server. Please try again later."
+  },
+  "cloudErrNoBackup": {
+    "message": "No backup in the cloud yet"
+  },
+  "cloudErrLogin": {
+    "message": "Your sign-in has expired. Please sign in again."
+  },
+  "cloudErrUnavailable": {
+    "message": "Cloud backup isn't available right now"
+  },
+  "cloudErrGeneric": {
+    "message": "Something went wrong ({code}). Please try again later."
+  },
+  "authTitle": {
+    "message": "Sign in to BiBoost"
+  },
+  "authDone": {
+    "message": "You're signed in"
+  },
+  "authFail": {
+    "message": "Sign-in failed"
+  },
+  "authFailHint": {
+    "message": "Please go back to the extension and sign in again ({code})."
+  },
+  "welcomeTitle": {
+    "message": "You're all set!"
+  },
+  "welcomeBody": {
+    "message": "Open any bilibili video and BiBoost switches to a faster node automatically. Click the extension icon at the top right of your browser to change settings."
+  },
+  "welcomeRestoreLink": {
+    "message": "Already have a backup? Restore from the cloud"
   }
 }

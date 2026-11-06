@@ -856,5 +856,104 @@
   },
   "donateEmailBad": {
     "message": "メールアドレスの形式が正しくありません"
+  },
+  "cloudBtn": {
+    "message": "クラウドバックアップ"
+  },
+  "cloudTitle": {
+    "message": "クラウドバックアップ"
+  },
+  "cloudClose": {
+    "message": "閉じる"
+  },
+  "cloudLoginHint": {
+    "message": "ログインすると設定をクラウドにバックアップでき、パソコンの買い替えや再インストール後に復元できます。アカウントは BiBoost モバイルアプリと共通です。"
+  },
+  "cloudLoginGoogle": {
+    "message": "Google でログイン"
+  },
+  "cloudLoginOpened": {
+    "message": "新しいタブで Google ログインを開きました。完了したらここに戻ってください。"
+  },
+  "cloudSignedInAs": {
+    "message": "ログイン中：{email}"
+  },
+  "cloudBackupBtn": {
+    "message": "クラウドにバックアップ"
+  },
+  "cloudBackupHint": {
+    "message": "このパソコンの現在の設定でクラウドのバックアップを上書きします"
+  },
+  "cloudRestoreBtn": {
+    "message": "クラウドから復元"
+  },
+  "cloudRestoreHint": {
+    "message": "クラウドのバックアップでこのパソコンの設定を上書きします"
+  },
+  "cloudLastBackup": {
+    "message": "前回のバックアップ：{time}（{by}）"
+  },
+  "cloudNoBackup": {
+    "message": "クラウドにはまだバックアップがありません"
+  },
+  "cloudByExt": {
+    "message": "ブラウザ拡張機能"
+  },
+  "cloudByApp": {
+    "message": "モバイルアプリ"
+  },
+  "cloudAutoLabel": {
+    "message": "自動同期"
+  },
+  "cloudAutoHint": {
+    "message": "設定を変更すると自動でバックアップし、15 分ごとにクラウドから更新します。現在のノードと国はパソコンごとに保持され、同期されません。"
+  },
+  "cloudLogout": {
+    "message": "ログアウト"
+  },
+  "cloudBackupDone": {
+    "message": "クラウドにバックアップしました"
+  },
+  "cloudRestoreDone": {
+    "message": "クラウドから復元しました"
+  },
+  "cloudWorking": {
+    "message": "処理中…"
+  },
+  "cloudErrNetwork": {
+    "message": "サーバーに接続できません。しばらくしてからお試しください。"
+  },
+  "cloudErrNoBackup": {
+    "message": "クラウドにはまだバックアップがありません"
+  },
+  "cloudErrLogin": {
+    "message": "ログインの有効期限が切れました。もう一度ログインしてください。"
+  },
+  "cloudErrUnavailable": {
+    "message": "クラウドバックアップは現在利用できません"
+  },
+  "cloudErrGeneric": {
+    "message": "エラーが発生しました（{code}）。しばらくしてからお試しください。"
+  },
+  "authTitle": {
+    "message": "BiBoost にログイン"
+  },
+  "authDone": {
+    "message": "ログインしました"
+  },
+  "authFail": {
+    "message": "ログインに失敗しました"
+  },
+  "authFailHint": {
+    "message": "拡張機能に戻ってもう一度ログインしてください（{code}）。"
+  },
+  "welcomeTitle": {
+    "message": "インストール完了！"
+  },
+  "welcomeBody": {
+    "message": "bilibili の動画を開くと、BiBoost が自動で速いノードに切り替えます。設定はブラウザ右上の拡張機能アイコンから変更できます。"
+  },
+  "welcomeRestoreLink": {
+    "message": "バックアップをお持ちですか？クラウドから復元"
   }
 }

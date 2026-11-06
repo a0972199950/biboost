@@ -14,6 +14,12 @@ export const FEATURES = [
     desc: "關閉時：popup 收起「贊助」按鈕、擴充的贊助頁只剩排行榜、biboost.app/donate 回 404、結帳 API 回 403。Safari 版本來就不顯示贊助，不受影響。",
     defaults: { enabled: true },
   },
+  {
+    key: "cloud_sync",
+    name: "雲端備份",
+    desc: "popup 的「雲端備份」按鈕（首頁與進階設定）、新安裝時歡迎頁的「從雲端恢復」連結、擴充的自動同步。關閉時入口收起來，api.biboost.app 的 /me/settings 不收擴充的備份（回 404）。預設關閉。",
+    defaults: { enabled: false },
+  },
 ];
 
 const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;

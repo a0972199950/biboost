@@ -48,7 +48,7 @@ describe("scripts/lib/features.mjs（後台）", () => {
   test("first use moves the old settings.donate_enabled over, then lists catalog + extra rows", async () => {
     db.features.other = { data: { enabled: false }, updated_at: "t0" };
     const rows = await F.listFeatures();
-    assert.deepEqual(rows.map((r) => [r.key, r.data.enabled, r.known]), [["donate", false, true], ["other", false, false]]);
+    assert.deepEqual(rows.map((r) => [r.key, r.data.enabled, r.known]), [["donate", false, true], ["cloud_sync", false, true], ["other", false, false]]);
     assert.equal(rows[0].name, "贊助");
   });
 
@@ -147,13 +147,13 @@ describe("src/features.js（擴充）", () => {
   test("refresh stores the signed answer; load re-verifies it every time", async () => {
     const { env, fx } = boot({ answer: { ok: true, jws: await sign({ donate: { enabled: false }, extra: { enabled: false, group: "x" } }) } });
     const flags = plain(await fx.refresh());
-    assert.deepEqual(flags, { donate: { enabled: false }, extra: { enabled: false, group: "x" } });
+    assert.deepEqual(flags, { donate: { enabled: false }, cloud_sync: { enabled: false }, extra: { enabled: false, group: "x" } });
     assert.equal(env.storage.featureFlags.api, "https://api.biboost.app");
     assert.equal(fx.enabled(await fx.load(), "donate"), false);
     // 有人改了 storage 裡的 payload：驗不過 → 回到預設值
     const [h, , s] = env.storage.featureFlags.jws.split(".");
     env.storage.featureFlags.jws = [h, Buffer.from(JSON.stringify({ iat: 1, features: { donate: { enabled: true, group: "x" } } })).toString("base64url"), s].join(".");
-    assert.deepEqual(plain(await fx.load()), { donate: { enabled: true } });
+    assert.deepEqual(plain(await fx.load()), { donate: { enabled: true }, cloud_sync: { enabled: false } });
     env.close();
   });
 
