@@ -491,6 +491,21 @@
   "optimizingStop": {
     "message": "Stop"
   },
+  "listFailTitle": {
+    "message": "Sorry, the node list couldn't be loaded"
+  },
+  "listFailBody": {
+    "message": "We can't reach our server right now. Until the node list loads, the extension stays off and bilibili plays as usual. Please check your connection."
+  },
+  "listRetryBtn": {
+    "message": "Retry"
+  },
+  "listRetrying": {
+    "message": "Retrying…"
+  },
+  "listRetryIn": {
+    "message": "Retrying automatically in {n}s"
+  },
   "reportTitle": {
     "message": "Report a problem / Request a feature"
   },

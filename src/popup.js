@@ -2,10 +2,10 @@
 
 var DEFAULTS = {
   enabled: true,
-  cdnHost: "cn-bj-se-01-05.bilivideo.com", // 全域預設 = cdn-list.json「其他地區」（OTHER）的第一個，同 main-hook.js
+  cdnHost: "", // 沒選過＝節點清單的全域預設（OTHER 的第一個，globalDefaultHost）；節點清單由伺服器下發（cdn-list.js）
   cdnMode: null, // 一般影片用哪份節點："list"（國家清單）或 "custom"（自訂節點列表）；null = 1.6 以前的設定，載入時遷移
   customHosts: [], // 自訂節點列表（使用者加入的、測速工具匯入的），依加入順序
-  cdnCountry: null, // 節點清單的國家選項（cdn-list.json countries 的 code，或 "ALL"）
+  cdnCountry: null, // 節點清單的國家選項（清單 countries 的 code，或 "ALL"）
   detectedCountry: "", // 依 IP 偵測到、且在清單內的國家；標「你在這裡」用
   countryAutoDone: false, // IP-based country selection runs once per install (never reset, not even on update); a manual choice also sets it
   autoFallback: true,
@@ -105,7 +105,8 @@ document.documentElement.lang = uiLanguage();
   ["stLiveRunsUnit", "unitTimes"], ["stLiveSecLabel", "stLiveSecLabel"], ["stLiveSecUnit", "unitSec"], ["stLiveReset", "resetDefault"], ["stLivePresetLabel", "stPresetLabel"], ["liveRouteExplain", "liveRouteExplain"], ["showDebugHint", "showDebugHint"],
   ["staleTitle", "staleTabTitle"], ["stGuideTitle", "stGuideTitle"], ["stGuideText", "stGuideText"], ["stGuideBtn", "stGuideBtn"], ["staleText", "staleTabText"], ["staleReloadBtn", "staleTabReloadBtn"],
   ["customAddBtn", "customAddBtn"], ["customClearBtn", "customClearBtn"], ["resetAllBtn", "resetAllBtn"],
-  ["wnSubtitle", "whatsNewSubtitle"], ["wnClose", "whatsNewClose"]
+  ["wnSubtitle", "whatsNewSubtitle"], ["wnClose", "whatsNewClose"],
+  ["lfTitle", "listFailTitle"], ["lfBody", "listFailBody"]
 ].forEach(function (pair) { document.getElementById(pair[0]).textContent = t(pair[1]); });
 // -------- 介面語言（進階設定第一項）--------
 // 選項存 localStorage（i18n.js 開頭同步讀）＋ chrome.storage.local 的 uiLang / uiMsgs（bridge.js 的頁內提示用，uiMsgs 為 null = 跟隨瀏覽器）。
@@ -583,8 +584,9 @@ try { chrome.storage.onChanged.addListener(function (ch, area) { if (area === "l
 var knownValues = {}; // 清单中所有 value（1.6 以前用来判断储存值是否为自行输入，见载入时的迁移）
 var cdnMode = "list"; // 目前用哪份节点（"list" / "custom"）；选「关闭」时保留关闭前的那份
 var customHosts = []; // 自订节点列表
-var cdnList = []; // cdn-list.json 的 options（全部节点，「全部」选项的顺序），供显示名称与查找
-var cdnPools = {}; // cdn-list.json 的 pools：池类型的多语标签
+var cdnList = []; // 节点清单的 options（全部节点，「全部」选项的顺序），供显示名称与查找
+var cdnPools = {}; // 节点清单的 pools：池类型的多语标签
+var globalDefaultHost = ""; // 全域预设节点 = 节点清单「其他地区」（OTHER）的第一个；没选过节点的人用它
 var currentCdnHost = null; // 目前生效的 cdnHost，供测速页标示「目前使用」＋点击切换比对
 var videoOn = true; // 一般影片没选「关闭」；关闭时测速页不标示「目前使用」
 
@@ -600,7 +602,7 @@ var COUNTRY_ALL = "ALL";
 var COUNTRY_FALLBACK = "OTHER"; // 使用者所在國家不在清單內時用「其他地區」（跨國挑的通用清單）
 // 舊版清單裡、已確定網域不存在而移除的節點：還存著它們的使用者搬回預設
 var REMOVED_HOSTS = ["upos-sz-mirrorhwov.bilivideo.com", "cn-hk-eq-bcache-01.bilivideo.com"];
-var cdnCountries = []; // cdn-list.json 的 countries
+var cdnCountries = []; // 节点清单的 countries
 var countrySel = COUNTRY_FALLBACK;
 var detectedCountry = ""; // 依 IP 偵測到的國家（在清單內才有值）
 
@@ -617,7 +619,7 @@ function countryHosts(code) {
 }
 // 目前這份節點（國家清單或自訂節點列表）：測速、自動測速都測這份
 function activeHosts() { return cdnMode === "custom" ? customHosts.slice() : countryHosts(countrySel); }
-// 自訂節點不一定在 cdn-list.json 裡：不在的就用 host 當名稱
+// 自訂節點不一定在節點清單裡：不在的就用 host 當名稱
 function customOpt(h) { return findCdnOpt(h) || { value: h, name: h, unknown: true }; }
 // 下拉要列的選項：國家節點 + 最後的 B 站備援；自訂節點列表就只列使用者的節點
 function visibleCdnOptions() {
@@ -886,26 +888,32 @@ function save(patch) {
   for (var k2 in patch) lastCfg[k2] = patch[k2];
 }
 
-// 读清单 + 目前设定 → 建立下拉
+// 读清单 + 目前设定 → 建立下拉。节点清单由伺服器下发（cdn-list.js，本地有验过章的快取）；
+// 还没有清单（第一次安装就连不上）→ 盖上关不掉的「载入失败」遮罩，拿到后重新载入 popup
 Promise.all([
-  fetch(chrome.runtime.getURL("cdn-list.json")).then(function (r) { return r.json(); }).catch(function () { return { options: [] }; }),
+  BBCdnList.load(),
   new Promise(function (res) { chrome.storage.local.get(DEFAULTS, res); })
 ]).then(function (arr) {
-  var data = arr[0] || {};
+  if (!arr[0]) { showListFail(); return; }
+  var data = arr[0].data;
+  // 有没有新版本：background 6 小时内不重问；新版本下次打开 popup 才用
+  try { chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CDN_LIST" }, function () { void chrome.runtime.lastError; }); } catch (e) {}
+  globalDefaultHost = BBCdnList.defaultHost(data);
   cdnList = data.options || [];
   cdnPools = data.pools || {};
   cdnCountries = data.countries || [];
   addFakeCountry();
   var cfg = {};
   for (var k in DEFAULTS) cfg[k] = arr[1][k] === undefined ? DEFAULTS[k] : arr[1][k];
+  if (!cfg.cdnHost) cfg.cdnHost = globalDefaultHost; // 没选过：用全域预设（不写回 storage，之后全域预设换了也跟着换）
   // 旧版「清单里的『原始(不覆写)』」(cdnHost='base') 已被独立的「关闭」取代：搬成 videoEnabled=false
   if (cfg.cdnHost === "base") {
-    cfg.videoEnabled = false; cfg.cdnHost = DEFAULTS.cdnHost;
-    save({ videoEnabled: false, cdnHost: DEFAULTS.cdnHost });
+    cfg.videoEnabled = false; cfg.cdnHost = globalDefaultHost;
+    save({ videoEnabled: false, cdnHost: globalDefaultHost });
   }
   if (REMOVED_HOSTS.indexOf(cfg.cdnHost) >= 0) {
-    cfg.cdnHost = DEFAULTS.cdnHost;
-    save({ cdnHost: DEFAULTS.cdnHost });
+    cfg.cdnHost = globalDefaultHost;
+    save({ cdnHost: globalDefaultHost });
   }
   countrySel = validCountry(cfg.cdnCountry) ? cfg.cdnCountry : COUNTRY_FALLBACK;
   detectedCountry = findCountry(cfg.detectedCountry) ? cfg.detectedCountry : "";
@@ -948,6 +956,39 @@ Promise.all([
   autoSelectCountry(cfg);
   refreshZoneIfStale(arr[1]);
 });
+
+// 节点清单载入失败（第一次安装就连不上伺服器）：关不掉的遮罩，「重试」＋每 10 秒自动重试（交给 background 拿，拿到它会接着依 IP 选国家）。
+// 拿到就重新载入 popup，照常显示
+var LIST_RETRY_S = 10;
+function showListFail() {
+  var box = document.getElementById("listFail"), btn = document.getElementById("lfRetry"), next = document.getElementById("lfNext");
+  var left = LIST_RETRY_S, busy = false;
+  function render() {
+    btn.disabled = busy;
+    btn.textContent = t(busy ? "listRetrying" : "listRetryBtn");
+    next.textContent = busy ? "" : t("listRetryIn").replace("{n}", left);
+  }
+  function attempt() {
+    if (busy) return;
+    busy = true;
+    render();
+    chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CDN_LIST", force: true }, function (r) {
+      void chrome.runtime.lastError;
+      if (r && r.ok) { location.reload(); return; }
+      busy = false;
+      left = LIST_RETRY_S;
+      render();
+    });
+  }
+  btn.addEventListener("click", attempt);
+  box.classList.add("show");
+  showListFail.timer = setInterval(function () {
+    if (busy) return;
+    if (--left <= 0) attempt(); else render();
+  }, 1000);
+  attempt(); // 打开就先试一次（background 可能刚好在等下一次重试）
+  btn.focus();
+}
 
 els.enabled.addEventListener("change", function () { save({ enabled: els.enabled.checked }); });
 els.autoFallback.addEventListener("change", function () { save({ autoFallback: els.autoFallback.checked }); }); // 「速度不佳時自動優化節點」
@@ -2481,13 +2522,13 @@ if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "func
   globalThis.__BCS_TEST__.register("popup", {
     els: els, DEFAULTS: DEFAULTS, t: t, uiLangCode: uiLangCode, localized: localized, cdnDisplayName: cdnDisplayName,
     normHost: normHost, parseVer: parseVer, cmpVer: cmpVer, changelogText: changelogText, clampLimit: clampLimit, inferPreset: inferPreset,
-    findCountry: findCountry, validCountry: validCountry, countryHosts: countryHosts, activeHosts: activeHosts, visibleCdnOptions: visibleCdnOptions,
+    showListFail: showListFail, findCountry: findCountry, validCountry: validCountry, countryHosts: countryHosts, activeHosts: activeHosts, visibleCdnOptions: visibleCdnOptions,
     detectCountry: detectCountry, countryByDial: countryByDial, refreshZoneIfStale: refreshZoneIfStale, autoSelectCountry: autoSelectCountry,
     withSaved: withSaved, sortedKeys: sortedKeys, qualityTier: qualityTier, QUALITY_TIERS: QUALITY_TIERS, durationText: durationText, withUtm: withUtm, detectBrowser: detectBrowser,
     setRichText: setRichText, save: save,
     state: function () {
       return { cdnMode: cdnMode, customHosts: customHosts, countrySel: countrySel, detectedCountry: detectedCountry, currentCdnHost: currentCdnHost, cdnSelectValue: cdnSelectValue,
-        videoOn: videoOn, liveOn: liveOn, liveRouteSel: liveRouteSel, sortOn: sortOn, speedOrder: speedOrder, limits: limits, presets: presets, cdnList: cdnList, cdnCountries: cdnCountries };
+        videoOn: videoOn, liveOn: liveOn, liveRouteSel: liveRouteSel, sortOn: sortOn, speedOrder: speedOrder, limits: limits, presets: presets, cdnList: cdnList, cdnCountries: cdnCountries, globalDefaultHost: globalDefaultHost };
     },
     setState: function (s) {
       if (s.cdnMode !== undefined) cdnMode = s.cdnMode; if (s.customHosts) customHosts = s.customHosts; if (s.countrySel !== undefined) countrySel = s.countrySel;

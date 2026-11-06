@@ -22,7 +22,8 @@
     }
   },
   "permissions": [
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "*://*.bilibili.com/*"
@@ -35,6 +36,7 @@
   },
   "background": {
     "scripts": [
+      "cdn-list.js",
       "background.js"
     ]
   },

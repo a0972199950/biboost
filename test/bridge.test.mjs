@@ -243,3 +243,33 @@ describe("speed test state for the popup", () => {
 });
 
 after(closeAll);
+
+describe("no node list yet", () => {
+  test("the extension stays off: enabled=false and no node is pushed", () => {
+    const env = createEnv({ url: "https://www.bilibili.com/video/BV1xx", storage: {}, cdnList: false });
+    env.load("bridge.js");
+    const cfg = JSON.parse(env.window.localStorage.getItem("__CDN_SWITCHER_CFG__"));
+    assert.equal(cfg.enabled, false);
+    assert.equal("cdnHost" in cfg, false);
+    assert.ok(env.runtimeMessages.some((m) => m.type === "CDN_SWITCHER_CDN_LIST"), "asks background to check");
+    env.close();
+  });
+  test("even a user who turned it on stays off until the list arrives, then switches on", () => {
+    const env = createEnv({ url: "https://www.bilibili.com/video/BV1xx", storage: { enabled: true, cdnHost: A }, cdnList: false });
+    env.load("bridge.js");
+    assert.equal(JSON.parse(env.window.localStorage.getItem("__CDN_SWITCHER_CFG__")).enabled, false);
+    env.chrome.storage.local.set({ cdnListMeta: { v: 1, defaultHost: B, checkedAt: Date.now() } });
+    const cfg = JSON.parse(env.window.localStorage.getItem("__CDN_SWITCHER_CFG__"));
+    assert.equal(cfg.enabled, true);
+    assert.equal(cfg.cdnHost, A, "the user's own node is kept");
+    env.close();
+  });
+  test("never-chosen node → the list's global default", () => {
+    const env = createEnv({ url: "https://www.bilibili.com/video/BV1xx", storage: {} });
+    env.load("bridge.js");
+    const cfg = JSON.parse(env.window.localStorage.getItem("__CDN_SWITCHER_CFG__"));
+    assert.equal(cfg.enabled, true);
+    assert.equal(cfg.cdnHost, env.storage.cdnListMeta.defaultHost);
+    env.close();
+  });
+});

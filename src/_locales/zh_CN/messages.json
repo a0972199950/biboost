@@ -491,6 +491,21 @@
   "optimizingStop": {
     "message": "中断优化"
   },
+  "listFailTitle": {
+    "message": "抱歉，节点列表加载失败"
+  },
+  "listFailBody": {
+    "message": "暂时连不上服务器。拿到节点列表之前，扩展先不启用，B 站会照原本的方式播放。请检查网络连接。"
+  },
+  "listRetryBtn": {
+    "message": "重试"
+  },
+  "listRetrying": {
+    "message": "重试中…"
+  },
+  "listRetryIn": {
+    "message": "{n} 秒后自动重试"
+  },
   "reportTitle": {
     "message": "问题反馈／功能许愿"
   },

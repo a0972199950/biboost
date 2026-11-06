@@ -60,13 +60,14 @@ B 站默认分配的取流节点对海外用户常常绕路、不够快。这个
 ```text
 bilibili-cdn-switcher/
 ├── src/                  ← 扩展本体（加载已解压 / 打包的就是这层）：manifest、popup、注入 B 站页面的脚本、
-│                            赞助／公告／问题反馈页、节点列表 cdn-list.json、更新记录 changelog.json、五语言 _locales/
+│                            赞助／公告／问题反馈页、节点列表加载 cdn-list.js（列表本身由 static.biboost.app 下发）、更新记录 changelog.json、五语言 _locales/
 ├── safari/               ← Safari 扩展的 Xcode 工程（safari-web-extension-converter 生成，用相对路径直接引用 ../../../src/）
 ├── tools/
 │   ├── cdn-speedtest-app/    ← 官方测速工具 CDNSpeedTest（Python，Windows／Mac）
 │   ├── report-worker/        ← api.biboost.app：问题反馈、公告、赞助等 API（Cloudflare Worker）
 │   │                         同一域名上的账号与云端备份 API 由另一个私人 Worker 提供
 │   ├── site/                 ← biboost.app 网站（Cloudflare Worker）
+│   ├── static-site/          ← static.biboost.app：只放静态文件（签名过的节点列表；npm run cdn-list:publish 发布，同时放一份到 AWS S3＋CloudFront 作为备援）
 │   └── translate-worker/     ← 后台用的翻译 API（Cloudflare Worker）
 ├── scripts/              ← 开发／打包／发版／运营脚本（以 Node 为主，少数 Python）
 ├── test/                 ← 单元测试（npm test）

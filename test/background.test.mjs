@@ -1,13 +1,12 @@
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import { createEnv, plain, closeAll } from "./helpers/load.mjs";
+import { createEnv, plain, closeAll, CDN_FIXTURE, cdnNodesOf, signCdnList, cdnListStorage } from "./helpers/load.mjs";
 
 const A = "upos-sz-mirror08ct.bilivideo.com";
 const C = "upos-sz-estgcos.bilivideo.com";
 function boot(storage, extra) {
   const env = createEnv({ url: "chrome-extension://bcs-test/background.js", storage, ...extra });
-  env.load("background.js");
+  env.load("cdn-list.js").load("background.js");
   return env;
 }
 
@@ -55,7 +54,7 @@ describe("onInstalled", () => {
 });
 
 describe("country selection in the background", () => {
-  const LIST = JSON.parse(fs.readFileSync(new URL("../src/cdn-list.json", import.meta.url), "utf8"));
+  const LIST = CDN_FIXTURE;
   const nodesOf = (code) => LIST.countries.find((c) => c.code === code).nodes;
   const ZONE_API = "https://api.bilibili.com/x/web-interface/zone";
   function withZone(storage, dial) {
@@ -275,3 +274,96 @@ describe("diagnostic journal (storage.session)", () => {
 });
 
 after(closeAll);
+
+describe("node list from the server", () => {
+  const ZONE_API = "https://api.bilibili.com/x/web-interface/zone";
+  const PRIMARY = "https://static.biboost.app/";
+  // listJws：伺服器上的清單（null＝兩個來源都連不上）
+  function bootList(storage, { listJws = null, v = 1, dial = 65, cdnList = false } = {}) {
+    const env = createEnv({ url: "chrome-extension://bcs-test/background.js", storage, cdnList });
+    env.fetchHandler = (url) => {
+      if (url === ZONE_API && dial) return { ok: true, status: 200, json: () => Promise.resolve({ code: 0, data: { addr: "1.2.3.4", isp: "ISP", country: "X", country_code: String(dial) } }) };
+      if (listJws && url === PRIMARY + "cdn-list/latest.json") return { ok: true, status: 200, json: () => Promise.resolve({ v, file: `cdn-list/v/${v}.jws` }) };
+      if (listJws && url === PRIMARY + `cdn-list/v/${v}.jws`) return { ok: true, status: 200, text: () => Promise.resolve(listJws) };
+      throw new TypeError("Failed to fetch");
+    };
+    env.load("cdn-list.js").load("background.js");
+    return env;
+  }
+  test("install while offline: nothing selected, retry alarm armed; the alarm later gets the list and selects the country", async () => {
+    const env = bootList({});
+    env.onInstalledListeners[0]({ reason: "install" });
+    await env.settle(50);
+    assert.equal("cdnHost" in env.storage, false);
+    assert.equal(env.storage.cdnListPending, "install");
+    assert.ok(env.alarms.cdnListRetry, "retry alarm");
+    assert.equal(env.alarms.cdnListRetry.periodInMinutes, 1);
+    // 網路恢復
+    const jws = await signCdnList();
+    env.fetchHandler = ((orig) => (url) => {
+      if (url === "https://static.biboost.app/cdn-list/latest.json") return { ok: true, status: 200, json: () => Promise.resolve({ v: 1, file: "cdn-list/v/1.jws" }) };
+      if (url === "https://static.biboost.app/cdn-list/v/1.jws") return { ok: true, status: 200, text: () => Promise.resolve(jws) };
+      return orig(url);
+    })(env.fetchHandler);
+    env.onAlarmListeners[0]({ name: "cdnListRetry" });
+    await env.settle(80);
+    assert.equal(env.storage.cdnCountry, "SG");
+    assert.equal(env.storage.cdnHost, cdnNodesOf("SG")[0]);
+    assert.equal("cdnListPending" in env.storage, false);
+    assert.equal("cdnListRetry" in env.alarms, false, "alarm cleared");
+    env.close();
+  });
+  test("install online: list first, then the country", async () => {
+    const env = bootList({}, { listJws: await signCdnList() });
+    env.onInstalledListeners[0]({ reason: "install" });
+    await env.settle(80);
+    assert.equal(env.storage.cdnList.v, 1);
+    assert.equal(env.storage.cdnHost, cdnNodesOf("SG")[0]);
+    assert.equal("cdnListRetry" in env.alarms, false);
+    env.close();
+  });
+  test("update without a list yet keeps the user's node and waits", async () => {
+    const env = bootList({ cdnHost: "test-tw-02.bilivideo.com", cdnCountry: "TW", cdnMode: "list" });
+    env.onInstalledListeners[0]({ reason: "update", previousVersion: "2.9.0" });
+    await env.settle(50);
+    assert.equal(env.storage.cdnHost, "test-tw-02.bilivideo.com");
+    assert.equal(env.storage.cdnListPending, "update");
+    assert.ok(env.alarms.cdnListRetry);
+    env.close();
+  });
+  test("a new list refreshes autoSpeedHosts for country-list users only; the current node stays", async () => {
+    const d = JSON.parse(JSON.stringify(CDN_FIXTURE));
+    d.countries.find((c) => c.code === "TW").nodes = ["test-tw-03.bilivideo.com", "test-tw-01.bilivideo.com"];
+    const jws = await signCdnList(d, 2);
+    const cases = [
+      [{ cdnMode: "list", cdnCountry: "TW", cdnHost: "test-tw-02.bilivideo.com", autoSpeedHosts: ["old"] }, ["test-tw-03.bilivideo.com", "test-tw-01.bilivideo.com"]],
+      [{ cdnMode: "list", cdnCountry: "ALL", autoSpeedHosts: [] }, []],
+      [{ cdnMode: "custom", cdnCountry: "TW", autoSpeedHosts: ["mine.bilivideo.com"] }, ["mine.bilivideo.com"]],
+    ];
+    for (const [storage, expected] of cases) {
+      const env = bootList({ ...cdnListStorage({ checkedAt: 0 }), ...storage }, { listJws: jws, v: 2 });
+      env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CDN_LIST" });
+      await env.settle(80);
+      assert.equal(env.storage.cdnList.v, 2);
+      assert.deepEqual(env.storage.autoSpeedHosts, expected, JSON.stringify(storage));
+      if (storage.cdnHost) assert.equal(env.storage.cdnHost, storage.cdnHost);
+      env.close();
+    }
+  });
+  test("no list: refresh fails and arms the retry; importCustomHosts refuses", async () => {
+    const env = bootList({});
+    const resp = await env.internals("background").refreshList(true);
+    assert.equal(resp.ok, false);
+    assert.ok(env.alarms.cdnListRetry);
+    const r = await env.internals("background").importCustomHosts(["upos-sz-mirror08ct.bilivideo.com"]);
+    assert.equal(r.ok, false);
+    env.close();
+  });
+  test("browser startup without a list retries right away", async () => {
+    const env = bootList({}, { listJws: await signCdnList() });
+    env.onStartupListeners[0]();
+    await env.settle(80);
+    assert.equal(env.storage.cdnList.v, 1);
+    env.close();
+  });
+});
