@@ -856,5 +856,104 @@
   },
   "donateEmailBad": {
     "message": "Email 格式不对"
+  },
+  "cloudBtn": {
+    "message": "云端备份"
+  },
+  "cloudTitle": {
+    "message": "云端备份"
+  },
+  "cloudClose": {
+    "message": "关闭"
+  },
+  "cloudLoginHint": {
+    "message": "登录后就能把设置备份到云端，换电脑或重装扩展都能还原。账号与 BiBoost 手机 App 共用。"
+  },
+  "cloudLoginGoogle": {
+    "message": "使用 Google 登录"
+  },
+  "cloudLoginOpened": {
+    "message": "已在新标签页打开 Google 登录，完成后回到这里即可。"
+  },
+  "cloudSignedInAs": {
+    "message": "已登录：{email}"
+  },
+  "cloudBackupBtn": {
+    "message": "备份到云端"
+  },
+  "cloudBackupHint": {
+    "message": "用这台电脑当前的设置覆盖云端的备份"
+  },
+  "cloudRestoreBtn": {
+    "message": "从云端同步到本地"
+  },
+  "cloudRestoreHint": {
+    "message": "用云端的备份覆盖这台电脑的设置"
+  },
+  "cloudLastBackup": {
+    "message": "上次备份：{time}（{by}）"
+  },
+  "cloudNoBackup": {
+    "message": "云端还没有备份"
+  },
+  "cloudByExt": {
+    "message": "浏览器扩展"
+  },
+  "cloudByApp": {
+    "message": "手机 App"
+  },
+  "cloudAutoLabel": {
+    "message": "自动同步"
+  },
+  "cloudAutoHint": {
+    "message": "设置一改就自动备份，每 15 分钟从云端更新一次。当前节点与国家每台电脑各自保留，不自动同步。"
+  },
+  "cloudLogout": {
+    "message": "退出登录"
+  },
+  "cloudBackupDone": {
+    "message": "已备份到云端"
+  },
+  "cloudRestoreDone": {
+    "message": "已从云端还原"
+  },
+  "cloudWorking": {
+    "message": "处理中…"
+  },
+  "cloudErrNetwork": {
+    "message": "连不上服务器，请稍后再试"
+  },
+  "cloudErrNoBackup": {
+    "message": "云端还没有备份"
+  },
+  "cloudErrLogin": {
+    "message": "登录已失效，请重新登录"
+  },
+  "cloudErrUnavailable": {
+    "message": "云端备份目前无法使用"
+  },
+  "cloudErrGeneric": {
+    "message": "发生错误（{code}），请稍后再试"
+  },
+  "authTitle": {
+    "message": "登录 BiBoost"
+  },
+  "authDone": {
+    "message": "登录完成"
+  },
+  "authFail": {
+    "message": "登录失败"
+  },
+  "authFailHint": {
+    "message": "请回到扩展重新登录（{code}）"
+  },
+  "welcomeTitle": {
+    "message": "安装完成！"
+  },
+  "welcomeBody": {
+    "message": "打开任意 B 站视频，BiBoost 就会自动换成较快的节点。点击浏览器右上角的扩展图标可以调整设置。"
+  },
+  "welcomeRestoreLink": {
+    "message": "已经有备份？从云端恢复"
   }
 }

@@ -856,5 +856,104 @@
   },
   "donateEmailBad": {
     "message": "이메일 형식이 올바르지 않아요"
+  },
+  "cloudBtn": {
+    "message": "클라우드 백업"
+  },
+  "cloudTitle": {
+    "message": "클라우드 백업"
+  },
+  "cloudClose": {
+    "message": "닫기"
+  },
+  "cloudLoginHint": {
+    "message": "로그인하면 설정을 클라우드에 백업해 컴퓨터를 바꾸거나 확장 프로그램을 다시 설치해도 복원할 수 있습니다. 계정은 BiBoost 모바일 앱과 같이 사용합니다."
+  },
+  "cloudLoginGoogle": {
+    "message": "Google로 로그인"
+  },
+  "cloudLoginOpened": {
+    "message": "새 탭에서 Google 로그인을 열었습니다. 완료한 뒤 여기로 돌아오세요."
+  },
+  "cloudSignedInAs": {
+    "message": "로그인됨: {email}"
+  },
+  "cloudBackupBtn": {
+    "message": "클라우드에 백업"
+  },
+  "cloudBackupHint": {
+    "message": "이 컴퓨터의 현재 설정으로 클라우드 백업을 덮어씁니다"
+  },
+  "cloudRestoreBtn": {
+    "message": "클라우드에서 복원"
+  },
+  "cloudRestoreHint": {
+    "message": "클라우드 백업으로 이 컴퓨터의 설정을 덮어씁니다"
+  },
+  "cloudLastBackup": {
+    "message": "마지막 백업: {time} ({by})"
+  },
+  "cloudNoBackup": {
+    "message": "클라우드에 아직 백업이 없습니다"
+  },
+  "cloudByExt": {
+    "message": "브라우저 확장 프로그램"
+  },
+  "cloudByApp": {
+    "message": "모바일 앱"
+  },
+  "cloudAutoLabel": {
+    "message": "자동 동기화"
+  },
+  "cloudAutoHint": {
+    "message": "설정을 바꾸면 자동으로 백업하고 15분마다 클라우드에서 업데이트합니다. 현재 노드와 국가는 컴퓨터마다 따로 유지되며 동기화되지 않습니다."
+  },
+  "cloudLogout": {
+    "message": "로그아웃"
+  },
+  "cloudBackupDone": {
+    "message": "클라우드에 백업했습니다"
+  },
+  "cloudRestoreDone": {
+    "message": "클라우드에서 복원했습니다"
+  },
+  "cloudWorking": {
+    "message": "처리 중…"
+  },
+  "cloudErrNetwork": {
+    "message": "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."
+  },
+  "cloudErrNoBackup": {
+    "message": "클라우드에 아직 백업이 없습니다"
+  },
+  "cloudErrLogin": {
+    "message": "로그인이 만료되었습니다. 다시 로그인해 주세요."
+  },
+  "cloudErrUnavailable": {
+    "message": "지금은 클라우드 백업을 사용할 수 없습니다"
+  },
+  "cloudErrGeneric": {
+    "message": "오류가 발생했습니다({code}). 잠시 후 다시 시도해 주세요."
+  },
+  "authTitle": {
+    "message": "BiBoost 로그인"
+  },
+  "authDone": {
+    "message": "로그인되었습니다"
+  },
+  "authFail": {
+    "message": "로그인 실패"
+  },
+  "authFailHint": {
+    "message": "확장 프로그램으로 돌아가 다시 로그인해 주세요({code})."
+  },
+  "welcomeTitle": {
+    "message": "설치 완료!"
+  },
+  "welcomeBody": {
+    "message": "bilibili 영상을 열면 BiBoost가 자동으로 더 빠른 노드로 바꿉니다. 브라우저 오른쪽 위의 확장 프로그램 아이콘을 눌러 설정을 바꿀 수 있습니다."
+  },
+  "welcomeRestoreLink": {
+    "message": "이미 백업이 있나요? 클라우드에서 복원"
   }
 }

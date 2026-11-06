@@ -856,5 +856,104 @@
   },
   "donateEmailBad": {
     "message": "Email 格式不對"
+  },
+  "cloudBtn": {
+    "message": "雲端備份"
+  },
+  "cloudTitle": {
+    "message": "雲端備份"
+  },
+  "cloudClose": {
+    "message": "關閉"
+  },
+  "cloudLoginHint": {
+    "message": "登入後就能把設定備份到雲端，換電腦或重裝擴充都能還原。帳號跟 BiBoost 手機 App 共用。"
+  },
+  "cloudLoginGoogle": {
+    "message": "使用 Google 登入"
+  },
+  "cloudLoginOpened": {
+    "message": "已在新分頁開啟 Google 登入，完成後回到這裡就好。"
+  },
+  "cloudSignedInAs": {
+    "message": "已登入：{email}"
+  },
+  "cloudBackupBtn": {
+    "message": "備份到雲端"
+  },
+  "cloudBackupHint": {
+    "message": "用這台電腦目前的設定蓋掉雲端的備份"
+  },
+  "cloudRestoreBtn": {
+    "message": "從雲端同步到本地"
+  },
+  "cloudRestoreHint": {
+    "message": "用雲端的備份蓋掉這台電腦的設定"
+  },
+  "cloudLastBackup": {
+    "message": "上次備份：{time}（{by}）"
+  },
+  "cloudNoBackup": {
+    "message": "雲端還沒有備份"
+  },
+  "cloudByExt": {
+    "message": "瀏覽器擴充"
+  },
+  "cloudByApp": {
+    "message": "手機 App"
+  },
+  "cloudAutoLabel": {
+    "message": "自動同步"
+  },
+  "cloudAutoHint": {
+    "message": "設定一改就自動備份，每 15 分鐘從雲端更新一次。目前節點與國家每台電腦各自保留，不自動同步。"
+  },
+  "cloudLogout": {
+    "message": "登出"
+  },
+  "cloudBackupDone": {
+    "message": "已備份到雲端"
+  },
+  "cloudRestoreDone": {
+    "message": "已從雲端還原"
+  },
+  "cloudWorking": {
+    "message": "處理中…"
+  },
+  "cloudErrNetwork": {
+    "message": "連不上伺服器，請稍後再試"
+  },
+  "cloudErrNoBackup": {
+    "message": "雲端還沒有備份"
+  },
+  "cloudErrLogin": {
+    "message": "登入已失效，請重新登入"
+  },
+  "cloudErrUnavailable": {
+    "message": "雲端備份目前無法使用"
+  },
+  "cloudErrGeneric": {
+    "message": "發生錯誤（{code}），請稍後再試"
+  },
+  "authTitle": {
+    "message": "登入 BiBoost"
+  },
+  "authDone": {
+    "message": "登入完成"
+  },
+  "authFail": {
+    "message": "登入失敗"
+  },
+  "authFailHint": {
+    "message": "請回到擴充重新登入（{code}）"
+  },
+  "welcomeTitle": {
+    "message": "安裝完成！"
+  },
+  "welcomeBody": {
+    "message": "打開任何 B 站影片，BiBoost 就會自動換成較快的節點。點瀏覽器右上角的擴充圖示可以調整設定。"
+  },
+  "welcomeRestoreLink": {
+    "message": "已經有備份？從雲端恢復"
   }
 }

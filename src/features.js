@@ -14,7 +14,8 @@ var BBFeatures = (function () {
   };
   // 預設值（同 scripts/lib/features.mjs 的 FEATURES，測試會比對）
   var DEFAULTS = {
-    donate: { enabled: true }
+    donate: { enabled: true },
+    cloud_sync: { enabled: false } // 雲端備份（cloud.js）：測完再到後台打開
   };
   var STORE_KEY = "featureFlags";
   // guardPage 的預設文字，key 是 common.js 的 uiLangCode()

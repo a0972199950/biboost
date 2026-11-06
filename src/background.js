@@ -10,6 +10,7 @@
  *  6) 節點清單（伺服器下發，見 cdn-list.js）：安裝／更新時馬上去拿；拿不到就每分鐘重試，拿到才跑 5)。
  *     沒有清單時擴充不啟用（bridge.js）。之後 B 站頁面或 popup 打開時檢查新版本（6 小時內不重問），
  *     有新版本就替用國家清單的人更新卡頓時要測的節點（autoSpeedHosts）；使用者正在用的節點不動
+ *  7) 雲端備份（cloud.js）：自動同步、全新安裝時的歡迎頁（功能開關 cloud_sync 開著才開）
  *
  * 1) 1.5.x 以前不會記錄 installedVersion，popup 沒辦法分辨「舊使用者剛更新」與「全新安裝」。
  * 瀏覽器在更新時會把 previousVersion 帶進 onInstalled，不用舊版配合，這裡把它補寫成 installedVersion，
@@ -17,12 +18,21 @@
  * 全新安裝（reason = install）不處理，維持「新使用者不彈」。
  */
 // Chrome／Safari 的 background 是 service worker，要自己載入；Firefox 在 manifest 的 background.scripts 裡已經先載入
-if (typeof BBCdnList === "undefined" && typeof importScripts === "function") importScripts("cdn-list.js");
+if (typeof BBCdnList === "undefined" && typeof importScripts === "function") importScripts("cdn-list.js", "features.js", "cloud.js");
+
+// 7) 雲端備份（cloud.js）：自動同步在這裡跑（監看設定變動、每 15 分鐘拉一次）；全新安裝且功能開關 cloud_sync 開著時開歡迎頁
+BBCloud.attachBackground();
+function openWelcome() {
+  return BBFeatures.refresh().then(function (flags) {
+    if (flags && BBFeatures.enabled(flags, "cloud_sync")) chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+  }).catch(function () {});
+}
 
 chrome.runtime.onInstalled.addListener(function (details) {
   if (details.reason === "install") {
     chrome.storage.local.set({ installedAt: Date.now(), installTestPending: true });
     whenListReady("install");
+    openWelcome();
   }
   if (details.reason === "update") {
     chrome.storage.local.set({ updatedAt: Date.now() });
@@ -137,6 +147,7 @@ if (chrome.runtime.onStartup) {
     Promise.all([BBCdnList.load(), storageGet("cdnListPending")]).then(function (arr) {
       if (!arr[0] || arr[1].cdnListPending) refreshList(true);
     });
+    BBCloud.pull(); // 自動同步開著才會真的拉
   });
 }
 
@@ -260,6 +271,9 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (msg.type === "CDN_SWITCHER_IMPORT_CUSTOM") { importCustomHosts(msg.hosts).then(sendResponse); return true; }
   if (msg.type === "CDN_SWITCHER_SELECT_COUNTRY") { selectCountry("retry").then(function () { sendResponse({ ok: true }); }); return true; }
   // bridge（B 站頁面）、popup 打開時：檢查有沒有新清單（6 小時內不重問）；force＝popup 遮罩的「重試」與每 10 秒的自動重試
+  // 雲端備份：popup 的自動同步開關、popup 打開時拉一次（沒開自動同步就什麼都不做）
+  if (msg.type === "CDN_SWITCHER_CLOUD_AUTO") { BBCloud.setAuto(!!msg.on).then(function () { sendResponse({ ok: true }); }, function (e) { sendResponse({ error: (e && e.code) || "error" }); }); return true; }
+  if (msg.type === "CDN_SWITCHER_CLOUD_PULL") { BBCloud.pull().then(function (r) { sendResponse(r || {}); }); return true; }
   if (msg.type === "CDN_SWITCHER_CDN_LIST") { refreshList(!!msg.force).then(function (r) { sendResponse({ ok: !!r.ok, changed: !!r.changed }); }); return true; }
   if (msg.type === "CDN_SWITCHER_JOURNAL" && msg.entry && typeof msg.entry.k === "string") {
     var e = { t: Number(msg.entry.t) || Date.now(), tab: tabId, k: msg.entry.k, d: msg.entry.d || {} };

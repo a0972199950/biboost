@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!-- Google 登入的回跳頁：api.biboost.app 的登入中間頁導到這裡（?code&state，見 cloud.js 的 finishLogin），
+     manifest 的 web_accessible_resources 只開給 api.biboost.app／api-staging.biboost.app。換完 token 後直接顯示雲端備份的面板 -->
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title></title>
+  <script src="theme.js"></script>
+  <style>
+    :root,
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f4f5f7; --text: #18191c; --muted: #61666d; --border: #e3e5e7; --control-bg: #fff; --raised: #fff;
+      --accent: #fb7299; --accent-text: #fff; --danger: #d93025;
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #141416; --text: #eaeaea; --muted: #a3a3aa; --border: rgba(128, 128, 128, .4); --control-bg: rgba(255, 255, 255, .04); --raised: #232326;
+      --accent: #00a1d6; --accent-text: #fff; --danger: #ff6b6b;
+    }
+    html, body { margin: 0; }
+    body {
+      font: 14px/1.55 -apple-system, "Segoe UI", "Microsoft JhengHei", "Microsoft YaHei", "Hiragino Sans", "Apple SD Gothic Neo", sans-serif;
+      color: var(--text); background: var(--bg); min-height: 100vh;
+    }
+    main { max-width: 380px; margin: 0 auto; padding: 12vh 16px 40px; text-align: center; }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    .lead { color: var(--muted); margin: 0 0 22px; }
+    .bbcCard { box-shadow: 0 4px 18px rgba(0, 0, 0, .08); }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1 id="authHead"></h1>
+    <p class="lead" id="authLead"></p>
+    <div id="authPanel"></div>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="common.js"></script>
+  <script src="cloud.js"></script>
+  <script src="cloud-ui.js"></script>
+  <script src="auth.js"></script>
+</body>
+
+</html>

@@ -1059,8 +1059,22 @@
 
     /* 進階設定最下方的「恢復原始設置」：置中紅字 */
     .resetAllRow {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
       margin: 14px 0 4px;
       text-align: center;
+    }
+
+    /* 雲端備份（功能開關 cloud_sync）：首頁是一般按鈕；進階設定跟「恢復原始設置」並排、在左邊 */
+    button#cloudBtn {
+      border: 1px solid var(--border);
+      background: var(--control-bg);
+      color: inherit;
+    }
+
+    button#cloudAdvBtn {
+      color: var(--accent);
     }
 
     button#resetAllBtn {
@@ -2780,6 +2794,7 @@
       <button id="feedbackBtn" type="button" style="display:none"></button>
     </div>
     <div id="reportHistory" class="reportHistory" style="display:none"></div>
+    <div class="footerBtns" id="cloudRow" style="display:none"><button id="cloudBtn" type="button"></button></div>
 
     <div class="versionRow"><button id="versionLink" type="button" class="linkBtn"></button></div>
   </div>
@@ -2856,7 +2871,7 @@
       </div>
     </div>
 
-    <div class="resetAllRow"><button type="button" class="linkBtn" id="resetAllBtn"></button></div>
+    <div class="resetAllRow"><button type="button" class="linkBtn" id="cloudAdvBtn" style="display:none"></button><button type="button" class="linkBtn" id="resetAllBtn"></button></div>
   </div>
 
   <div id="speedtestView">
@@ -3411,6 +3426,8 @@
   <script src="lottery-text.js"></script>
   <script src="features.js"></script>
   <script src="cdn-list.js"></script>
+  <script src="cloud.js"></script>
+  <script src="cloud-ui.js"></script>
   <script src="popup.js"></script>
 </body>
 

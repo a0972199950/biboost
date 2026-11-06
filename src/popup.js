@@ -106,7 +106,8 @@ document.documentElement.lang = uiLanguage();
   ["staleTitle", "staleTabTitle"], ["stGuideTitle", "stGuideTitle"], ["stGuideText", "stGuideText"], ["stGuideBtn", "stGuideBtn"], ["staleText", "staleTabText"], ["staleReloadBtn", "staleTabReloadBtn"],
   ["customAddBtn", "customAddBtn"], ["customClearBtn", "customClearBtn"], ["resetAllBtn", "resetAllBtn"],
   ["wnSubtitle", "whatsNewSubtitle"], ["wnClose", "whatsNewClose"],
-  ["lfTitle", "listFailTitle"], ["lfBody", "listFailBody"]
+  ["lfTitle", "listFailTitle"], ["lfBody", "listFailBody"],
+  ["cloudBtn", "cloudBtn"], ["cloudAdvBtn", "cloudBtn"]
 ].forEach(function (pair) { document.getElementById(pair[0]).textContent = t(pair[1]); });
 // -------- 介面語言（進階設定第一項）--------
 // 選項存 localStorage（i18n.js 開頭同步讀）＋ chrome.storage.local 的 uiLang / uiMsgs（bridge.js 的頁內提示用，uiMsgs 為 null = 跟隨瀏覽器）。
@@ -136,6 +137,7 @@ chrome.storage.local.get({ uiLang: "auto", uiMsgs: null }, function (items) {
   if (v === "auto" && uiLangPref === "auto" && window.uiAutoLang && !items.uiMsgs) chrome.storage.local.set({ uiMsgs: window.uiMessages });
   if (v === uiLangPref || (v !== "auto" && UI_LANGS.indexOf(v) < 0)) return;
   setUiLangPref(v);
+  chrome.storage.local.set({ uiMsgs: uiMessagesFor(v) }); // 語言是別處改的（例如雲端自動同步）：頁內提示的文案也換掉
   try { if (window.localStorage.getItem("uiLang") === v) location.reload(); } catch (e) {}
 });
 // -------- 外觀主題（進階設定第二項）：跟隨系統／明亮／黑暗 --------
@@ -531,16 +533,29 @@ function setDonateVisible(on) {
 }
 // 2.9.x 以前存的贊助開關快取，改用 features.js 之後用不到了
 chrome.storage.local.remove("donateConfig");
+var donateByFlag = false; // 贊助按鈕跟著功能開關（Safari 寫死不顯示、開發中只給開發版）
 if (detectBrowser() !== "safari") {
   if (!DONATE_DEV_ONLY) {
     bindDonateBtn(false);
     setDonateVisible(true);
-    BBFeatures.watch(function (flags) { setDonateVisible(BBFeatures.enabled(flags, "donate")); });
+    donateByFlag = true;
   } else if (chrome.management && chrome.management.getSelf) {
     chrome.management.getSelf(function (self) { if (self && self.installType === "development") { bindDonateBtn(true); setDonateVisible(true); } });
   }
 }
 syncRateRow();
+// 雲端備份（cloud.js／cloud-ui.js）：首頁「問題回報」下面一顆、進階設定最下面跟「恢復原始設置」並排（備份在左）；功能開關 cloud_sync 關閉時收起來
+function setCloudVisible(on) {
+  document.getElementById("cloudRow").style.display = on ? "" : "none";
+  document.getElementById("cloudAdvBtn").style.display = on ? "" : "none";
+}
+["cloudBtn", "cloudAdvBtn"].forEach(function (id) { document.getElementById(id).addEventListener("click", function () { BBCloudUI.open(); }); });
+BBFeatures.watch(function (flags) {
+  if (donateByFlag) setDonateVisible(BBFeatures.enabled(flags, "donate"));
+  setCloudVisible(BBFeatures.enabled(flags, "cloud_sync"));
+});
+// 自動同步開著的話，打開 popup 時先拉一次雲端（background 做；沒開就什麼都不做）
+try { chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CLOUD_PULL" }, function () { void chrome.runtime.lastError; }); } catch (e) {}
 // 問題回報：一律由 background 開成獨立視窗（report.html），帶上目前分頁 id 讓回報頁能向 B 站頁面要此刻的快照；popup 隨即關閉
 els.feedbackBtn.style.display = "";
 els.feedbackBtn.addEventListener("click", function () {

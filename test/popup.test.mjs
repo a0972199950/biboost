@@ -572,3 +572,43 @@ describe("node list overlay", () => {
     env.close();
   });
 });
+
+describe("cloud backup buttons", () => {
+  const FEATURES_API = "https://api.biboost.app/v1/features";
+  let key;
+  before(async () => { key = await testKey(); });
+  async function bootFlags(features) {
+    const jws = features && await signJws({ iat: 1, features }, key.priv, "t1");
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true } });
+    env.fetchHandler = (url) => {
+      if (url === FEATURES_API && jws) return { ok: true, status: 200, json: () => Promise.resolve({ ok: true, jws }) };
+      throw new TypeError("Failed to fetch");
+    };
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "cloud.js", "cloud-ui.js"].forEach((f) => env.load(f));
+    env.window.BBFeatures.PUBLIC_KEYS.t1 = key.pub;
+    env.load("popup.js");
+    await env.settle(40);
+    return env;
+  }
+  test("hidden while the cloud_sync switch is off (the default)", async () => {
+    const env = await bootFlags(null);
+    assert.equal(env.document.getElementById("cloudRow").style.display, "none");
+    assert.equal(env.document.getElementById("cloudAdvBtn").style.display, "none");
+    env.close();
+  });
+  test("switched on: the home button under bug report and the advanced one left of reset; both open the dialog", async () => {
+    const env = await bootFlags({ cloud_sync: { enabled: true } });
+    const row = env.document.getElementById("cloudRow"), adv = env.document.getElementById("cloudAdvBtn");
+    assert.equal(row.style.display, "");
+    assert.equal(adv.style.display, "");
+    assert.equal(env.document.getElementById("cloudBtn").textContent, "Cloud backup");
+    assert.equal(adv.nextElementSibling.id, "resetAllBtn", "backup sits left of reset");
+    assert.equal(row.previousElementSibling.id, "reportHistory");
+    adv.click();
+    assert.ok(env.document.querySelector(".bbcMask"));
+    await env.settle(40);
+    env.document.querySelector(".bbcClose").click();
+    assert.equal(env.document.querySelector(".bbcMask"), null);
+    env.close();
+  });
+});
