@@ -10,7 +10,7 @@
  *  6) 節點清單（伺服器下發，見 cdn-list.js）：安裝／更新時馬上去拿；拿不到就每分鐘重試，拿到才跑 5)。
  *     沒有清單時擴充不啟用（bridge.js）。之後 B 站頁面或 popup 打開時檢查新版本（6 小時內不重問），
  *     有新版本就替用國家清單的人更新卡頓時要測的節點（autoSpeedHosts）；使用者正在用的節點不動
- *  7) 雲端備份（cloud.js）：自動同步、全新安裝時的歡迎頁（功能開關 cloud_sync 開著才開）
+ *  7) 雲端備份（cloud.js）的自動同步；全新安裝時的歡迎頁（一律開；雲端備份那塊由歡迎頁自己看功能開關）
  *
  * 1) 1.5.x 以前不會記錄 installedVersion，popup 沒辦法分辨「舊使用者剛更新」與「全新安裝」。
  * 瀏覽器在更新時會把 previousVersion 帶進 onInstalled，不用舊版配合，這裡把它補寫成 installedVersion，
@@ -20,12 +20,31 @@
 // Chrome／Safari 的 background 是 service worker，要自己載入；Firefox 在 manifest 的 background.scripts 裡已經先載入
 if (typeof BBCdnList === "undefined" && typeof importScripts === "function") importScripts("cdn-list.js", "features.js", "cloud.js");
 
-// 7) 雲端備份（cloud.js）：自動同步在這裡跑（監看設定變動、上傳到雲端）；全新安裝且功能開關 cloud_sync 開著時開歡迎頁（小視窗，跟問題回報一樣）
+// 7) 雲端備份（cloud.js）：自動同步在這裡跑（監看設定變動、上傳到雲端）
 BBCloud.attachBackground();
+// 全新安裝開歡迎頁（小視窗，跟問題回報一樣）。雲端備份那塊只在功能開關 cloud_sync 開著時出現（welcome.js）
 function openWelcome() {
-  return BBFeatures.refresh().then(function (flags) {
-    if (flags && BBFeatures.enabled(flags, "cloud_sync")) openExtWindow(chrome.runtime.getURL("welcome.html"), 500, 800);
-  }).catch(function () {});
+  openExtWindow(chrome.runtime.getURL("welcome.html"), 500, 700);
+}
+// 歡迎頁按「開始使用」：關掉歡迎視窗，在一般視窗打開擴充的 popup 一次。
+// action.openPopup：Chrome 127 起不用政策安裝也能呼叫；Firefox 要使用者手勢、其他環境沒有 → 打不開就算了
+function finishWelcome(windowId) {
+  var close = windowId != null && chrome.windows && chrome.windows.remove
+    ? new Promise(function (r) { chrome.windows.remove(windowId, function () { void chrome.runtime.lastError; r(); }); })
+    : Promise.resolve();
+  return close.then(function () {
+    if (!chrome.action || typeof chrome.action.openPopup !== "function" || !chrome.windows) return;
+    return new Promise(function (r) {
+      chrome.windows.getLastFocused({ windowTypes: ["normal"] }, function (w) {
+        void chrome.runtime.lastError;
+        if (!w) return r();
+        chrome.windows.update(w.id, { focused: true }, function () {
+          void chrome.runtime.lastError;
+          try { Promise.resolve(chrome.action.openPopup({ windowId: w.id })).catch(function () {}).then(r); } catch (e) { r(); }
+        });
+      });
+    });
+  });
 }
 
 chrome.runtime.onInstalled.addListener(function (details) {
@@ -289,6 +308,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
   if (msg.type === "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW") { openAnnouncementWindow(msg.id); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_HANDOFF_URL" && /^macappstore:/.test(msg.url || "")) { openHandoffUrl(msg.url); sendResponse({ ok: true }); return true; }
+  if (msg.type === "CDN_SWITCHER_WELCOME_DONE") { finishWelcome(msg.windowId); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_REPORT_WINDOW") { openReportWindow(msg.tab != null ? msg.tab : tabId); sendResponse({ ok: true }); return true; }
 });
 

@@ -384,11 +384,11 @@ describe("cloud backup in the background", () => {
     env.load("cloud.js").load("background.js");
     return env;
   }
-  test("fresh install opens the welcome page only when cloud_sync is on", async () => {
+  test("fresh install always opens the welcome page (the cloud part checks cloud_sync itself)", async () => {
     const off = await bootWith(null);
     off.onInstalledListeners[0]({ reason: "install" });
     await off.settle(60);
-    assert.equal(off.createdTabs.some((t) => /welcome\.html$/.test(t.url)), false);
+    assert.ok(off.createdTabs.some((t) => t.url === "chrome-extension://bcs-test/welcome.html"));
     off.close();
     const on = await bootWith({ cloud_sync: { enabled: true } });
     on.onInstalledListeners[0]({ reason: "install" });

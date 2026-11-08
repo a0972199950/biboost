@@ -133,9 +133,10 @@ const ACTIONS = {
   },
 
   // ── 功能管理（features.mjs）──
-  listFeatures: async () => ({ rows: await F.listFeatures() }),
+  // env：prod（正式，預設）或 staging（測試環境，本機載入的開發版擴充讀這份）
+  listFeatures: async ([env]) => L.withDb(env, async () => ({ rows: await F.listFeatures(), env: L.currentDb() })),
   // patch：{ enabled?, <屬性>? }（格式見 features.mjs 的 validatePatch）
-  setFeature: async ([key, patch]) => ({ data: await F.setFeature(String(key || ""), patch) }),
+  setFeature: async ([key, patch, env]) => L.withDb(env, async () => ({ data: await F.setFeature(String(key || ""), patch) })),
 
   // ── 節點清單（cdn-list-history.mjs）：只看發布歷史與差異；發布、退回用本機的 npm run cdn-list:*（要用私鑰簽章）──
   listCdnLists: async () => ({ rows: await C.history(100) }),

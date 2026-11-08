@@ -891,16 +891,10 @@
     "message": "クラウドのバックアップでこのパソコンの設定を上書きします"
   },
   "cloudLastBackup": {
-    "message": "前回のバックアップ：{time}（{by}）"
+    "message": "前回のバックアップ：{time}"
   },
   "cloudNoBackup": {
     "message": "クラウドにはまだバックアップがありません"
-  },
-  "cloudByExt": {
-    "message": "ブラウザ拡張機能"
-  },
-  "cloudByApp": {
-    "message": "モバイルアプリ"
   },
   "cloudAutoLabel": {
     "message": "自動同期"
@@ -965,25 +959,19 @@
   "cloudAdvHint": {
     "message": "設定をクラウドにバックアップして、パソコンの買い替えや再インストール後に復元できます。"
   },
-  "cloudAutoOn": {
-    "message": "自動同期はオンです"
-  },
-  "cloudAutoOff": {
-    "message": "自動同期はオフです"
-  },
   "authBack": {
     "message": "戻る"
   },
-  "welcomeTip1": {
-    "message": "bilibili の動画を開くと、BiBoost が自動で速いノードに切り替えます"
-  },
-  "welcomeTip2": {
-    "message": "動画が止まったら、裏で速度を測ってもっと速いノードに切り替えます"
-  },
-  "welcomeTip3": {
-    "message": "ブラウザ右上のパズルアイコンから BiBoost をツールバーに固定すると、あとで設定を変更できます"
-  },
   "cloudStart": {
     "message": "はじめる"
+  },
+  "cloudRestoreAsk": {
+    "message": "クラウドから設定を復元しますか？"
+  },
+  "cloudRestoreShort": {
+    "message": "クラウドから復元"
+  },
+  "cloudNotSignedIn": {
+    "message": "未ログイン"
   }
 }

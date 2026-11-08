@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<!-- 歡迎頁：全新安裝時 background 開成小視窗（跟問題回報一樣，只在功能開關 cloud_sync 開啟時）。
+<!-- 歡迎頁：全新安裝時 background 一律開成小視窗（跟問題回報一樣）。
      版面跟測速工具（CDNSpeedTest.exe）同一套：白色頁首（圖示＋名稱）、粉紅分隔線、灰底白卡片。
-     上面是開場動畫（welcome-hero.js）、歡迎詞與三步驟說明；下面直接放雲端備份面板（cloud-ui.js 的 mount，fresh 模式：
-     只有「從雲端恢復設定」，登入在這個視窗裡換頁、登入完換回來）。恢復完或按「取消」就關掉視窗 -->
+     上面是開場動畫（welcome-hero.js）、大大的歡迎詞與主要賣點；中間是雲端備份面板（功能開關 cloud_sync 開著、而且可以用時才有；
+     cloud-ui.js 的 mount，fresh 模式）；最下面是主按鈕「開始使用」（關掉視窗、打開擴充的 popup 一次）。
+     登入後回到這頁時不再顯示歡迎的部分，只留雲端備份（要不要從雲端恢復）與「開始使用」 -->
 <html>
 
 <head>
@@ -15,12 +16,12 @@
     :root[data-theme="light"] {
       color-scheme: light;
       --bg: #f4f5f7; --text: #18191c; --muted: #61666d; --border: #e3e5e7; --control-bg: #fff; --raised: #fff;
-      --accent: #fb7299; --accent-text: #fff; --hover-bg: #ffecf1; --soft: #ffecf1; --danger: #d93025; --link: #00aeec;
+      --accent: #fb7299; --accent-hover: #e85c86; --accent-text: #fff; --hover-bg: #ffecf1; --danger: #d93025; --link: #00aeec;
     }
     :root[data-theme="dark"] {
       color-scheme: dark;
       --bg: #141416; --text: #eaeaea; --muted: #a3a3aa; --border: rgba(128, 128, 128, .4); --control-bg: rgba(255, 255, 255, .04); --raised: #232326;
-      --accent: #00a1d6; --accent-text: #fff; --hover-bg: rgba(0, 161, 214, .12); --soft: rgba(251, 114, 153, .14); --danger: #ff6b6b; --link: #00a1d6;
+      --accent: #00a1d6; --accent-hover: #0090c0; --accent-text: #fff; --hover-bg: rgba(0, 161, 214, .12); --danger: #ff6b6b; --link: #00a1d6;
     }
     html, body { margin: 0; }
     body {
@@ -34,22 +35,24 @@
     .top img { width: 34px; height: 34px; flex: none; }
     .top b { display: block; font-size: 16px; line-height: 1.25; }
     .top small { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
-    main { max-width: 440px; margin: 0 auto; padding: 12px 16px 14px; }
+    main { max-width: 440px; margin: 0 auto; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
     .card { background: var(--raised); border: 1px solid var(--border); border-radius: 12px; }
-    .hero { padding: 4px 18px 14px; text-align: center; } /* 不裁切：跳起來時彩帶會飛出卡片一點 */
-    .hero .wh { width: 176px; height: 132px; }
-    h1 { font-size: 21px; line-height: 1.35; margin: 2px 0 4px; animation: rise .5s .45s both; }
-    .lead { color: var(--muted); margin: 0 auto 14px; max-width: 360px; animation: rise .5s .55s both; }
-    .tips { list-style: none; margin: 0; padding: 0; text-align: left; display: grid; gap: 6px; }
-    .tips li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 12px; border-radius: 10px; background: var(--soft); font-size: 13px; line-height: 1.5; animation: rise .45s both; }
-    .tips li:nth-child(1) { animation-delay: .7s; }
-    .tips li:nth-child(2) { animation-delay: .8s; }
-    .tips li:nth-child(3) { animation-delay: .9s; }
-    .tips .num { flex: none; width: 20px; height: 20px; margin-top: 0; border-radius: 50%; background: #fb7299; color: #fff; font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; }
+    .hero { padding: 8px 20px 22px; text-align: center; } /* 不裁切：跳起來時彩帶會飛出卡片一點 */
+    .hero .wh { width: 192px; height: 144px; }
+    h1 { font-size: 28px; line-height: 1.3; margin: 4px 0 8px; text-wrap: balance; animation: rise .5s .45s both; }
+    .lead { font-size: 17px; line-height: 1.65; color: var(--text); opacity: .82; margin: 0 auto; max-width: 380px; animation: rise .5s .6s both; }
+    .lead span { display: block; }
     @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-    @media (prefers-reduced-motion: reduce) { h1, .lead, .tips li { animation: none; } }
-    .cloud { margin-top: 12px; animation: rise .45s 1s both; }
+    @media (prefers-reduced-motion: reduce) { h1, .lead, .cloud, .start { animation: none; } }
+    .cloud { animation: rise .45s .8s both; }
     .cloud .bbcCard { max-width: none; box-shadow: none; border: 1px solid var(--border); }
+    /* 主按鈕「開始使用」 */
+    .start {
+      width: 100%; padding: 13px 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-text);
+      font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; transition: background-color .15s; animation: rise .45s .9s both;
+    }
+    .start:hover, .start:focus-visible { background: var(--accent-hover); outline: none; }
+    .start:disabled { opacity: .6; cursor: default; }
   </style>
 </head>
 
@@ -59,17 +62,13 @@
     <div><b id="brand"></b><small id="tagline"></small></div>
   </header>
   <main>
-    <section class="card hero">
+    <section class="card hero" id="welcomeHero">
       <div id="hero"></div>
       <h1 id="welcomeTitle"></h1>
       <p class="lead" id="welcomeBody"></p>
-      <ol class="tips">
-        <li><span class="num">1</span><span id="welcomeTip1"></span></li>
-        <li><span class="num">2</span><span id="welcomeTip2"></span></li>
-        <li><span class="num">3</span><span id="welcomeTip3"></span></li>
-      </ol>
     </section>
     <div class="cloud" id="cloudPanel" hidden></div>
+    <button type="button" class="start" id="startBtn"></button>
   </main>
   <script src="i18n.js"></script>
   <script src="common.js"></script>

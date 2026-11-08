@@ -891,16 +891,10 @@
     "message": "用云端的备份覆盖这台电脑的设置"
   },
   "cloudLastBackup": {
-    "message": "上次备份：{time}（{by}）"
+    "message": "上次备份：{time}"
   },
   "cloudNoBackup": {
     "message": "云端还没有备份"
-  },
-  "cloudByExt": {
-    "message": "浏览器扩展"
-  },
-  "cloudByApp": {
-    "message": "手机 App"
   },
   "cloudAutoLabel": {
     "message": "自动同步"
@@ -965,25 +959,19 @@
   "cloudAdvHint": {
     "message": "把设置备份到云端，换电脑或重装扩展都能恢复。"
   },
-  "cloudAutoOn": {
-    "message": "自动同步已开启"
-  },
-  "cloudAutoOff": {
-    "message": "自动同步未开启"
-  },
   "authBack": {
     "message": "返回"
   },
-  "welcomeTip1": {
-    "message": "打开任意 B 站视频，哔速会自动换到较快的节点"
-  },
-  "welcomeTip2": {
-    "message": "视频卡住时，会在后台测速、换到更快的节点"
-  },
-  "welcomeTip3": {
-    "message": "点击浏览器右上角的拼图图标，把哔速固定到工具栏，之后点它就能调整设置"
-  },
   "cloudStart": {
     "message": "开始使用"
+  },
+  "cloudRestoreAsk": {
+    "message": "要从云端恢复设置吗？"
+  },
+  "cloudRestoreShort": {
+    "message": "从云端恢复"
+  },
+  "cloudNotSignedIn": {
+    "message": "未登录"
   }
 }
