@@ -952,8 +952,5 @@
   },
   "welcomeBody": {
     "message": "bilibili の動画を開くと、BiBoost が自動で速いノードに切り替えます。設定はブラウザ右上の拡張機能アイコンから変更できます。"
-  },
-  "welcomeRestoreLink": {
-    "message": "バックアップをお持ちですか？クラウドから復元"
   }
 }

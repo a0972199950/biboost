@@ -952,8 +952,5 @@
   },
   "welcomeBody": {
     "message": "打开任意 B 站视频，BiBoost 就会自动换成较快的节点。点击浏览器右上角的扩展图标可以调整设置。"
-  },
-  "welcomeRestoreLink": {
-    "message": "已经有备份？从云端恢复"
   }
 }

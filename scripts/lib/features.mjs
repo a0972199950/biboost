@@ -17,7 +17,7 @@ export const FEATURES = [
   {
     key: "cloud_sync",
     name: "雲端備份",
-    desc: "popup 的「雲端備份」按鈕（首頁與進階設定）、新安裝時歡迎頁的「從雲端恢復」連結、擴充的自動同步。關閉時入口收起來，api.biboost.app 的 /me/settings 不收擴充的備份（回 404）。預設關閉。",
+    desc: "popup 的「雲端備份」按鈕（首頁與進階設定）、新安裝時的歡迎頁（直接放雲端備份面板）、擴充的自動同步。關閉時入口收起來，api.biboost.app 的 /me/settings 不收擴充的備份（回 404）。預設關閉。",
     defaults: { enabled: false },
   },
 ];
