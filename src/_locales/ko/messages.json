@@ -491,6 +491,21 @@
   "optimizingStop": {
     "message": "중단"
   },
+  "listFailTitle": {
+    "message": "죄송합니다. 노드 목록을 불러오지 못했습니다"
+  },
+  "listFailBody": {
+    "message": "지금은 서버에 연결할 수 없습니다. 노드 목록을 불러올 때까지 확장 프로그램은 꺼진 상태이며, bilibili는 평소대로 재생됩니다. 네트워크 연결을 확인해 주세요."
+  },
+  "listRetryBtn": {
+    "message": "다시 시도"
+  },
+  "listRetrying": {
+    "message": "다시 시도 중…"
+  },
+  "listRetryIn": {
+    "message": "{n}초 후 자동으로 다시 시도합니다"
+  },
   "reportTitle": {
     "message": "문제 신고 / 기능 요청"
   },

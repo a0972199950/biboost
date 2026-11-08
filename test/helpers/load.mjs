@@ -13,6 +13,7 @@ import vm from "node:vm";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM, VirtualConsole } from "jsdom";
+import { signJws } from "../../tools/report-worker/src/features.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..", "..");
@@ -33,6 +34,21 @@ export function readSrcJson(file) {
 }
 
 const enMessages = readSrcJson(path.join("_locales", "en", "messages.json"));
+
+// 節點清單（伺服器下發，src/cdn-list.js）：測試用假清單 test/fixtures/cdn-list.json，用測試金鑰（kid "t1"）簽章。
+// createEnv 預設把它放進 storage（＝已經拿到清單）；cdnList: false ＝還沒拿到清單。載入 cdn-list.js 時自動把測試公鑰放進去
+export const CDN_FIXTURE = JSON.parse(fs.readFileSync(path.join(ROOT, "test", "fixtures", "cdn-list.json"), "utf8"));
+export const CDN_DEFAULT_HOST = CDN_FIXTURE.countries.find((c) => c.code === "OTHER").nodes[0];
+export const cdnNodesOf = (code) => CDN_FIXTURE.countries.find((c) => c.code === code).nodes;
+const listKey = await testKey();
+export function signCdnList(data = CDN_FIXTURE, v = 1, extra = {}) {
+  return signJws({ typ: "cdn-list", v, iat: 1, data, ...extra }, listKey.priv, "t1");
+}
+const FIXTURE_JWS = await signCdnList();
+// storage 裡「已經拿到第 v 版清單」的樣子（checkedAt＝剛檢查過，6 小時內不會再問）
+export function cdnListStorage({ jws = FIXTURE_JWS, v = 1, data = CDN_FIXTURE, checkedAt = Date.now() } = {}) {
+  return { cdnList: { v, jws }, cdnListMeta: { v, defaultHost: data.countries.find((c) => c.code === "OTHER").nodes[0], checkedAt } };
+}
 
 // chrome.storage.* semantics (sync callbacks are good enough for tests)
 function makeStorageArea(initial, areaName, onChangedListeners) {
@@ -134,9 +150,12 @@ export function createEnv(opts = {}) {
   const onMessageListeners = [];
   const onInstalledListeners = [];
   const onConnectListeners = [];
+  const onStartupListeners = [];
+  const onAlarmListeners = [];
+  const alarms = {};
   const createdTabs = [];
 
-  const local = makeStorageArea(opts.storage, "local", onChangedListeners);
+  const local = makeStorageArea(opts.cdnList === false ? opts.storage : { ...cdnListStorage(), ...(opts.storage || {}) }, "local", onChangedListeners);
   const session = makeStorageArea(opts.session, "session", onChangedListeners);
 
   const chrome = {
@@ -155,7 +174,13 @@ export function createEnv(opts = {}) {
       },
       onMessage: { addListener: (fn) => onMessageListeners.push(fn) },
       onInstalled: { addListener: (fn) => onInstalledListeners.push(fn) },
-      onConnect: { addListener: (fn) => onConnectListeners.push(fn) }
+      onConnect: { addListener: (fn) => onConnectListeners.push(fn) },
+      onStartup: { addListener: (fn) => onStartupListeners.push(fn) }
+    },
+    alarms: {
+      create: (name, info) => { alarms[name] = info; },
+      clear: (name, cb) => { const had = name in alarms; delete alarms[name]; if (cb) cb(had); },
+      onAlarm: { addListener: (fn) => onAlarmListeners.push(fn) }
     },
     storage: {
       local,
@@ -213,10 +238,14 @@ export function createEnv(opts = {}) {
     nativeFetch,
     onInstalledListeners,
     onConnectListeners,
+    onStartupListeners,
+    onAlarmListeners,
+    alarms,
     load(file) {
       // Run as a classic script in the window's realm: top-level function/var declarations become
       // window globals even under "use strict" (window.eval would keep them local to the eval).
       vm.runInContext(readSrc(file), dom.getInternalVMContext(), { filename: file });
+      if (file === "cdn-list.js") window.BBCdnList.PUBLIC_KEYS.t1 = listKey.pub;
       return env;
     },
     internals(name) {

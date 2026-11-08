@@ -1,0 +1,89 @@
+{
+  "_comment": "測試用的假節點清單（格式同伺服器下發的清單，內容不是真的建議節點）。test/helpers/load.mjs 會簽章後放進 storage。",
+  "countries": [
+    {
+      "code": "TW", "dial": 886, "name": {"zh_TW":"台灣","zh_CN":"台灣","en":"Taiwan","ja":"台灣","ko":"Taiwan"},
+      "nodes": [
+        "upos-sz-mirror08ct.bilivideo.com",
+        "test-tw-01.bilivideo.com",
+        "test-tw-02.bilivideo.com",
+        "test-tw-03.bilivideo.com",
+        "test-shared-01.bilivideo.com"
+      ]
+    },
+    {
+      "code": "SG", "dial": 65, "name": {"zh_TW":"新加坡","zh_CN":"新加坡","en":"Singapore","ja":"新加坡","ko":"Singapore"},
+      "nodes": [
+        "test-sg-01.bilivideo.com",
+        "upos-sz-estgcos.bilivideo.com",
+        "test-sg-02.bilivideo.com",
+        "test-shared-01.bilivideo.com"
+      ]
+    },
+    {
+      "code": "HK", "dial": 852, "name": {"zh_TW":"香港","zh_CN":"香港","en":"Hong Kong","ja":"香港","ko":"Hong Kong"},
+      "nodes": [
+        "test-hk-01.bilivideo.com",
+        "test-hk-02.bilivideo.com",
+        "test-shared-02.bilivideo.com"
+      ]
+    },
+    {
+      "code": "JP", "dial": 81, "name": {"zh_TW":"日本","zh_CN":"日本","en":"Japan","ja":"日本","ko":"Japan"},
+      "nodes": [
+        "test-jp-01.bilivideo.com",
+        "test-jp-02.bilivideo.com"
+      ]
+    },
+    {
+      "code": "US", "dial": 1, "name": {"zh_TW":"美國","zh_CN":"美國","en":"United States","ja":"美國","ko":"United States"},
+      "nodes": [
+        "test-us-01.bilivideo.com",
+        "test-shared-02.bilivideo.com"
+      ]
+    },
+    {
+      "code": "RU", "dial": 7, "name": {"zh_TW":"俄羅斯","zh_CN":"俄羅斯","en":"Russia","ja":"俄羅斯","ko":"Russia"},
+      "nodes": [
+        "test-ru-01.bilivideo.com",
+        "test-shared-01.bilivideo.com"
+      ]
+    },
+    {
+      "code": "OTHER", "name": {"zh_TW":"其他地區","zh_CN":"其他地區","en":"Other regions","ja":"其他地區","ko":"Other regions"},
+      "nodes": [
+        "cn-bj-se-01-05.bilivideo.com",
+        "test-shared-01.bilivideo.com",
+        "test-shared-02.bilivideo.com"
+      ]
+    }
+  ],
+  "pools": {
+    "hw-biliv6": {"zh_TW":"華為雲 v6","zh_CN":"华为云 v6","en":"Huawei Cloud v6","ja":"Huawei Cloud v6","ko":"화웨이 클라우드 v6"},
+    "tx-cos-shcold": {"zh_TW":"騰訊雲","zh_CN":"腾讯云","en":"Tencent Cloud","ja":"Tencent Cloud","ko":"텐센트 클라우드"},
+    "bc-test": {"zh_TW":"測試池","zh_CN":"测试池","en":"Test pool","ja":"テスト","ko":"테스트"},
+    "akam": {"zh_TW":"Akamai 海外","zh_CN":"Akamai 海外","en":"Akamai overseas","ja":"Akamai 海外","ko":"Akamai 해외"}
+  },
+  "options": [
+    {"value":"upos-sz-mirror08ct.bilivideo.com","name":"08ct","pool":"hw-biliv6"},
+    {"value":"test-tw-01.bilivideo.com","name":"test-tw-01","pool":"bc-test"},
+    {"value":"test-tw-02.bilivideo.com","name":"test-tw-02","pool":"bc-test"},
+    {"value":"test-tw-03.bilivideo.com","name":"test-tw-03","pool":"bc-test"},
+    {"value":"test-shared-01.bilivideo.com","name":"test-shared-01","pool":"bc-test"},
+    {"value":"test-sg-01.bilivideo.com","name":"test-sg-01","pool":"bc-test"},
+    {"value":"upos-sz-estgcos.bilivideo.com","name":"estgcos","pool":"tx-cos-shcold"},
+    {"value":"test-sg-02.bilivideo.com","name":"test-sg-02","pool":"bc-test"},
+    {"value":"test-hk-01.bilivideo.com","name":"test-hk-01","pool":"bc-test"},
+    {"value":"test-hk-02.bilivideo.com","name":"test-hk-02","pool":"bc-test"},
+    {"value":"test-shared-02.bilivideo.com","name":"test-shared-02","pool":"bc-test"},
+    {"value":"test-jp-01.bilivideo.com","name":"test-jp-01","pool":"bc-test"},
+    {"value":"test-jp-02.bilivideo.com","name":"test-jp-02","pool":"bc-test"},
+    {"value":"test-us-01.bilivideo.com","name":"test-us-01","pool":"bc-test"},
+    {"value":"test-ru-01.bilivideo.com","name":"test-ru-01","pool":"bc-test"},
+    {"value":"cn-bj-se-01-05.bilivideo.com","name":"cn-bj-se-01-05","pool":"bc-test"},
+    {"value":"test-extra-01.bilivideo.com","name":"test-extra-01","pool":"bc-test"},
+    {"value":"test-extra-02.bilivideo.com","name":"test-extra-02","pool":"bc-test"},
+    {"value":"upos-hz-mirrorakam.akamaized.net","name":"akam","pool":"akam"},
+    {"value":"backup","nameKey":"cdnNameBackupUrl","noteKey":"cdnNoteBackupUrl"}
+  ]
+}

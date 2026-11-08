@@ -60,13 +60,14 @@ bilibili가 기본으로 배정하는 스트림 노드는 해외 사용자에게
 ```text
 bilibili-cdn-switcher/
 ├── src/                  ← 확장 프로그램 본체(「압축해제된 확장 프로그램을 로드」/ 패키징 대상): manifest, 팝업, bilibili 페이지에 주입하는 스크립트,
-│                            후원 / 공지 / 문제 신고 페이지, 노드 목록 cdn-list.json, 업데이트 기록 changelog.json, 5개 언어 _locales/
+│                            후원 / 공지 / 문제 신고 페이지, 노드 목록 로더 cdn-list.js(목록 자체는 static.biboost.app에서 배포), 업데이트 기록 changelog.json, 5개 언어 _locales/
 ├── safari/               ← Safari 확장 프로그램 Xcode 프로젝트(safari-web-extension-converter로 생성, 상대 경로로 ../../../src/ 직접 참조)
 ├── tools/
 │   ├── cdn-speedtest-app/    ← 공식 속도 테스트 도구 CDNSpeedTest(Python, Windows / Mac)
 │   ├── report-worker/        ← api.biboost.app: 문제 신고, 공지, 후원 등의 API(Cloudflare Worker)
 │   │                         같은 호스트의 계정／구독 API(/auth/*, /me, /play/*, /stripe/*, /config/*)는 biboost-mobile 저장소의 api-worker가 제공하며 테이블은 이 프로젝트의 Neon Postgres(bilibili-cdn-switcher: production 브랜치=api.biboost.app, staging 브랜치=api-staging.biboost.app)에 둔다. 확장 프로그램과 앱이 하나의 백엔드·하나의 데이터베이스를 공유
 │   ├── site/                 ← biboost.app 웹사이트(Cloudflare Worker)
+│   ├── static-site/          ← static.biboost.app: 정적 파일만(서명된 노드 목록. npm run cdn-list:publish로 배포하고 AWS S3 + CloudFront에도 백업을 둠)
 │   └── translate-worker/     ← 관리자 페이지용 번역 API(Cloudflare Worker)
 ├── scripts/              ← 개발 / 패키징 / 릴리스 / 운영 스크립트(주로 Node, 일부 Python)
 ├── test/                 ← 단위 테스트(npm test)

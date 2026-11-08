@@ -7,16 +7,22 @@
  *  4) popup 按「問題回報」時開獨立視窗顯示回報頁（沒有視窗 API 的環境退回新分頁）
  *  5) 依 IP 選國家與該國第一個節點：全新安裝時（並標記「第一支影片在背景優化一次」installTestPending，見 main-hook.js）、
  *     安裝時沒查到 IP 而第一次打開 B 站頁面時（bridge.js 要求）、更新時替從沒選過節點的人補選
+ *  6) 節點清單（伺服器下發，見 cdn-list.js）：安裝／更新時馬上去拿；拿不到就每分鐘重試，拿到才跑 5)。
+ *     沒有清單時擴充不啟用（bridge.js）。之後 B 站頁面或 popup 打開時檢查新版本（6 小時內不重問），
+ *     有新版本就替用國家清單的人更新卡頓時要測的節點（autoSpeedHosts）；使用者正在用的節點不動
  *
  * 1) 1.5.x 以前不會記錄 installedVersion，popup 沒辦法分辨「舊使用者剛更新」與「全新安裝」。
  * 瀏覽器在更新時會把 previousVersion 帶進 onInstalled，不用舊版配合，這裡把它補寫成 installedVersion，
  * popup 的 checkVersionUpdate() 就會把 (previousVersion, 目前版本] 之間的更新內容彈出來。
  * 全新安裝（reason = install）不處理，維持「新使用者不彈」。
  */
+// Chrome／Safari 的 background 是 service worker，要自己載入；Firefox 在 manifest 的 background.scripts 裡已經先載入
+if (typeof BBCdnList === "undefined" && typeof importScripts === "function") importScripts("cdn-list.js");
+
 chrome.runtime.onInstalled.addListener(function (details) {
   if (details.reason === "install") {
     chrome.storage.local.set({ installedAt: Date.now(), installTestPending: true });
-    selectCountry("install");
+    whenListReady("install");
   }
   if (details.reason === "update") {
     chrome.storage.local.set({ updatedAt: Date.now() });
@@ -27,7 +33,7 @@ chrome.runtime.onInstalled.addListener(function (details) {
       if (items.autoSpeedSwitch) chrome.storage.local.set({ autoFallback: true });
       chrome.storage.local.remove("autoSpeedSwitch");
     });
-    selectCountry("update");
+    whenListReady("update");
   }
   if (details.reason !== "update" || !details.previousVersion) return;
   chrome.storage.local.get("installedVersion", function (items) {
@@ -59,11 +65,9 @@ function fetchZoneData() {
     .catch(function () { return null; });
 }
 function selectCountry(reason) {
-  return Promise.all([
-    fetch(chrome.runtime.getURL("cdn-list.json")).then(function (r) { return r.json(); }),
-    fetchZoneData()
-  ]).then(function (arr) {
-    var data = arr[0] || {}, zone = arr[1];
+  return Promise.all([BBCdnList.load(), fetchZoneData()]).then(function (arr) {
+    var data = arr[0] && arr[0].data, zone = arr[1];
+    if (!data) return; // 還沒有清單：拿到時 whenListReady 會再跑
     if (!zone && reason !== "install") return;
     var countries = data.countries || [], known = {};
     (data.options || []).forEach(function (o) { if (o.value !== "backup") known[o.value] = true; });
@@ -83,13 +87,66 @@ function selectCountry(reason) {
   }).catch(function () {});
 }
 
-// 2) 匯入網址任何網站都能做出來，所以只收 cdn-list.json 裡有的節點（測速工具測的也就是這份），
+// 6) 節點清單。reason：拿到清單後要跑的 selectCountry（"install"／"update"），記在 storage 的 cdnListPending，
+//    service worker 中途被收掉、瀏覽器重開也不會忘
+var LIST_RETRY_ALARM = "cdnListRetry";
+var LIST_RETRY_MIN = 1; // 還沒拿到清單時每分鐘重試（Chrome 的 alarm 最短 30 秒，Safari／Firefox 保守用 1 分鐘）
+var retryTimer = null;
+function storageGet(keys) { return new Promise(function (r) { chrome.storage.local.get(keys, function (s) { r(s || {}); }); }); }
+function whenListReady(reason) {
+  return new Promise(function (r) { chrome.storage.local.set({ cdnListPending: reason }, r); })
+    .then(function () { return refreshList(true); });
+}
+function refreshList(force) {
+  return BBCdnList.refresh(force).then(function (res) {
+    if (!res.ok) { startListRetry(); return res; }
+    stopListRetry();
+    return afterList(res).then(function () { return res; });
+  }).catch(function () { startListRetry(); return { ok: false, changed: false }; });
+}
+function afterList(res) {
+  return storageGet("cdnListPending").then(function (items) {
+    var pending = items.cdnListPending;
+    if (!pending) return;
+    return new Promise(function (r) { chrome.storage.local.remove("cdnListPending", r); }).then(function () { return selectCountry(pending); });
+  }).then(function () { if (res.changed) return syncAutoSpeedHosts(res.data); });
+}
+// 新清單：用國家清單（沒選「全部」）的人，卡頓時要測的節點換成新清單裡該國的節點。目前使用的節點（cdnHost）不動
+function syncAutoSpeedHosts(data) {
+  return storageGet(["cdnMode", "cdnCountry", "autoSpeedHosts"]).then(function (items) {
+    if (items.cdnMode === "custom" || !items.cdnCountry || items.cdnCountry === "ALL") return;
+    var hosts = BBCdnList.countryHosts(data, items.cdnCountry);
+    if (!hosts.length || (items.autoSpeedHosts || []).join("|") === hosts.join("|")) return;
+    return new Promise(function (r) { chrome.storage.local.set({ autoSpeedHosts: hosts }, r); });
+  });
+}
+function startListRetry() {
+  if (chrome.alarms && chrome.alarms.create) { chrome.alarms.create(LIST_RETRY_ALARM, { delayInMinutes: LIST_RETRY_MIN, periodInMinutes: LIST_RETRY_MIN }); return; }
+  if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; refreshList(true); }, LIST_RETRY_MIN * 60000);
+}
+function stopListRetry() {
+  if (chrome.alarms && chrome.alarms.clear) chrome.alarms.clear(LIST_RETRY_ALARM, function () { void chrome.runtime.lastError; });
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+}
+if (chrome.alarms && chrome.alarms.onAlarm) {
+  chrome.alarms.onAlarm.addListener(function (a) { if (a && a.name === LIST_RETRY_ALARM) refreshList(true); });
+}
+// 瀏覽器重開：還沒有清單（或還有沒跑完的選國家）就馬上再試
+if (chrome.runtime.onStartup) {
+  chrome.runtime.onStartup.addListener(function () {
+    Promise.all([BBCdnList.load(), storageGet("cdnListPending")]).then(function (arr) {
+      if (!arr[0] || arr[1].cdnListPending) refreshList(true);
+    });
+  });
+}
+
+// 2) 匯入網址任何網站都能做出來，所以只收節點清單裡有的節點（測速工具測的也就是這份），
 //    別人沒辦法藉此把影片導到自己的網域。已經在列表裡的不重複加，新的依序接在後面
 function importCustomHosts(hosts) {
-  return fetch(chrome.runtime.getURL("cdn-list.json"))
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      var known = {};
+  return BBCdnList.load()
+    .then(function (list) {
+      if (!list) throw new Error("no node list");
+      var data = list.data, known = {};
       (data.options || []).forEach(function (o) { if (o.value !== "backup") known[o.value] = true; });
       return new Promise(function (resolve) {
         chrome.storage.local.get({ customHosts: [], cdnMode: null, cdnHost: null }, function (items) {
@@ -202,6 +259,8 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   var tabId = sender && sender.tab ? sender.tab.id : (msg.tab != null ? msg.tab : null);
   if (msg.type === "CDN_SWITCHER_IMPORT_CUSTOM") { importCustomHosts(msg.hosts).then(sendResponse); return true; }
   if (msg.type === "CDN_SWITCHER_SELECT_COUNTRY") { selectCountry("retry").then(function () { sendResponse({ ok: true }); }); return true; }
+  // bridge（B 站頁面）、popup 打開時：檢查有沒有新清單（6 小時內不重問）；force＝popup 遮罩的「重試」與每 10 秒的自動重試
+  if (msg.type === "CDN_SWITCHER_CDN_LIST") { refreshList(!!msg.force).then(function (r) { sendResponse({ ok: !!r.ok, changed: !!r.changed }); }); return true; }
   if (msg.type === "CDN_SWITCHER_JOURNAL" && msg.entry && typeof msg.entry.k === "string") {
     var e = { t: Number(msg.entry.t) || Date.now(), tab: tabId, k: msg.entry.k, d: msg.entry.d || {} };
     appendJournal(e).then(function () { sendResponse({ ok: true }); });
@@ -224,7 +283,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
 if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
   globalThis.__BCS_TEST__.register("background", {
-    importCustomHosts: importCustomHosts, selectCountry: selectCountry, appendJournal: appendJournal, appendSample: appendSample, putSnapshot: putSnapshot, pruneOld: pruneOld,
+    importCustomHosts: importCustomHosts, selectCountry: selectCountry, whenListReady: whenListReady, refreshList: refreshList, syncAutoSpeedHosts: syncAutoSpeedHosts, LIST_RETRY_ALARM: LIST_RETRY_ALARM, appendJournal: appendJournal, appendSample: appendSample, putSnapshot: putSnapshot, pruneOld: pruneOld,
     JOURNAL_MAX: JOURNAL_MAX, SAMPLES_MAX: SAMPLES_MAX, MERGE_WINDOW_MS: MERGE_WINDOW_MS, DIAG_KEEP_MS: DIAG_KEEP_MS
   });
 }

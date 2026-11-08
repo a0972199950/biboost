@@ -60,13 +60,14 @@ B 站預設分配的取流節點對海外使用者常常繞路、不夠快。這
 ```text
 bilibili-cdn-switcher/
 ├── src/                  ← 擴充本體（載入未封裝 / 打包的就是這層）：manifest、popup、注入 B 站頁面的腳本、
-│                            贊助／公告／問題回報頁、節點清單 cdn-list.json、更新紀錄 changelog.json、五語系 _locales/
+│                            贊助／公告／問題回報頁、節點清單載入 cdn-list.js（清單本身由 static.biboost.app 下發）、更新紀錄 changelog.json、五語系 _locales/
 ├── safari/               ← Safari 擴充的 Xcode 工程（safari-web-extension-converter 產生，用相對路徑直接引用 ../../../src/）
 ├── tools/
 │   ├── cdn-speedtest-app/    ← 官方測速工具 CDNSpeedTest（Python，Windows／Mac）
 │   ├── report-worker/        ← api.biboost.app：問題回報、公告、贊助等 API（Cloudflare Worker）
 │   │                         同一網域上的帳號／訂閱 API（/auth/*、/me、/play/*、/stripe/*、/config/*）由 biboost-mobile repo 的 api-worker 提供，資料表放在這個專案的 Neon Postgres（bilibili-cdn-switcher：production 分支給 api.biboost.app、staging 分支給 api-staging.biboost.app），擴充與 App 共用同一個後台、同一顆資料庫
 │   ├── site/                 ← biboost.app 網站（Cloudflare Worker）
+│   ├── static-site/          ← static.biboost.app：只放靜態檔（簽章過的節點清單；npm run cdn-list:publish 發布，同時放一份到 AWS S3＋CloudFront 當備援）
 │   └── translate-worker/     ← 後台用的翻譯 API（Cloudflare Worker）
 ├── scripts/              ← 開發／打包／發版／營運腳本（Node 為主，少數 Python）
 ├── test/                 ← 單元測試（npm test）

@@ -1,10 +1,10 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, readSrcJson, plain, closeAll, testKey } from "./helpers/load.mjs";
+import { createEnv, readSrcJson, plain, closeAll, testKey, CDN_FIXTURE, CDN_DEFAULT_HOST } from "./helpers/load.mjs";
 import { signJws } from "../tools/report-worker/src/features.js";
 
-const CDN = readSrcJson("cdn-list.json");
-const DEFAULT_HOST = "cn-bj-se-01-05.bilivideo.com"; // = cdn-list.json OTHER 的第一個
+const CDN = CDN_FIXTURE; // 測試用假清單（test/fixtures/cdn-list.json），helpers 預設已經簽章放進 storage
+const DEFAULT_HOST = CDN_DEFAULT_HOST; // = 清單 OTHER 的第一個
 const ZONE_API = "https://api.bilibili.com/x/web-interface/zone";
 function nodesOf(code) { return CDN.countries.find((c) => c.code === code).nodes; }
 
@@ -15,7 +15,7 @@ async function boot(storage = {}, { zone = null, uiLanguage } = {}) {
     if (url === ZONE_API && zone) return { ok: true, status: 200, json: () => Promise.resolve(zone) };
     throw new TypeError("Failed to fetch");
   };
-  ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "popup.js"].forEach((f) => env.load(f));
+  ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "popup.js"].forEach((f) => env.load(f));
   await env.settle(20);
   return env;
 }
@@ -468,7 +468,7 @@ describe("donate button", () => {
       if (url === FEATURES_API && jws) return { ok: true, status: 200, json: () => Promise.resolve({ ok: true, jws }) };
       throw new TypeError("Failed to fetch");
     };
-    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js"].forEach((f) => env.load(f));
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js"].forEach((f) => env.load(f));
     env.window.BBFeatures.PUBLIC_KEYS.t1 = key.pub;
     env.load("popup.js");
     await env.settle(40);
@@ -523,3 +523,52 @@ describe("donate button", () => {
 });
 
 after(closeAll);
+
+describe("node list overlay", () => {
+  async function bootNoList(responder) {
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true }, cdnList: false });
+    env.fetchHandler = () => { throw new TypeError("Failed to fetch"); };
+    // background：CDN_SWITCHER_CDN_LIST 的回應（popup 只會在 force 時看結果）
+    env.chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => { if (msg.type === "CDN_SWITCHER_CDN_LIST") { sendResponse(responder(msg)); return true; } });
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "popup.js"].forEach((f) => env.load(f));
+    await env.settle(30);
+    return env;
+  }
+  test("no list → the overlay covers the popup, retries right away, counts down from 10", async () => {
+    let calls = 0;
+    const env = await bootNoList(() => { calls++; return { ok: false }; });
+    const box = env.document.getElementById("listFail");
+    assert.ok(box.classList.contains("show"));
+    assert.equal(env.document.getElementById("lfTitle").textContent, "Sorry, the node list couldn't be loaded");
+    assert.equal(calls, 1, "tried once on open");
+    assert.equal(env.document.getElementById("lfRetry").textContent, "Retry");
+    assert.equal(env.document.getElementById("lfNext").textContent, "Retrying automatically in 10s");
+    assert.equal(env.storage.cdnHost, undefined, "nothing written");
+    env.document.getElementById("lfRetry").click();
+    assert.equal(calls, 2, "manual retry");
+    clearInterval(env.internals("popup").showListFail.timer);
+    env.close();
+  });
+  test("a successful retry reloads the popup", async () => {
+    let n = 0;
+    const env = await bootNoList(() => ({ ok: ++n > 1 }));
+    const btn = env.document.getElementById("lfRetry");
+    assert.equal(btn.disabled, false, "first try failed");
+    btn.click();
+    // 成功就 location.reload()（jsdom 不會真的重載）：按鈕停在「重試中」，不會回到可以按的狀態
+    assert.equal(btn.disabled, true);
+    assert.equal(btn.textContent, "Retrying…");
+    clearInterval(env.internals("popup").showListFail.timer);
+    env.close();
+  });
+  test("with a list: no overlay, never-chosen node shows the list's global default without writing it", async () => {
+    const env = await boot({ cdnMode: "list", cdnCountry: "OTHER" });
+    assert.equal(env.document.getElementById("listFail").classList.contains("show"), false);
+    const s = env.internals("popup").state();
+    assert.equal(s.globalDefaultHost, DEFAULT_HOST);
+    assert.equal(s.cdnSelectValue, DEFAULT_HOST);
+    assert.equal("cdnHost" in env.storage, false);
+    assert.ok(env.runtimeMessages.some((m) => m.type === "CDN_SWITCHER_CDN_LIST" && !m.force), "checks for a newer list");
+    env.close();
+  });
+});

@@ -207,19 +207,23 @@ suite("6 · CDN list load via fetch", function() {
   div.innerHTML = "<h3>6 · CDN list load via fetch</h3><p class='info'>Loading...</p>";
   resultsDiv.appendChild(div);
 
-  fetch("../src/cdn-list.json")
+  // 節點清單由伺服器下發（src/cdn-list.js）：確認 Safari 跨網域抓得到版本檔與簽章檔
+  var BASE = "https://static.biboost.app/";
+  fetch(BASE + "cdn-list/latest.json", { cache: "no-store" })
     .then(function(r) { return r.json(); })
-    .then(function(data) {
+    .then(function(latest) {
+      return fetch(BASE + latest.file).then(function(r) { return r.text(); }).then(function(jws) { return { latest: latest, jws: jws.trim() }; });
+    })
+    .then(function(res) {
       total++;
-      var hasArray = Array.isArray(data) || (data && typeof data === "object");
-      if (hasArray) passed++; else failed++;
-
-      var count = Array.isArray(data) ? data.length : (data.nodes ? data.nodes.length : Object.keys(data).length);
+      var parts = res.jws.split(".");
+      var ok = typeof res.latest.v === "number" && parts.length === 3;
+      if (ok) passed++; else failed++;
       div.querySelector("p").remove();
 
-      var r1 = assert("cdn-list.json loads successfully", true);
-      var r2 = assert("cdn-list.json is valid JSON object/array", hasArray, "type: " + typeof data);
-      var r3 = assert("cdn-list has entries", count > 0, "count: " + count);
+      var r1 = assert("cdn-list latest.json loads (v" + res.latest.v + ")", typeof res.latest.v === "number");
+      var r2 = assert("signed list is a compact JWS", parts.length === 3, "parts: " + parts.length);
+      var r3 = assert("signed list has content", res.jws.length > 1000, "length: " + res.jws.length);
       div.appendChild(r1);
       div.appendChild(r2);
       div.appendChild(r3);

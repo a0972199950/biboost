@@ -1,0 +1,14 @@
+# 靜態檔案網站 static.biboost.app：目前只放節點清單（src/cdn-list.js 的主要來源；備援在 AWS S3＋CloudFront）。
+# 沒有程式，只有靜態檔：請求免費、不限次數，也不算進 Workers 每天 10 萬次的免費額度。
+# 內容（public/）由 scripts/cdn-list.mjs 發布時重建並部署（npm run cdn-list:publish），不要手動改、也不進 git。
+name = "biboost-static"
+compatibility_date = "2026-01-01"
+workers_dev = false
+routes = [
+  { pattern = "static.biboost.app", custom_domain = true }
+]
+
+[assets]
+directory = "./public"
+html_handling = "none"
+not_found_handling = "none"
