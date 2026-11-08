@@ -2324,7 +2324,7 @@
     }
 
     /* 節點清單載入失敗：蓋在整個 popup 上、關不掉的遮罩（見 popup.js showListFail）。拿到清單前擴充不啟用；
-       每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示一直鞠躬道歉、冒汗，旁邊是斷線的雲 */
+       每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示（加了一張臉）一直鞠躬道歉、冒汗，彎到底時眼睛閉成 > <，旁邊是斷線的雲 */
     #listFail {
       display: none;
       position: fixed;
@@ -2362,6 +2362,20 @@
       animation: lfBow 2.4s ease-in-out infinite;
     }
 
+    /* 眼睛：跟鞠躬同一個節奏，彎到底時閉成 > < */
+    .lfEyesOpen { animation: lfEyesOpen 2.4s ease-in-out infinite; }
+    .lfEyesShut { opacity: 0; animation: lfEyesShut 2.4s ease-in-out infinite; }
+
+    @keyframes lfEyesOpen {
+      0%, 28%, 66%, 100% { opacity: 1; }
+      33%, 61% { opacity: 0; }
+    }
+
+    @keyframes lfEyesShut {
+      0%, 28%, 66%, 100% { opacity: 0; }
+      33%, 61% { opacity: 1; }
+    }
+
     .lfSweat {
       transform-box: view-box;
       animation: lfSweat 2.4s ease-in infinite;
@@ -2393,7 +2407,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .lfBow, .lfSweat, .lfCloud { animation: none; }
+      .lfBow, .lfSweat, .lfCloud, .lfEyesOpen, .lfEyesShut { animation: none; }
       .lfBow { transform: rotate(20deg); }
     }
 
@@ -3317,17 +3331,42 @@
           </linearGradient>
         </defs>
         <rect class="optBench" x="10" y="96" width="160" height="4" rx="2" />
-        <!-- 擴充圖示本體（與 scripts/gen-icons.mjs 同一份畫法）：鞠躬 -->
+        <!-- 擴充圖示（底色、箭頭與 scripts/gen-icons.mjs 同一份畫法）加上一張道歉的臉：鞠躬 -->
         <g class="lfBow">
-          <g transform="translate(43,42) scale(0.105)">
+          <g transform="translate(40.5,37) scale(0.115)">
             <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#lfBg)" />
-            <g transform="translate(0,9)" fill="rgb(120,20,55)" fill-opacity="0.18">
-              <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
-              <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
+            <!-- 箭頭縮小移到下半部，上半部是臉 -->
+            <g transform="translate(256,388) scale(0.4) translate(-256,-256)">
+              <g transform="translate(0,12)" fill="rgb(120,20,55)" fill-opacity="0.18">
+                <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
+                <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
+              </g>
+              <g fill="white">
+                <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
+                <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
+              </g>
             </g>
-            <g fill="white">
-              <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
-              <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
+            <!-- 臉：八字眉、水汪汪的眼睛（鞠躬時閉成 > <）、腮紅、癟嘴 -->
+            <g fill="rgb(200,30,80)" fill-opacity="0.38">
+              <ellipse cx="112" cy="262" rx="36" ry="20" />
+              <ellipse cx="400" cy="262" rx="36" ry="20" />
+            </g>
+            <g stroke="rgb(90,15,45)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M112 136 L194 108" />
+              <path d="M400 136 L318 108" />
+              <path d="M228 290 q28 -20 56 0" stroke-width="16" />
+            </g>
+            <g class="lfEyesOpen">
+              <ellipse cx="168" cy="200" rx="36" ry="42" fill="rgb(90,15,45)" />
+              <ellipse cx="344" cy="200" rx="36" ry="42" fill="rgb(90,15,45)" />
+              <g fill="white">
+                <circle cx="180" cy="184" r="13" /><circle cx="157" cy="218" r="7" />
+                <circle cx="356" cy="184" r="13" /><circle cx="333" cy="218" r="7" />
+              </g>
+            </g>
+            <g class="lfEyesShut" stroke="rgb(90,15,45)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M140 172 L198 200 L140 228" />
+              <path d="M372 172 L314 200 L372 228" />
             </g>
           </g>
           <!-- 汗珠 -->
