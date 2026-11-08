@@ -11,7 +11,7 @@ document.documentElement.lang = uiLanguage();
   head.textContent = t("cloudWorking");
   BBCloud.finishLogin(params).then(function (r) {
     head.textContent = t("authDone");
-    lead.textContent = r.email ? t("cloudSignedInAs").replace("{email}", r.email) : "";
+    lead.textContent = ""; // 面板裡已經有「已登入：email」
     BBCloudUI.mount($("authPanel"));
   }, function (e) {
     head.textContent = t("authFail");

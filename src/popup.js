@@ -556,6 +556,14 @@ BBFeatures.watch(function (flags) {
 });
 // 自動同步開著的話，打開 popup 時先拉一次雲端（background 做；沒開就什麼都不做）
 try { chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CLOUD_PULL" }, function () { void chrome.runtime.lastError; }); } catch (e) {}
+// 雲端的設定（上面這次拉到的、視窗裡按「從雲端同步到本地」）寫進 storage 時，popup 畫面還是打開時讀的舊值：重新載入。
+// 雲端備份視窗開著（還原的打勾動畫）就等它關掉再載入
+try {
+  chrome.storage.onChanged.addListener(function (ch, area) {
+    if (area !== "local" || !ch.cloudAppliedAt) return;
+    (function reloadWhenIdle() { if (document.querySelector(".bbcMask")) setTimeout(reloadWhenIdle, 200); else location.reload(); })();
+  });
+} catch (e) {}
 // 問題回報：一律由 background 開成獨立視窗（report.html），帶上目前分頁 id 讓回報頁能向 B 站頁面要此刻的快照；popup 隨即關閉
 els.feedbackBtn.style.display = "";
 els.feedbackBtn.addEventListener("click", function () {

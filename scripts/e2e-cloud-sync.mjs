@@ -232,6 +232,9 @@ async function scenarioOn() {
     const pb = await B.page("popup.html"); // 打開 popup 會拉一次
     const down = await until(async () => { const s = await B.storage(["stVideoSec", "cdnCountry", "cdnHost"]); return s.stVideoSec === 9 && s.cdnCountry === "HK" && s.cdnHost === "upos-sz-mirrorali.bilivideo.com" ? s : null; }, 20000, 1000);
     check("B 打開 popup 就拉到 A 的改動（含節點與國家）", down, down ? "" : JSON.stringify(await B.storage(["stVideoSec", "cdnCountry", "cdnHost"])));
+    // 打開當下的這個 popup 畫面也要是新的（拉到後重新載入），不是下次打開才對
+    const shown = await until(async () => (await pb.$eval("#countrySelect", (e) => e.value).catch(() => "")) === "HK", 10000, 500);
+    check("同一個 popup 畫面直接顯示拉到的國家", shown, shown ? "" : await pb.$eval("#countrySelect", (e) => e.value).catch(() => "?"));
     await B.shot(pb, "6-popup-synced");
     await pb.close();
     await B.setStorage({ uiTheme: "light", customHosts: ["upos-sz-mirrorcos.bilivideo.com", "upos-sz-mirrorhw.bilivideo.com"] });

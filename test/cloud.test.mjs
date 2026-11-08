@@ -147,6 +147,7 @@ describe("manual backup / restore", () => {
     assert.equal(s.countryAutoDone, true);
     assert.equal(s.installTestPending, false, "install optimization cancelled");
     assert.equal("cdnListPending" in s, false);
+    assert.equal(typeof s.cloudAppliedAt, "number", "an open popup reloads to show the restored settings");
     assert.deepEqual(s.cloudSync.rev, { shared: 2, extension: 7 });
     env.close();
   });
@@ -215,6 +216,7 @@ describe("auto sync", () => {
     assert.equal(env.storage.countryAutoDone, true);
     assert.equal(env.storage.cdnListPending, undefined, "a late node list won't pick a country over the synced one");
     assert.equal(env.storage.cloudSync.rev.extension, 5);
+    assert.equal(typeof env.storage.cloudAppliedAt, "number", "an open popup reloads to show the pulled settings");
     env.close();
   });
   test("pull does nothing when auto sync is off or the cloud has nothing newer", async () => {
@@ -226,6 +228,7 @@ describe("auto sync", () => {
     const same = boot({ storage: { ...ACCOUNT, autoFallback: true, cloudSync: { auto: true, rev: { extension: 5 }, snap: {}, dirty: [] } }, docs });
     assert.equal((await same.C.pull()).applied, 0);
     assert.equal(same.env.storage.autoFallback, true);
+    assert.equal(same.env.storage.cloudAppliedAt, undefined, "nothing applied → the popup must not reload (no reload loop)");
     same.env.close();
   });
   test("turning it off stops the alarm and forgets pending changes", async () => {
