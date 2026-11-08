@@ -1,9 +1,14 @@
 // 雲端備份的視窗（popup、歡迎頁、登入回跳頁共用）。資料與 API 在 cloud.js（BBCloud），文字用 common.js 的 t()。
 //   BBCloudUI.open()           蓋在整頁上的視窗（右上角 ✕、點外面關掉）；成功時播打勾動畫，約 1.5 秒後自己關掉
-//   BBCloudUI.mount(el, opts)  直接畫在某個元素裡（登入回跳頁用，沒有關閉鈕）
+//   BBCloudUI.mount(el, opts)  直接畫在某個元素裡（歡迎頁、登入回跳頁），沒有 ✕。opts：
+//     fresh：剛安裝（歡迎頁）。沒有東西好備份，所以沒有「備份到雲端」，也沒有自動同步開關（一打開就會拿全新的預設值蓋掉雲端的備份）；
+//            雲端沒有備份時不顯示「從雲端恢復設定」，「取消」換成「開始使用」
+//     back：登入在同一個視窗換頁，登入完 auth.html 換回這個擴充頁面（歡迎頁）
+//     onDone：成功動畫播完後呼叫（關掉視窗）
+//     onCancel、cancelText、laterText：多一顆跟其他按鈕並排、一樣樣式的「取消」（關掉視窗）；未登入時用 laterText（例如「稍後再說」）
 // 狀態：
-//   未登入：說明＋「使用 Google 登入」（開新分頁；登入完成後 storage 變動，視窗自己換成已登入）
-//   已登入：email、「備份到雲端」「從雲端同步到本地」、上次備份的時間與來源、自動同步開關、最下面小字「登出」
+//   未登入：說明＋「使用 Google 登入」（popup 開小視窗；歡迎頁在同一個視窗換頁。登入完成後 storage 變動，視窗自己換成已登入）
+//   已登入：email、「備份到雲端」「從雲端恢復設定」（不分主次、滑過變色）、上次備份的時間與來源、自動同步開關、最下面小字「登出」
 var BBCloudUI = (function () {
   var STYLE_ID = "bbCloudStyle";
   var CSS = [
@@ -14,14 +19,17 @@ var BBCloudUI = (function () {
     ".bbcText{font-size:12.5px;line-height:1.6;color:var(--muted,#61666d);margin:0 0 12px;text-align:left}",
     ".bbcEmail{font-size:12.5px;color:var(--muted,#61666d);margin:0 0 12px;word-break:break-all}",
     ".bbcBtns{display:flex;flex-direction:column;gap:8px}",
-    ".bbcBtn{display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;padding:9px 12px;border:0;border-radius:8px;background:var(--accent,#fb7299);color:var(--accent-text,#fff);font:inherit;font-weight:600;cursor:pointer;box-sizing:border-box}",
-    ".bbcBtn small{font-weight:400;font-size:11.5px;opacity:.85}",
-    ".bbcBtn.alt{background:var(--control-bg,#fff);color:inherit;border:1px solid var(--border,#e3e5e7)}",
-    ".bbcBtn:disabled{opacity:.6;cursor:default}",
-    ".bbcBtn.google{flex-direction:row;justify-content:center;gap:8px;background:var(--control-bg,#fff);color:inherit;border:1px solid var(--border,#e3e5e7)}",
+    ".bbcBtns.row{flex-direction:row}",
+    ".bbcBtns.row>.bbcBtn{flex:1 1 0;min-width:0}",
+    // 所有按鈕同一個樣式（不分主次，使用者要求）：白底灰框，滑過時框與字變成主題色、底色變淡
+    ".bbcBtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:100%;padding:9px 12px;border:1px solid var(--border,#e3e5e7);border-radius:8px;background:var(--control-bg,#fff);color:inherit;font:inherit;font-weight:600;cursor:pointer;box-sizing:border-box;transition:background-color .15s,border-color .15s,color .15s}",
+    ".bbcBtn small{font-weight:400;font-size:11.5px;color:var(--muted,#61666d);transition:color .15s}",
+    ".bbcBtn:hover:not(:disabled),.bbcBtn:focus-visible{border-color:var(--accent,#fb7299);background:var(--hover-bg,#ffecf1);color:var(--accent,#fb7299);outline:none}",
+    ".bbcBtn:hover:not(:disabled) small{color:inherit;opacity:.85}",
+    ".bbcBtn:disabled{opacity:.5;cursor:default}",
+    ".bbcBtn.google{flex-direction:row;gap:8px}",
     ".bbcMeta{font-size:12px;color:var(--muted,#61666d);margin:10px 0 0}",
     ".bbcAuto{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0 0;padding:10px 0 0;border-top:1px solid var(--border,#e3e5e7);text-align:left;font-size:13px}",
-    ".bbcAuto small{display:block;color:var(--muted,#61666d);font-size:11.5px;line-height:1.5;margin-top:2px}",
     ".bbcAuto input{width:18px;height:18px;flex:none;accent-color:var(--accent,#fb7299)}",
     ".bbcErr{font-size:12.5px;color:var(--danger,#d93025);margin:10px 0 0}",
     ".bbcLogout{margin-top:12px;border:0;background:none;padding:0;font:inherit;font-size:11.5px;color:var(--muted,#61666d);text-decoration:underline;cursor:pointer}",
@@ -64,8 +72,10 @@ var BBCloudUI = (function () {
     catch (e) { return new Date(ms).toISOString().slice(0, 16).replace("T", " "); }
   }
 
-  // card：畫內容的元素；onDone：成功動畫播完後呼叫（視窗用來關掉自己）
-  function panel(card, onDone) {
+  // card：畫內容的元素；opts 見最上面（fresh、back、onDone、onCancel、cancelText）
+  function panel(card, opts) {
+    opts = opts || {};
+    var onDone = opts.onDone;
     var alive = true, busy = false;
     function clear() { card.querySelectorAll(":scope > :not(.bbcClose)").forEach(function (n) { n.remove(); }); }
     function render() {
@@ -78,40 +88,52 @@ var BBCloudUI = (function () {
         renderAccount(st);
       });
     }
+    function cancelBtn(text) {
+      var c = el("button", "bbcBtn bbcCancel", text || opts.cancelText || t("cloudCancel"));
+      c.type = "button";
+      c.addEventListener("click", function () { if (!busy) opts.onCancel(); });
+      return c;
+    }
     function renderLogin(err) {
-      card.appendChild(el("p", "bbcText", t("cloudLoginHint")));
-      var btns = el("div", "bbcBtns"), b = el("button", "bbcBtn google");
+      card.appendChild(el("p", "bbcText", t(opts.fresh ? "cloudWelcomeHint" : "cloudLoginHint")));
+      var btns = el("div", opts.fresh ? "bbcBtns row" : "bbcBtns"), b = el("button", "bbcBtn google");
       b.type = "button";
       b.insertAdjacentHTML("beforeend", GOOGLE_SVG);
       b.appendChild(el("span", "", t("cloudLoginGoogle")));
       b.addEventListener("click", function () {
         b.disabled = true;
-        BBCloud.startLogin().then(function () {
+        BBCloud.startLogin(opts.back ? { back: opts.back } : null).then(function () {
+          if (opts.back) return; // 這一頁正在換到 Google
           var hint = card.querySelector(".bbcMeta") || card.appendChild(el("p", "bbcMeta"));
           hint.textContent = t("cloudLoginOpened");
           b.disabled = false;
         }, function (e) { b.disabled = false; showErr(e); });
       });
       btns.appendChild(b);
+      if (opts.onCancel) btns.appendChild(cancelBtn(opts.laterText));
       card.appendChild(btns);
       if (err) showErr(err);
     }
     function renderAccount(st) {
       card.appendChild(el("p", "bbcEmail", t("cloudSignedInAs").replace("{email}", st.account.email || "—")));
-      var btns = el("div", "bbcBtns");
-      var up = actionBtn("bbcBtn", t("cloudBackupBtn"), t("cloudBackupHint"), function () { return BBCloud.backup(); }, t("cloudBackupDone"));
-      var down = actionBtn("bbcBtn alt", t("cloudRestoreBtn"), t("cloudRestoreHint"), function () { return BBCloud.restore(); }, t("cloudRestoreDone"));
-      btns.appendChild(up);
+      var btns = el("div", opts.fresh ? "bbcBtns row" : "bbcBtns");
+      if (!opts.fresh) btns.appendChild(actionBtn(t("cloudBackupBtn"), t("cloudBackupHint"), function () { return BBCloud.backup(); }, t("cloudBackupDone")));
+      var down = actionBtn(t("cloudRestoreBtn"), opts.fresh ? "" : t("cloudRestoreHint"), function () { return BBCloud.restore(); }, t("cloudRestoreDone"));
       btns.appendChild(down);
+      var cancel = opts.onCancel && btns.appendChild(cancelBtn());
       card.appendChild(btns);
+      if (opts.fresh) down.disabled = true; // 確定雲端有備份才能按
       var meta = card.appendChild(el("p", "bbcMeta", t("cloudWorking")));
       BBCloud.remoteInfo().then(function (info) {
         if (!alive) return;
         var l = info.last;
         meta.textContent = l ? t("cloudLastBackup").replace("{time}", timeText(l.at)).replace("{by}", t(l.by === "extension" ? "cloudByExt" : l.by ? "cloudByApp" : "cloudByExt")) : t("cloudNoBackup");
+        if (opts.fresh && l && !busy) down.disabled = false;
+        // 剛安裝、雲端也沒有備份：沒東西好恢復，只留一顆「開始使用」（灰掉的恢復加「取消」看起來像出錯）
+        if (opts.fresh && !l) { btns.removeChild(down); if (cancel) cancel.textContent = t("cloudStart"); }
       }, function (e) { if (!alive) return; meta.textContent = errText(e); if (e.code === "unauthorized") render(); });
+      if (opts.fresh) return renderLogout();
       var auto = el("label", "bbcAuto"), txt = el("span", "", t("cloudAutoLabel")), box = document.createElement("input");
-      txt.appendChild(el("small", "", t("cloudAutoHint")));
       box.type = "checkbox";
       box.checked = !!st.sync.auto;
       box.addEventListener("change", function () {
@@ -126,16 +148,19 @@ var BBCloudUI = (function () {
       auto.appendChild(txt);
       auto.appendChild(box);
       card.appendChild(auto);
+      renderLogout();
+    }
+    function renderLogout() {
       var out = el("button", "bbcLogout", t("cloudLogout"));
       out.type = "button";
       out.addEventListener("click", function () { out.disabled = true; BBCloud.logout().then(render); });
       card.appendChild(out);
     }
-    function actionBtn(cls, label, hint, run, doneText) {
-      var b = el("button", cls);
+    function actionBtn(label, hint, run, doneText) {
+      var b = el("button", "bbcBtn");
       b.type = "button";
       b.appendChild(el("span", "", label));
-      b.appendChild(el("small", "", hint));
+      if (hint) b.appendChild(el("small", "", hint));
       b.addEventListener("click", function () {
         if (busy) return;
         busy = true;
@@ -165,7 +190,7 @@ var BBCloudUI = (function () {
     }
     // 登入／登出（別的分頁）、自動同步狀態變了 → 重畫
     // 成功的打勾動畫播放中不重畫（動畫播完會自己關掉或重畫）
-    function onChange(ch, area) { if (area === "local" && !busy && !card.querySelector(".bbcDone") && (ch.cloudAccount || ch.cloudSync && !card.querySelector(".bbcAuto"))) render(); }
+    function onChange(ch, area) { if (area === "local" && !busy && !card.querySelector(".bbcDone") && (ch.cloudAccount || ch.cloudSync && !opts.fresh && !card.querySelector(".bbcAuto"))) render(); }
     chrome.storage.onChanged.addListener(onChange);
     render();
     return { destroy: function () { alive = false; try { chrome.storage.onChanged.removeListener(onChange); } catch (e) {} }, render: render };
@@ -188,14 +213,14 @@ var BBCloudUI = (function () {
     x.addEventListener("click", close);
     mask.addEventListener("click", function (e) { if (e.target === mask) close(); });
     document.addEventListener("keydown", onKey);
-    p = panel(card, close);
+    p = panel(card, { onDone: close });
     return { close: close, element: mask };
   }
-  function mount(container) {
+  function mount(container, opts) {
     style();
     var card = el("div", "bbcCard");
     container.appendChild(card);
-    return panel(card, null);
+    return panel(card, opts);
   }
 
   var api = { open: open, mount: mount, DONE_MS: DONE_MS };

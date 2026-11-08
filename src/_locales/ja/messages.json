@@ -873,7 +873,7 @@
     "message": "Google でログイン"
   },
   "cloudLoginOpened": {
-    "message": "新しいタブで Google ログインを開きました。完了したらここに戻ってください。"
+    "message": "Google ログインのウィンドウを開きました。完了したらここに戻ってください。"
   },
   "cloudSignedInAs": {
     "message": "ログイン中：{email}"
@@ -885,7 +885,7 @@
     "message": "このパソコンの現在の設定でクラウドのバックアップを上書きします"
   },
   "cloudRestoreBtn": {
-    "message": "クラウドから復元"
+    "message": "クラウドから設定を復元"
   },
   "cloudRestoreHint": {
     "message": "クラウドのバックアップでこのパソコンの設定を上書きします"
@@ -904,9 +904,6 @@
   },
   "cloudAutoLabel": {
     "message": "自動同期"
-  },
-  "cloudAutoHint": {
-    "message": "設定を変更すると自動でクラウドにバックアップします（現在のノードと国を含む）。"
   },
   "cloudLogout": {
     "message": "ログアウト"
@@ -948,9 +945,45 @@
     "message": "拡張機能に戻ってもう一度ログインしてください（{code}）。"
   },
   "welcomeTitle": {
-    "message": "インストール完了！"
+    "message": "BiBoost へようこそ！"
   },
   "welcomeBody": {
-    "message": "bilibili の動画を開くと、BiBoost が自動で速いノードに切り替えます。設定はブラウザ右上の拡張機能アイコンから変更できます。"
+    "message": "海外でも bilibili がサクサク再生。インストールするだけで、設定は不要です。"
+  },
+  "cloudCancel": {
+    "message": "キャンセル"
+  },
+  "cloudLater": {
+    "message": "あとで"
+  },
+  "cloudWelcomeHint": {
+    "message": "以前に BiBoost を使っていましたか？ログインすると、クラウドにバックアップした設定を引き継げます。"
+  },
+  "cloudManage": {
+    "message": "管理"
+  },
+  "cloudAdvHint": {
+    "message": "設定をクラウドにバックアップして、パソコンの買い替えや再インストール後に復元できます。"
+  },
+  "cloudAutoOn": {
+    "message": "自動同期はオンです"
+  },
+  "cloudAutoOff": {
+    "message": "自動同期はオフです"
+  },
+  "authBack": {
+    "message": "戻る"
+  },
+  "welcomeTip1": {
+    "message": "bilibili の動画を開くと、BiBoost が自動で速いノードに切り替えます"
+  },
+  "welcomeTip2": {
+    "message": "動画が止まったら、裏で速度を測ってもっと速いノードに切り替えます"
+  },
+  "welcomeTip3": {
+    "message": "ブラウザ右上のパズルアイコンから BiBoost をツールバーに固定すると、あとで設定を変更できます"
+  },
+  "cloudStart": {
+    "message": "はじめる"
   }
 }

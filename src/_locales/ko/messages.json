@@ -873,7 +873,7 @@
     "message": "Google로 로그인"
   },
   "cloudLoginOpened": {
-    "message": "새 탭에서 Google 로그인을 열었습니다. 완료한 뒤 여기로 돌아오세요."
+    "message": "Google 로그인 창을 열었습니다. 완료한 뒤 여기로 돌아오세요."
   },
   "cloudSignedInAs": {
     "message": "로그인됨: {email}"
@@ -885,7 +885,7 @@
     "message": "이 컴퓨터의 현재 설정으로 클라우드 백업을 덮어씁니다"
   },
   "cloudRestoreBtn": {
-    "message": "클라우드에서 복원"
+    "message": "클라우드에서 설정 복원"
   },
   "cloudRestoreHint": {
     "message": "클라우드 백업으로 이 컴퓨터의 설정을 덮어씁니다"
@@ -904,9 +904,6 @@
   },
   "cloudAutoLabel": {
     "message": "자동 동기화"
-  },
-  "cloudAutoHint": {
-    "message": "설정을 바꾸면 자동으로 클라우드에 백업합니다(현재 노드와 국가 포함)."
   },
   "cloudLogout": {
     "message": "로그아웃"
@@ -948,9 +945,45 @@
     "message": "확장 프로그램으로 돌아가 다시 로그인해 주세요({code})."
   },
   "welcomeTitle": {
-    "message": "설치 완료!"
+    "message": "BiBoost에 오신 것을 환영합니다!"
   },
   "welcomeBody": {
-    "message": "bilibili 영상을 열면 BiBoost가 자동으로 더 빠른 노드로 바꿉니다. 브라우저 오른쪽 위의 확장 프로그램 아이콘을 눌러 설정을 바꿀 수 있습니다."
+    "message": "해외에서도 bilibili를 끊김 없이. 설치만 하면 바로 작동하고 따로 설정할 필요가 없습니다."
+  },
+  "cloudCancel": {
+    "message": "취소"
+  },
+  "cloudLater": {
+    "message": "나중에"
+  },
+  "cloudWelcomeHint": {
+    "message": "전에 BiBoost를 사용하셨나요? 로그인하면 클라우드에 백업한 설정을 가져올 수 있습니다."
+  },
+  "cloudManage": {
+    "message": "관리"
+  },
+  "cloudAdvHint": {
+    "message": "설정을 클라우드에 백업해 컴퓨터를 바꾸거나 다시 설치해도 복원할 수 있습니다."
+  },
+  "cloudAutoOn": {
+    "message": "자동 동기화 켜짐"
+  },
+  "cloudAutoOff": {
+    "message": "자동 동기화 꺼짐"
+  },
+  "authBack": {
+    "message": "돌아가기"
+  },
+  "welcomeTip1": {
+    "message": "bilibili 영상을 열면 BiBoost가 자동으로 더 빠른 노드로 바꿉니다"
+  },
+  "welcomeTip2": {
+    "message": "영상이 멈추면 백그라운드에서 속도를 측정해 더 빠른 노드로 바꿉니다"
+  },
+  "welcomeTip3": {
+    "message": "브라우저 오른쪽 위의 퍼즐 아이콘에서 BiBoost를 도구 모음에 고정하면 나중에 설정을 바꿀 수 있습니다"
+  },
+  "cloudStart": {
+    "message": "시작하기"
   }
 }

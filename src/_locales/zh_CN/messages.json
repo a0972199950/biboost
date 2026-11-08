@@ -873,7 +873,7 @@
     "message": "使用 Google 登录"
   },
   "cloudLoginOpened": {
-    "message": "已在新标签页打开 Google 登录，完成后回到这里即可。"
+    "message": "已打开 Google 登录窗口，完成后回到这里即可。"
   },
   "cloudSignedInAs": {
     "message": "已登录：{email}"
@@ -885,7 +885,7 @@
     "message": "用这台电脑当前的设置覆盖云端的备份"
   },
   "cloudRestoreBtn": {
-    "message": "从云端同步到本地"
+    "message": "从云端恢复设置"
   },
   "cloudRestoreHint": {
     "message": "用云端的备份覆盖这台电脑的设置"
@@ -904,9 +904,6 @@
   },
   "cloudAutoLabel": {
     "message": "自动同步"
-  },
-  "cloudAutoHint": {
-    "message": "设置一改就自动备份到云端（包含当前节点与国家）。"
   },
   "cloudLogout": {
     "message": "退出登录"
@@ -948,9 +945,45 @@
     "message": "请回到扩展重新登录（{code}）"
   },
   "welcomeTitle": {
-    "message": "安装完成！"
+    "message": "欢迎使用哔速！"
   },
   "welcomeBody": {
-    "message": "打开任意 B 站视频，BiBoost 就会自动换成较快的节点。点击浏览器右上角的扩展图标可以调整设置。"
+    "message": "在海外看 B 站不再卡顿。装好就能用，不用另外设置。"
+  },
+  "cloudCancel": {
+    "message": "取消"
+  },
+  "cloudLater": {
+    "message": "以后再说"
+  },
+  "cloudWelcomeHint": {
+    "message": "之前用过哔速吗？登录就能把云端备份的设置搬过来。"
+  },
+  "cloudManage": {
+    "message": "管理"
+  },
+  "cloudAdvHint": {
+    "message": "把设置备份到云端，换电脑或重装扩展都能恢复。"
+  },
+  "cloudAutoOn": {
+    "message": "自动同步已开启"
+  },
+  "cloudAutoOff": {
+    "message": "自动同步未开启"
+  },
+  "authBack": {
+    "message": "返回"
+  },
+  "welcomeTip1": {
+    "message": "打开任意 B 站视频，哔速会自动换到较快的节点"
+  },
+  "welcomeTip2": {
+    "message": "视频卡住时，会在后台测速、换到更快的节点"
+  },
+  "welcomeTip3": {
+    "message": "点击浏览器右上角的拼图图标，把哔速固定到工具栏，之后点它就能调整设置"
+  },
+  "cloudStart": {
+    "message": "开始使用"
   }
 }
