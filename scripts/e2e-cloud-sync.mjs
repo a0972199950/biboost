@@ -233,7 +233,9 @@ async function scenarioOn() {
     await pa.click("#cloudAdvBtn");
     await pa.waitForSelector(".bbcMask .bbcBtn", { timeout: 15000 });
     await until(async () => (await text(pa, ".bbcMask .bbcEmail")).includes(EMAIL), 10000);
-    // 兩顆按鈕一樣、滑過會變色
+    // 兩顆按鈕一樣、滑過會變色（先把滑鼠移開、等變色過渡結束，免得剛好停在其中一顆上）
+    await pa.mouse.move(1, 1);
+    await sleep(400);
     const look = await pa.$$eval(".bbcMask .bbcBtn", (bs) => bs.map((b) => { const s = getComputedStyle(b); return s.backgroundColor + "|" + s.borderColor + "|" + s.color + "|" + s.fontWeight; }));
     check("視窗裡「備份到雲端」「從雲端恢復設定」樣式一樣（沒有主按鈕）", look.length === 2 && look[0] === look[1], look.join(" vs "));
     await pa.hover(".bbcMask .bbcBtn");
