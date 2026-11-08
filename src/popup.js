@@ -106,7 +106,8 @@ document.documentElement.lang = uiLanguage();
   ["staleTitle", "staleTabTitle"], ["stGuideTitle", "stGuideTitle"], ["stGuideText", "stGuideText"], ["stGuideBtn", "stGuideBtn"], ["staleText", "staleTabText"], ["staleReloadBtn", "staleTabReloadBtn"],
   ["customAddBtn", "customAddBtn"], ["customClearBtn", "customClearBtn"], ["resetAllBtn", "resetAllBtn"],
   ["wnSubtitle", "whatsNewSubtitle"], ["wnClose", "whatsNewClose"],
-  ["lfTitle", "listFailTitle"], ["lfBody", "listFailBody"]
+  ["lfTitle", "listFailTitle"], ["lfBody", "listFailBody"],
+  ["cloudAdvLabel", "cloudTitle"], ["cloudAdvBtn", "cloudManage"], ["cloudAdvHint", "cloudAdvHint"]
 ].forEach(function (pair) { document.getElementById(pair[0]).textContent = t(pair[1]); });
 // -------- 介面語言（進階設定第一項）--------
 // 選項存 localStorage（i18n.js 開頭同步讀）＋ chrome.storage.local 的 uiLang / uiMsgs（bridge.js 的頁內提示用，uiMsgs 為 null = 跟隨瀏覽器）。
@@ -136,6 +137,7 @@ chrome.storage.local.get({ uiLang: "auto", uiMsgs: null }, function (items) {
   if (v === "auto" && uiLangPref === "auto" && window.uiAutoLang && !items.uiMsgs) chrome.storage.local.set({ uiMsgs: window.uiMessages });
   if (v === uiLangPref || (v !== "auto" && UI_LANGS.indexOf(v) < 0)) return;
   setUiLangPref(v);
+  chrome.storage.local.set({ uiMsgs: uiMessagesFor(v) }); // 語言是別處改的（例如雲端自動同步）：頁內提示的文案也換掉
   try { if (window.localStorage.getItem("uiLang") === v) location.reload(); } catch (e) {}
 });
 // -------- 外觀主題（進階設定第二項）：跟隨系統／明亮／黑暗 --------
@@ -531,16 +533,60 @@ function setDonateVisible(on) {
 }
 // 2.9.x 以前存的贊助開關快取，改用 features.js 之後用不到了
 chrome.storage.local.remove("donateConfig");
+var donateByFlag = false; // 贊助按鈕跟著功能開關（Safari 寫死不顯示、開發中只給開發版）
 if (detectBrowser() !== "safari") {
   if (!DONATE_DEV_ONLY) {
     bindDonateBtn(false);
     setDonateVisible(true);
-    BBFeatures.watch(function (flags) { setDonateVisible(BBFeatures.enabled(flags, "donate")); });
+    donateByFlag = true;
   } else if (chrome.management && chrome.management.getSelf) {
     chrome.management.getSelf(function (self) { if (self && self.installType === "development") { bindDonateBtn(true); setDonateVisible(true); } });
   }
 }
 syncRateRow();
+// 雲端備份（cloud.js／cloud-ui.js）：只在進階設定，是 debug 疊層上面的一張選項卡片（右邊「管理」打開視窗，
+// 說明底下一列：左邊登入的 email 或「未登入」，右邊「自動同步」：登入且開著＝綠色圓圈勾，其他＝灰色）。
+// 能不能用看 BBFeatures.check：功能開關 cloud_sync 關閉（off）時都收起來；其他不能用的情況由 BBFeatures.mark 標示在按鈕上
+// 從 popup 的雲端備份視窗登入：登入視窗那頭換完 token 後，background 關掉登入視窗、重新打開 popup，並留下 cloudOpenOnPopup（時間）；
+// popup 看到就直接打開進階設定與雲端備份視窗（使用者要求：登入完只留 popup 這一個，不要登入視窗裡再一個）
+var OPEN_ON_POPUP_MS = 60 * 1000;
+function setCloudVisible(r) {
+  var on = r.reason !== "off";
+  document.getElementById("cloudAdvItem").style.display = on ? "" : "none";
+  if (on) BBFeatures.mark(document.getElementById("cloudAdvBtn"), r);
+  if (!on || !r.ok) return;
+  chrome.storage.local.get("cloudOpenOnPopup", function (s) {
+    var at = s && s.cloudOpenOnPopup;
+    if (!at) return;
+    chrome.storage.local.remove("cloudOpenOnPopup");
+    if (Date.now() - at > OPEN_ON_POPUP_MS || document.querySelector(".bbcMask")) return;
+    showAdvancedView();
+    BBCloudUI.open();
+  });
+}
+document.getElementById("cloudAdvBtn").addEventListener("click", function () { BBCloudUI.open(); });
+function showCloudState() {
+  if (typeof BBCloud === "undefined") return;
+  BBCloud.status().then(function (st) {
+    var on = !!(st.account && st.sync && st.sync.auto);
+    document.getElementById("cloudWho").textContent = st.account ? (st.account.email || "—") : t("cloudNotSignedIn");
+    document.getElementById("cloudState").classList.toggle("on", on);
+    document.getElementById("cloudStateText").textContent = t("cloudAutoLabel");
+  });
+}
+showCloudState();
+try { chrome.storage.onChanged.addListener(function (ch, area) { if (area === "local" && (ch.cloudAccount || ch.cloudSync)) showCloudState(); }); } catch (e) {}
+BBFeatures.watch(function (flags) {
+  if (donateByFlag) setDonateVisible(BBFeatures.enabled(flags, "donate"));
+  BBFeatures.check(flags, "cloud_sync").then(setCloudVisible);
+});
+// 視窗裡按「從雲端恢復設定」把雲端的設定寫進 storage 後，popup 畫面還是打開時讀的舊值：重新載入（等打勾動畫播完、視窗關掉）
+try {
+  chrome.storage.onChanged.addListener(function (ch, area) {
+    if (area !== "local" || !ch.cloudAppliedAt) return;
+    (function reloadWhenIdle() { if (document.querySelector(".bbcMask")) setTimeout(reloadWhenIdle, 200); else location.reload(); })();
+  });
+} catch (e) {}
 // 問題回報：一律由 background 開成獨立視窗（report.html），帶上目前分頁 id 讓回報頁能向 B 站頁面要此刻的快照；popup 隨即關閉
 els.feedbackBtn.style.display = "";
 els.feedbackBtn.addEventListener("click", function () {

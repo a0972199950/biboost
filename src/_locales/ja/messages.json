@@ -856,5 +856,125 @@
   },
   "donateEmailBad": {
     "message": "メールアドレスの形式が正しくありません"
+  },
+  "cloudBtn": {
+    "message": "クラウドバックアップ"
+  },
+  "cloudTitle": {
+    "message": "クラウドバックアップ"
+  },
+  "cloudClose": {
+    "message": "閉じる"
+  },
+  "cloudLoginHint": {
+    "message": "ログインすると設定をクラウドにバックアップでき、パソコンの買い替えや再インストール後に復元できます。アカウントは BiBoost モバイルアプリと共通です。"
+  },
+  "cloudLoginGoogle": {
+    "message": "Google でログイン"
+  },
+  "cloudLoginOpened": {
+    "message": "Google ログインのウィンドウを開きました。完了したらここに戻ってください。"
+  },
+  "cloudSignedInAs": {
+    "message": "ログイン中：{email}"
+  },
+  "cloudBackupBtn": {
+    "message": "クラウドにバックアップ"
+  },
+  "cloudBackupHint": {
+    "message": "このパソコンの現在の設定でクラウドのバックアップを上書きします"
+  },
+  "cloudRestoreBtn": {
+    "message": "クラウドから設定を復元"
+  },
+  "cloudRestoreHint": {
+    "message": "クラウドのバックアップでこのパソコンの設定を上書きします"
+  },
+  "cloudLastBackup": {
+    "message": "前回のバックアップ：{time}"
+  },
+  "cloudNoBackup": {
+    "message": "クラウドにはまだバックアップがありません"
+  },
+  "cloudAutoLabel": {
+    "message": "自動同期"
+  },
+  "cloudLogout": {
+    "message": "ログアウト"
+  },
+  "cloudBackupDone": {
+    "message": "クラウドにバックアップしました"
+  },
+  "cloudRestoreDone": {
+    "message": "クラウドから復元しました"
+  },
+  "cloudWorking": {
+    "message": "処理中…"
+  },
+  "cloudErrNetwork": {
+    "message": "サーバーに接続できません。しばらくしてからお試しください。"
+  },
+  "cloudErrNoBackup": {
+    "message": "クラウドにはまだバックアップがありません"
+  },
+  "cloudErrLogin": {
+    "message": "ログインの有効期限が切れました。もう一度ログインしてください。"
+  },
+  "cloudErrUnavailable": {
+    "message": "クラウドバックアップは現在利用できません"
+  },
+  "cloudErrGeneric": {
+    "message": "エラーが発生しました（{code}）。しばらくしてからお試しください。"
+  },
+  "authTitle": {
+    "message": "BiBoost にログイン"
+  },
+  "authDone": {
+    "message": "ログインしました"
+  },
+  "authFail": {
+    "message": "ログインに失敗しました"
+  },
+  "authFailHint": {
+    "message": "拡張機能に戻ってもう一度ログインしてください（{code}）。"
+  },
+  "welcomeTitle": {
+    "message": "BiBoost へようこそ！"
+  },
+  "welcomeBody": {
+    "message": "海外でも bilibili がサクサク再生。インストールするだけで、設定は不要です。"
+  },
+  "cloudCancel": {
+    "message": "キャンセル"
+  },
+  "cloudLater": {
+    "message": "あとで"
+  },
+  "cloudWelcomeHint": {
+    "message": "以前に BiBoost を使っていましたか？ログインすると、クラウドにバックアップした設定を引き継げます。"
+  },
+  "cloudManage": {
+    "message": "管理"
+  },
+  "cloudAdvHint": {
+    "message": "設定をクラウドにバックアップして、パソコンの買い替えや再インストール後に復元できます。"
+  },
+  "authBack": {
+    "message": "戻る"
+  },
+  "cloudStart": {
+    "message": "はじめる"
+  },
+  "cloudRestoreAsk": {
+    "message": "クラウドから設定を復元しますか？"
+  },
+  "cloudRestoreShort": {
+    "message": "クラウドから復元"
+  },
+  "cloudNotSignedIn": {
+    "message": "未ログイン"
+  },
+  "welcomeSkipStart": {
+    "message": "スキップしてはじめる"
   }
 }
