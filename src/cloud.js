@@ -12,7 +12,7 @@
 // 兩種用法（使用者在雲端備份視窗自選）：
 //   手動：「備份到雲端」「從雲端同步到本地」兩顆按鈕。
 //   自動同步：background 監看設定變動，2 秒後上傳；每 15 分鐘＋打開 popup 時拉一次。兩台同時改不同欄位都保留、同一欄位後送的贏（rev 樂觀鎖＋欄位層級合併）。
-//     目前節點與國家（DEVICE_FIELDS）不自動同步：每台電腦最快的節點不同，自動同步會互相蓋掉；手動備份／還原才包含。
+//     目前節點與國家也一起同步（使用者決定：自動備份就是隨時備份一切）；拉下來的節點／國家跟還原一樣視為「不是新使用者」。
 // storage.local：
 //   cloudAccount = { api, token, email }：登入狀態（token 沒有到期日，登出時作廢）
 //   cloudAuthPending = { api, state, verifier, t }：登入進行中（auth.html 驗 state、拿 verifier 換 token）
@@ -22,7 +22,6 @@ var BBCloud = (function () {
   var EXT_FIELDS = ["enabled", "cdnMode", "cdnCountry", "cdnHost", "videoEnabled", "liveEnabled", "liveRoute", "autoFallback", "showDebug", "sortBySpeed",
     "stVideoMb", "stVideoSec", "stLiveRuns", "stLiveSec", "stVideoPreset", "stLivePreset", "uiLang", "uiTheme", "reportHistory"];
   var SHARED_FIELDS = ["customHosts"];
-  var DEVICE_FIELDS = ["cdnCountry", "cdnHost"]; // 自動同步不碰
   var NS_OF = {};
   EXT_FIELDS.forEach(function (k) { NS_OF[k] = "extension"; });
   SHARED_FIELDS.forEach(function (k) { NS_OF[k] = "shared"; });
@@ -252,7 +251,7 @@ var BBCloud = (function () {
   }
 
   // ---- 自動同步（background）----
-  var AUTO_FIELDS = EXT_FIELDS.concat(SHARED_FIELDS).filter(function (k) { return DEVICE_FIELDS.indexOf(k) < 0; });
+  var AUTO_FIELDS = EXT_FIELDS.concat(SHARED_FIELDS);
   var pushTimer = null;
   var chain = Promise.resolve(); // 推、拉一律排隊，不同時進行
   function queue(fn) { chain = chain.then(fn, fn).catch(function () {}); return chain; }
@@ -313,7 +312,7 @@ var BBCloud = (function () {
       });
     });
   }
-  // 拉：雲端 rev 比上次同步的新 → 套用（dirty 與 DEVICE_FIELDS 除外）。first：剛打開自動同步，之後把本機有、雲端沒有的欄位推上去
+  // 拉：雲端 rev 比上次同步的新 → 套用（dirty 除外）。first：剛打開自動同步，之後把本機有、雲端沒有的欄位推上去
   function pull(opts) {
     opts = opts || {};
     return queue(function () {
@@ -321,7 +320,7 @@ var BBCloud = (function () {
         var c = a[0];
         if (!c.auto || !a[1]) return { applied: 0 };
         return docs().then(function (all) {
-          var skip = DEVICE_FIELDS.concat(c.dirty), patch = {}, applied = 0;
+          var skip = c.dirty.slice(), patch = {}, applied = 0;
           ["shared", "extension"].forEach(function (ns) {
             var d = docOf(all, ns);
             if (d.rev > (c.rev[ns] || 0) || opts.first) {
@@ -343,7 +342,11 @@ var BBCloud = (function () {
               });
             });
           }
+          // 拉到節點或國家＝跟還原一樣不是新使用者：IP 選國家、安裝後的自動優化都不要再蓋掉它
+          var nodeFromCloud = patch.cdnCountry !== undefined || patch.cdnHost !== undefined;
+          if (nodeFromCloud) { patch.countryAutoDone = true; patch.installTestPending = false; }
           return after.then(function () { return saveSync(c); })
+            .then(function () { return nodeFromCloud ? remove("cdnListPending") : null; })
             .then(function () { return applied ? set(patch) : null; })
             .then(function () { if (c.dirty.length) setTimeout(push, 0); return { applied: applied }; });
         }).catch(function (e) { return syncState().then(function (now) { now.lastErr = e.code || "error"; return saveSync(now); }).then(function () { return { applied: 0, error: e.code }; }); });
@@ -360,7 +363,7 @@ var BBCloud = (function () {
     apiBase: apiBase, account: account, status: status, loginUrl: loginUrl, startLogin: startLogin, finishLogin: finishLogin, logout: logout,
     remoteInfo: remoteInfo, backup: backup, restore: restore, setAuto: setAuto, push: push, pull: pull, onLocalChange: onLocalChange, attachBackground: attachBackground,
     collect: collect, patchFrom: patchFrom, lastBackup: lastBackup, challengeOf: challengeOf,
-    EXT_FIELDS: EXT_FIELDS, SHARED_FIELDS: SHARED_FIELDS, DEVICE_FIELDS: DEVICE_FIELDS, PULL_ALARM: PULL_ALARM, PUSH_DELAY_MS: PUSH_DELAY_MS
+    EXT_FIELDS: EXT_FIELDS, SHARED_FIELDS: SHARED_FIELDS, PULL_ALARM: PULL_ALARM, PUSH_DELAY_MS: PUSH_DELAY_MS
   };
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") globalThis.__BCS_TEST__.register("cloud", api);
