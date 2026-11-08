@@ -147,7 +147,6 @@ if (chrome.runtime.onStartup) {
     Promise.all([BBCdnList.load(), storageGet("cdnListPending")]).then(function (arr) {
       if (!arr[0] || arr[1].cdnListPending) refreshList(true);
     });
-    BBCloud.pull(); // 自動同步開著才會真的拉
   });
 }
 
@@ -273,7 +272,6 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   // bridge（B 站頁面）、popup 打開時：檢查有沒有新清單（6 小時內不重問）；force＝popup 遮罩的「重試」與每 10 秒的自動重試
   // 雲端備份：popup 的自動同步開關、popup 打開時拉一次（沒開自動同步就什麼都不做）
   if (msg.type === "CDN_SWITCHER_CLOUD_AUTO") { BBCloud.setAuto(!!msg.on).then(function () { sendResponse({ ok: true }); }, function (e) { sendResponse({ error: (e && e.code) || "error" }); }); return true; }
-  if (msg.type === "CDN_SWITCHER_CLOUD_PULL") { BBCloud.pull().then(function (r) { sendResponse(r || {}); }); return true; }
   if (msg.type === "CDN_SWITCHER_CDN_LIST") { refreshList(!!msg.force).then(function (r) { sendResponse({ ok: !!r.ok, changed: !!r.changed }); }); return true; }
   if (msg.type === "CDN_SWITCHER_JOURNAL" && msg.entry && typeof msg.entry.k === "string") {
     var e = { t: Number(msg.entry.t) || Date.now(), tab: tabId, k: msg.entry.k, d: msg.entry.d || {} };

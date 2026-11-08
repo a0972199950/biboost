@@ -11,13 +11,14 @@
 //   上傳時保留雲端上這份裡本擴充不認得的欄位（新版本或 App 加的），只蓋掉自己的欄位。
 // 兩種用法（使用者在雲端備份視窗自選）：
 //   手動：「備份到雲端」「從雲端同步到本地」兩顆按鈕。
-//   自動同步：background 監看設定變動，2 秒後上傳；每 15 分鐘＋打開 popup 時拉一次。兩台同時改不同欄位都保留、同一欄位後送的贏（rev 樂觀鎖＋欄位層級合併）。
-//     目前節點與國家也一起同步（使用者決定：自動備份就是隨時備份一切）；拉下來的節點／國家跟還原一樣視為「不是新使用者」。
+//   自動同步（單向）：打開時先整份備份一次，之後 background 監看設定變動，2 秒後把改了的欄位上傳。不會從雲端拉回來，
+//     別台的設定要靠「從雲端同步到本地」拿（使用者決定：自動同步＝本機改動即時同步到雲端，不是定時雙向同步）。
+//     目前節點與國家也一起上傳（使用者決定：自動備份就是隨時備份一切）。兩台同時改不同欄位都保留（rev 樂觀鎖＋欄位層級合併）。
 // storage.local：
 //   cloudAccount = { api, token, email }：登入狀態（token 沒有到期日，登出時作廢）
 //   cloudAuthPending = { api, state, verifier, t }：登入進行中（auth.html 驗 state、拿 verifier 換 token）
 //   cloudSync = { auto, rev: { ns: n }, snap: { 欄位: JSON }, dirty: [欄位], lastUp, lastDown, lastErr }
-//   cloudAppliedAt：雲端的設定（還原、自動同步拉到的）寫進本機的時間；popup 看到它變了就重新載入，畫面才會是新的設定
+//   cloudAppliedAt：還原（從雲端同步到本地）寫進本機的時間；popup 開著時看到它變了就重新載入，畫面才會是新的設定
 var BBCloud = (function () {
   var API = { prod: "https://api.biboost.app", dev: "https://api-staging.biboost.app" };
   var EXT_FIELDS = ["enabled", "cdnMode", "cdnCountry", "cdnHost", "videoEnabled", "liveEnabled", "liveRoute", "autoFallback", "showDebug", "sortBySpeed",
@@ -28,8 +29,6 @@ var BBCloud = (function () {
   SHARED_FIELDS.forEach(function (k) { NS_OF[k] = "shared"; });
   var CLIENT = "extension";
   var PUSH_DELAY_MS = 2000;
-  var PULL_ALARM = "cloudSyncPull";
-  var PULL_MIN = 15;
   var PENDING_MAX_MS = 30 * 60 * 1000;
 
   function get(keys) { return new Promise(function (r) { chrome.storage.local.get(keys, function (s) { r(s || {}); }); }); }
@@ -132,7 +131,7 @@ var BBCloud = (function () {
       var done = function () { return Promise.all([remove(["cloudAccount", "cloudAuthPending"]), get("cloudSync").then(function (s) {
         var c = s.cloudSync || {};
         return set({ cloudSync: { auto: false, rev: {}, snap: {}, dirty: [], lastUp: c.lastUp || 0, lastDown: c.lastDown || 0 } });
-      })]).then(function () { stopAutoAlarm(); }); };
+      })]); };
       if (!acc) return done();
       return request("POST", "/auth/logout", {}, acc.token).catch(function () {}).then(done);
     });
@@ -236,7 +235,8 @@ var BBCloud = (function () {
       c.dirty = [];
       c.lastDown = Date.now();
       c.lastErr = "";
-      return remove("cdnListPending").then(function () { return set(patch); }).then(function () { return saveSync(c); }).then(function () { return { fields: Object.keys(patch).length }; });
+      // 先存同步狀態（snap＝還原後的值）再寫設定：自動同步開著時，background 看到的變動跟 snap 一樣，不會再傳回去
+      return remove("cdnListPending").then(function () { return saveSync(c); }).then(function () { return set(patch); }).then(function () { return { fields: Object.keys(patch).length }; });
     });
   }
   // 語言、主題：popup／歡迎頁有 i18n.js、theme.js 時順便寫進它們的 localStorage 與 uiMsgs（bridge 頁內提示用）；
@@ -252,27 +252,27 @@ var BBCloud = (function () {
     }
   }
 
-  // ---- 自動同步（background）----
+  // ---- 自動同步（background）：單向，本機一改就上傳到雲端 ----
+  // 不會從雲端拉回來（使用者決定：自動同步＝把本機的改動即時同步到雲端）。要拿雲端的設定用「從雲端同步到本地」（restore）。
   var AUTO_FIELDS = EXT_FIELDS.concat(SHARED_FIELDS);
   var pushTimer = null;
-  var chain = Promise.resolve(); // 推、拉一律排隊，不同時進行
-  function queue(fn) { chain = chain.then(fn, fn).catch(function () {}); return chain; }
+  var chain = Promise.resolve(); // 上傳一律排隊，不同時進行
+  function queue(fn) { var p = chain.then(fn, fn); chain = p.catch(function () {}); return p; }
 
-  // 打開自動同步：先拉（雲端有的欄位以雲端為準），再把雲端沒有的欄位推上去
+  // 打開自動同步：先把本機目前的設定整份備份上去（之後只送改了的欄位）；備份失敗就維持關閉
   function setAuto(on) {
     return syncState().then(function (c) {
       c.auto = !!on;
-      if (!on) { c.dirty = []; return saveSync(c).then(function () { stopAutoAlarm(); }); }
-      return saveSync(c).then(function () { startAutoAlarm(); return pull({ first: true }); });
+      c.dirty = [];
+      return saveSync(c);
+    }).then(function () {
+      if (!on) return;
+      return queue(backup).catch(function (e) {
+        return syncState().then(function (c) { c.auto = false; return saveSync(c); }).then(function () { throw e; });
+      });
     });
   }
-  function startAutoAlarm() {
-    try { if (chrome.alarms && chrome.alarms.create) chrome.alarms.create(PULL_ALARM, { delayInMinutes: PULL_MIN, periodInMinutes: PULL_MIN }); } catch (e) {}
-  }
-  function stopAutoAlarm() {
-    try { if (chrome.alarms && chrome.alarms.clear) chrome.alarms.clear(PULL_ALARM, function () { void chrome.runtime.lastError; }); } catch (e) {}
-  }
-  // storage 變動（background 的 onChanged）→ 跟上次同步的值不同的欄位記成 dirty，2 秒後上傳
+  // storage 變動（background 的 onChanged）→ 跟上次上傳的值不同的欄位記成 dirty，2 秒後上傳
   function onLocalChange(changes) {
     var keys = Object.keys(changes).filter(function (k) { return AUTO_FIELDS.indexOf(k) >= 0; });
     if (!keys.length) return Promise.resolve(false);
@@ -289,6 +289,7 @@ var BBCloud = (function () {
       });
     });
   }
+  // 上傳 dirty 欄位：以雲端目前那份為底（保留別台、App 的欄位），只蓋掉改了的欄位
   function push() {
     return queue(function () {
       return Promise.all([syncState(), account()]).then(function (a) {
@@ -307,66 +308,24 @@ var BBCloud = (function () {
               now.dirty = now.dirty.filter(function (k) { return dirty.indexOf(k) < 0 || J(items[k]) !== c.snap[k]; });
               now.rev = c.rev; for (var k in c.snap) now.snap[k] = c.snap[k];
               now.lastUp = Date.now(); now.lastErr = "";
-              return saveSync(now);
+              return saveSync(now).then(function () { if (now.dirty.length) setTimeout(push, PUSH_DELAY_MS); });
             });
           });
         }).catch(function (e) { return syncState().then(function (now) { now.lastErr = e.code || "error"; return saveSync(now); }); });
       });
     });
   }
-  // 拉：雲端 rev 比上次同步的新 → 套用（dirty 除外）。first：剛打開自動同步，之後把本機有、雲端沒有的欄位推上去
-  function pull(opts) {
-    opts = opts || {};
-    return queue(function () {
-      return Promise.all([syncState(), account()]).then(function (a) {
-        var c = a[0];
-        if (!c.auto || !a[1]) return { applied: 0 };
-        return docs().then(function (all) {
-          var skip = c.dirty.slice(), patch = {}, applied = 0;
-          ["shared", "extension"].forEach(function (ns) {
-            var d = docOf(all, ns);
-            if (d.rev > (c.rev[ns] || 0) || opts.first) {
-              var p = patchFrom(all, skip.concat(ns === "shared" ? EXT_FIELDS : SHARED_FIELDS));
-              for (var k in p) { if (J(p[k]) !== c.snap[k] || opts.first) { patch[k] = p[k]; } c.snap[k] = J(p[k]); }
-            }
-            c.rev[ns] = d.rev;
-          });
-          applied = Object.keys(patch).length;
-          applyUiPrefs(patch);
-          c.lastDown = Date.now(); c.lastErr = "";
-          var after = Promise.resolve();
-          if (opts.first) {
-            // 本機有、雲端沒有的欄位 → 推上去
-            after = collect(AUTO_FIELDS).then(function (local) {
-              ["shared", "extension"].forEach(function (ns) {
-                var data = docOf(all, ns).data;
-                for (var k in local[ns]) if (data[k] === undefined && c.dirty.indexOf(k) < 0) c.dirty.push(k);
-              });
-            });
-          }
-          // 拉到節點或國家＝跟還原一樣不是新使用者：IP 選國家、安裝後的自動優化都不要再蓋掉它
-          var nodeFromCloud = patch.cdnCountry !== undefined || patch.cdnHost !== undefined;
-          if (nodeFromCloud) { patch.countryAutoDone = true; patch.installTestPending = false; }
-          if (applied) patch.cloudAppliedAt = Date.now();
-          return after.then(function () { return saveSync(c); })
-            .then(function () { return nodeFromCloud ? remove("cdnListPending") : null; })
-            .then(function () { return applied ? set(patch) : null; })
-            .then(function () { if (c.dirty.length) setTimeout(push, 0); return { applied: applied }; });
-        }).catch(function (e) { return syncState().then(function (now) { now.lastErr = e.code || "error"; return saveSync(now); }).then(function () { return { applied: 0, error: e.code }; }); });
-      });
-    });
-  }
-  // background 呼叫一次：接上 storage 變動、定時拉
+  // background 呼叫一次：接上 storage 變動；service worker 被收掉前還沒送出的改動，醒來時補送
   function attachBackground() {
     chrome.storage.onChanged.addListener(function (changes, area) { if (area === "local") onLocalChange(changes); });
-    if (chrome.alarms && chrome.alarms.onAlarm) chrome.alarms.onAlarm.addListener(function (al) { if (al && al.name === PULL_ALARM) { push(); pull(); } });
+    push();
   }
 
   var api = {
     apiBase: apiBase, account: account, status: status, loginUrl: loginUrl, startLogin: startLogin, finishLogin: finishLogin, logout: logout,
-    remoteInfo: remoteInfo, backup: backup, restore: restore, setAuto: setAuto, push: push, pull: pull, onLocalChange: onLocalChange, attachBackground: attachBackground,
+    remoteInfo: remoteInfo, backup: backup, restore: restore, setAuto: setAuto, push: push, onLocalChange: onLocalChange, attachBackground: attachBackground,
     collect: collect, patchFrom: patchFrom, lastBackup: lastBackup, challengeOf: challengeOf,
-    EXT_FIELDS: EXT_FIELDS, SHARED_FIELDS: SHARED_FIELDS, PULL_ALARM: PULL_ALARM, PUSH_DELAY_MS: PUSH_DELAY_MS
+    EXT_FIELDS: EXT_FIELDS, SHARED_FIELDS: SHARED_FIELDS, PUSH_DELAY_MS: PUSH_DELAY_MS
   };
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") globalThis.__BCS_TEST__.register("cloud", api);

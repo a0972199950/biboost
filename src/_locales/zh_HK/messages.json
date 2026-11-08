@@ -906,7 +906,7 @@
     "message": "自動同步"
   },
   "cloudAutoHint": {
-    "message": "設定一改就自動備份（包括目前節點同國家），每 15 分鐘由雲端更新一次。"
+    "message": "設定一改就自動備份到雲端（包括目前節點同國家）。"
   },
   "cloudLogout": {
     "message": "登出"

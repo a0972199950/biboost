@@ -554,10 +554,7 @@ BBFeatures.watch(function (flags) {
   if (donateByFlag) setDonateVisible(BBFeatures.enabled(flags, "donate"));
   setCloudVisible(BBFeatures.enabled(flags, "cloud_sync"));
 });
-// 自動同步開著的話，打開 popup 時先拉一次雲端（background 做；沒開就什麼都不做）
-try { chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CLOUD_PULL" }, function () { void chrome.runtime.lastError; }); } catch (e) {}
-// 雲端的設定（上面這次拉到的、視窗裡按「從雲端同步到本地」）寫進 storage 時，popup 畫面還是打開時讀的舊值：重新載入。
-// 雲端備份視窗開著（還原的打勾動畫）就等它關掉再載入
+// 視窗裡按「從雲端同步到本地」把雲端的設定寫進 storage 後，popup 畫面還是打開時讀的舊值：重新載入（等打勾動畫播完、視窗關掉）
 try {
   chrome.storage.onChanged.addListener(function (ch, area) {
     if (area !== "local" || !ch.cloudAppliedAt) return;
