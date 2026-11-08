@@ -2324,7 +2324,7 @@
     }
 
     /* 節點清單載入失敗：蓋在整個 popup 上、關不掉的遮罩（見 popup.js showListFail）。拿到清單前擴充不啟用；
-       每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示頂端兩角長出一雙委屈的眼睛，一直鞠躬道歉、冒汗，彎到底時眼睛閉成 > <，旁邊是斷線的雲 */
+       每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示頂端兩角長出一雙緊閉成 > < 的眼睛，快速連鞠三個躬（對不起對不起對不起）、汗往兩邊噴，旁邊是斷線的雲 */
     #listFail {
       display: none;
       position: fixed;
@@ -2355,31 +2355,19 @@
       overflow: visible;
     }
 
-    /* 鞠躬：以底部中心為軸往前彎，停一下再起身 */
+    /* 連續鞠躬：以底部中心為軸，快速鞠三個躬再停一下 */
     .lfBow {
       transform-box: view-box;
       transform-origin: 70px 96px;
       animation: lfBow 2.4s ease-in-out infinite;
     }
 
-    /* 眼睛：跟鞠躬同一個節奏，彎到底時閉成 > < */
-    .lfEyesOpen { animation: lfEyesOpen 2.4s ease-in-out infinite; }
-    .lfEyesShut { opacity: 0; animation: lfEyesShut 2.4s ease-in-out infinite; }
-
-    @keyframes lfEyesOpen {
-      0%, 28%, 66%, 100% { opacity: 1; }
-      33%, 61% { opacity: 0; }
-    }
-
-    @keyframes lfEyesShut {
-      0%, 28%, 66%, 100% { opacity: 0; }
-      33%, 61% { opacity: 1; }
-    }
-
-    .lfSweat {
+    .lfSprayL, .lfSprayR {
       transform-box: view-box;
-      animation: lfSweat 2.4s ease-in infinite;
     }
+
+    .lfSprayL { animation: lfSprayL .8s ease-out infinite; }
+    .lfSprayR { animation: lfSprayR .8s ease-out .4s infinite; }
 
     .lfCloud {
       transform-box: view-box;
@@ -2388,17 +2376,25 @@
     }
 
     @keyframes lfBow {
-      0%, 15%, 100% { transform: rotate(0); }
-      35%, 60% { transform: rotate(32deg) translateY(2px); }
-      75% { transform: rotate(-3deg); }
-      85% { transform: rotate(0); }
+      0%, 100% { transform: rotate(0); }
+      8%, 16% { transform: rotate(24deg); }
+      24% { transform: rotate(0); }
+      32%, 40% { transform: rotate(24deg); }
+      48% { transform: rotate(0); }
+      56%, 64% { transform: rotate(24deg); }
+      72% { transform: rotate(0); }
     }
 
-    @keyframes lfSweat {
-      0%, 30% { opacity: 0; transform: translate(0, 0); }
-      40% { opacity: 1; transform: translate(0, 0); }
-      70% { opacity: 0; transform: translate(6px, 18px); }
-      100% { opacity: 0; transform: translate(6px, 18px); }
+    @keyframes lfSprayL {
+      0%, 5% { opacity: 0; transform: translate(0, 0); }
+      12% { opacity: 1; }
+      30%, 100% { opacity: 0; transform: translate(-10px, -6px); }
+    }
+
+    @keyframes lfSprayR {
+      0%, 5% { opacity: 0; transform: translate(0, 0); }
+      12% { opacity: 1; }
+      30%, 100% { opacity: 0; transform: translate(10px, -6px); }
     }
 
     @keyframes lfCloud {
@@ -2407,7 +2403,8 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .lfBow, .lfSweat, .lfCloud, .lfEyesOpen, .lfEyesShut { animation: none; }
+      .lfBow, .lfSprayL, .lfSprayR, .lfCloud { animation: none; }
+      .lfSprayL, .lfSprayR { opacity: 0; }
       .lfBow { transform: rotate(20deg); }
     }
 
@@ -3331,7 +3328,7 @@
           </linearGradient>
         </defs>
         <rect class="optBench" x="10" y="96" width="160" height="4" rx="2" />
-        <!-- 擴充圖示本體（與 scripts/gen-icons.mjs 同一份畫法，不改）＋圖示外的一雙眼睛：鞠躬 -->
+        <!-- 擴充圖示本體（與 scripts/gen-icons.mjs 同一份畫法，不改）＋圖示外的一雙眼睛：連續鞠躬 -->
         <g class="lfBow">
           <g transform="translate(43,42) scale(0.105)">
             <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#lfBg)" />
@@ -3344,38 +3341,18 @@
               <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
             </g>
           </g>
-          <!-- 眼睛：長在圖示外、頂端兩角（像耳朵的位置）。眼皮內高外低（八字、委屈），眼珠往下看；彎到底時閉成 > < -->
-          <g class="lfEyesOpen">
-            <g fill="white" stroke="rgb(235,90,140)" stroke-width="1.6">
-              <circle cx="49" cy="40" r="9" />
-              <circle cx="91" cy="40" r="9" />
-            </g>
-            <g fill="rgb(70,20,40)">
-              <circle cx="50.5" cy="43" r="4.6" />
-              <circle cx="89.5" cy="43" r="4.6" />
-            </g>
-            <g fill="white">
-              <circle cx="52" cy="41.4" r="1.6" /><circle cx="49" cy="45" r=".8" />
-              <circle cx="91" cy="41.4" r="1.6" /><circle cx="88" cy="45" r=".8" />
-            </g>
-            <!-- 下垂的眼皮：用圖示的粉紅色蓋住眼白上半，邊緣內高外低 -->
-            <g fill="rgb(250,120,165)" stroke="rgb(205,60,110)" stroke-width="1.2" stroke-linejoin="round">
-              <path d="M40.2 39.2 A9 9 0 0 1 56.6 33.6 Z" />
-              <path d="M99.8 39.2 A9 9 0 0 0 83.4 33.6 Z" />
-            </g>
+          <!-- 眼睛：長在圖示外、頂端兩角（像耳朵的位置），一直緊閉成 > < -->
+          <g fill="rgb(250,120,165)" stroke="rgb(235,90,140)" stroke-width="1.6">
+            <circle cx="49" cy="40" r="9" />
+            <circle cx="91" cy="40" r="9" />
           </g>
-          <g class="lfEyesShut">
-            <g fill="rgb(250,120,165)" stroke="rgb(235,90,140)" stroke-width="1.6">
-              <circle cx="49" cy="40" r="9" />
-              <circle cx="91" cy="40" r="9" />
-            </g>
-            <g stroke="rgb(70,20,40)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-              <path d="M45 36 L53 40 L45 44" />
-              <path d="M95 36 L87 40 L95 44" />
-            </g>
+          <g stroke="rgb(70,20,40)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M45 36 L53 40 L45 44" />
+            <path d="M95 36 L87 40 L95 44" />
           </g>
-          <!-- 汗珠 -->
-          <path class="lfSweat" d="M101 50 q4 6 0 9 q-4 -3 0 -9z" fill="#4fc3f7" />
+          <!-- 汗珠：往兩邊噴 -->
+          <path class="lfSprayL" d="M38 32 q3 4.5 0 6.8 q-3 -2.3 0 -6.8z" fill="#4fc3f7" />
+          <path class="lfSprayR" d="M102 32 q3 4.5 0 6.8 q-3 -2.3 0 -6.8z" fill="#4fc3f7" />
         </g>
         <!-- 斷線的雲（往右挪一點，鞠躬時眼睛才不會撞到） -->
         <g transform="translate(8,0)"><g class="lfCloud">
