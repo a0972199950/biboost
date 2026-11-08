@@ -973,5 +973,8 @@
   },
   "cloudNotSignedIn": {
     "message": "로그인 안 됨"
+  },
+  "welcomeSkipStart": {
+    "message": "건너뛰고 시작하기"
   }
 }

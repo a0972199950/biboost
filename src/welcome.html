@@ -2,7 +2,8 @@
 <!-- 歡迎頁：全新安裝時 background 一律開成小視窗（跟問題回報一樣）。
      版面跟測速工具（CDNSpeedTest.exe）同一套：白色頁首（圖示＋名稱）、粉紅分隔線、灰底白卡片。
      上面是開場動畫（welcome-hero.js）、大大的歡迎詞與主要賣點；中間是雲端備份面板（功能開關 cloud_sync 開著、而且可以用時才有；
-     cloud-ui.js 的 mount，fresh 模式）；最下面是主按鈕「開始使用」（關掉視窗、打開擴充的 popup 一次）。
+     cloud-ui.js 的 mount，fresh 模式；開著但不能用（例如付費限定）時照樣顯示，按鈕畫鎖頭）；最下面是主按鈕「開始使用」（關掉視窗、打開擴充的 popup 一次）。
+     登入後在問要不要恢復時，「開始使用」換成灰色的「跳過，開始使用」。
      登入後回到這頁時不再顯示歡迎的部分，只留雲端備份（要不要從雲端恢復）與「開始使用」 -->
 <html>
 
@@ -17,11 +18,13 @@
       color-scheme: light;
       --bg: #f4f5f7; --text: #18191c; --muted: #61666d; --border: #e3e5e7; --control-bg: #fff; --raised: #fff;
       --accent: #fb7299; --accent-hover: #e85c86; --accent-text: #fff; --hover-bg: #ffecf1; --danger: #d93025; --link: #00aeec;
+      --gray-btn: #e3e5e7; --gray-btn-hover: #d5d8dc;
     }
     :root[data-theme="dark"] {
       color-scheme: dark;
       --bg: #141416; --text: #eaeaea; --muted: #a3a3aa; --border: rgba(128, 128, 128, .4); --control-bg: rgba(255, 255, 255, .04); --raised: #232326;
       --accent: #00a1d6; --accent-hover: #0090c0; --accent-text: #fff; --hover-bg: rgba(0, 161, 214, .12); --danger: #ff6b6b; --link: #00a1d6;
+      --gray-btn: rgba(255, 255, 255, .1); --gray-btn-hover: rgba(255, 255, 255, .16);
     }
     html, body { margin: 0; }
     body {
@@ -53,6 +56,9 @@
     }
     .start:hover, .start:focus-visible { background: var(--accent-hover); outline: none; }
     .start:disabled { opacity: .6; cursor: default; }
+    /* 登入後在問要不要從雲端恢復時：「跳過，開始使用」是灰色的次按鈕（主色留給「從雲端恢復」） */
+    .start.skip { background: var(--gray-btn); color: var(--text); }
+    .start.skip:hover, .start.skip:focus-visible { background: var(--gray-btn-hover); }
   </style>
 </head>
 
