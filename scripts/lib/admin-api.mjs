@@ -12,6 +12,7 @@
 // ctx：{ local: 是不是本機後台, env: { ADMIN_USER, ADMIN_PASS_HASH, ADMIN_SESSION_KEY, GOOGLE_OAUTH? }, ip, limiter: { get(key), incr(key, ttl 秒) },
 //        translate?: (from, targets, fields) => { 語言: { 欄位 } }（雲端的翻譯；沒給就用本機的 Claude Code） }
 import * as A from "./announcements.mjs";
+import * as C from "./cdn-list-history.mjs";
 import * as D from "./donations.mjs";
 import * as F from "./features.mjs";
 import * as I from "./invites.mjs";
@@ -135,6 +136,10 @@ const ACTIONS = {
   listFeatures: async () => ({ rows: await F.listFeatures() }),
   // patch：{ enabled?, <屬性>? }（格式見 features.mjs 的 validatePatch）
   setFeature: async ([key, patch]) => ({ data: await F.setFeature(String(key || ""), patch) }),
+
+  // ── 節點清單（cdn-list-history.mjs）：只看發布歷史與差異；發布、退回用本機的 npm run cdn-list:*（要用私鑰簽章）──
+  listCdnLists: async () => ({ rows: await C.history(100) }),
+  cdnListDiff: async ([v]) => ({ diff: await C.diffWithPrevious(Number(v)) }),
 };
 
 function json(status, obj, headers = {}) {

@@ -491,6 +491,21 @@
   "optimizingStop": {
     "message": "中止"
   },
+  "listFailTitle": {
+    "message": "申し訳ありません。ノードリストを読み込めませんでした"
+  },
+  "listFailBody": {
+    "message": "サーバーに接続できません。ノードリストを読み込むまで拡張機能はオフになり、bilibili は通常どおり再生されます。ネットワーク接続をご確認ください。"
+  },
+  "listRetryBtn": {
+    "message": "再試行"
+  },
+  "listRetrying": {
+    "message": "再試行中…"
+  },
+  "listRetryIn": {
+    "message": "{n} 秒後に自動で再試行します"
+  },
   "reportTitle": {
     "message": "問題の報告／機能リクエスト"
   },

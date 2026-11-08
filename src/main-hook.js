@@ -24,7 +24,7 @@
   var CFG_KEY = "__CDN_SWITCHER_CFG__";
   var DEFAULTS = {
     enabled: true, // 预设开启
-    cdnHost: "cn-bj-se-01-05.bilivideo.com", // 默认 = cdn-list.json「其他地区」（OTHER）的第一个：跨各国报告 1080P 最稳。'base' (= do not rewrite) is a legacy value: popup.js migrates it to videoEnabled=false, MAIN keeps accepting it for old configs
+    cdnHost: "cn-bj-se-01-05.bilivideo.com", // 占位值：只在这个网域第一次载入、bridge 还没推设定过来的那一瞬间用（bridge 推的是使用者的节点或节点清单的全域预设；没有清单时 enabled=false）。'base' (= do not rewrite) is a legacy value: popup.js migrates it to videoEnabled=false, MAIN keeps accepting it for old configs
     autoFallback: true, // 速度不佳时自动优化节点（卡顿时先在清单里优化、还卡才切 B 站备援；直播切国际线路）：预设开启；网络本身不稳（弱 WiFi 等）的用户可关掉
     showDebug: false, // debug 叠层预设关闭，避免新装用户被打扰
     videoEnabled: true, // 一般影片的「关闭」：false = 不介入影片 CDN 选线（enabled 是总开关，管影片与直播）

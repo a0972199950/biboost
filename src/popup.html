@@ -2323,6 +2323,134 @@
       cursor: pointer;
     }
 
+    /* 節點清單載入失敗：蓋在整個 popup 上、關不掉的遮罩（見 popup.js showListFail）。拿到清單前擴充不啟用；
+       每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示頂端兩角長出一雙緊閉成 > < 的眼睛，快速連鞠三個躬（對不起對不起對不起）、汗往兩邊噴，旁邊是斷線的雲 */
+    #listFail {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0, 0, 0, .55);
+      -webkit-backdrop-filter: blur(3px);
+      backdrop-filter: blur(3px);
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      box-sizing: border-box;
+    }
+
+    :root[data-theme="dark"] #listFail {
+      background: rgba(0, 0, 0, .66);
+    }
+
+    #listFail.show {
+      display: flex;
+    }
+
+    .lfScene {
+      display: block;
+      width: 180px;
+      height: 104px;
+      margin: 0 auto 6px;
+      overflow: visible;
+    }
+
+    /* 連續鞠躬：以底部中心為軸，快速鞠三個躬再停一下 */
+    .lfBow {
+      transform-box: view-box;
+      transform-origin: 70px 96px;
+      animation: lfBow 2.4s ease-in-out infinite;
+    }
+
+    .lfSprayL, .lfSprayR {
+      transform-box: view-box;
+    }
+
+    .lfSprayL { animation: lfSprayL .8s ease-out infinite; }
+    .lfSprayR { animation: lfSprayR .8s ease-out .4s infinite; }
+
+    .lfCloud {
+      transform-box: view-box;
+      transform-origin: 140px 46px;
+      animation: lfCloud 3s ease-in-out infinite;
+    }
+
+    @keyframes lfBow {
+      0%, 100% { transform: rotate(0); }
+      8%, 16% { transform: rotate(24deg); }
+      24% { transform: rotate(0); }
+      32%, 40% { transform: rotate(24deg); }
+      48% { transform: rotate(0); }
+      56%, 64% { transform: rotate(24deg); }
+      72% { transform: rotate(0); }
+    }
+
+    @keyframes lfSprayL {
+      0%, 5% { opacity: 0; transform: translate(0, 0); }
+      12% { opacity: 1; }
+      30%, 100% { opacity: 0; transform: translate(-10px, -6px); }
+    }
+
+    @keyframes lfSprayR {
+      0%, 5% { opacity: 0; transform: translate(0, 0); }
+      12% { opacity: 1; }
+      30%, 100% { opacity: 0; transform: translate(10px, -6px); }
+    }
+
+    @keyframes lfCloud {
+      0%, 100% { transform: translateY(0) rotate(0); }
+      50% { transform: translateY(-4px) rotate(-3deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .lfBow, .lfSprayL, .lfSprayR, .lfCloud { animation: none; }
+      .lfSprayL, .lfSprayR { opacity: 0; }
+      .lfBow { transform: rotate(20deg); }
+    }
+
+    .lfBody {
+      margin: 8px 0 0;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--muted);
+      text-align: left;
+    }
+
+    .lfActions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .lfActions button {
+      min-width: 120px;
+      padding: 7px 16px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--accent-text);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .lfActions button:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    .lfActions button:disabled {
+      opacity: .6;
+      cursor: default;
+    }
+
+    .lfNext {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
     /* 更新後的「更新內容」提示：蓋在整個 popup 上的一次性遮罩，關閉後才把新版本號寫進 storage */
     #whatsNew {
       display: none;
@@ -3189,6 +3317,65 @@
     </div>
   </div>
 
+  <!-- 節點清單載入失敗（沒有清單＝擴充不啟用）：關不掉，只能重試；每 10 秒自動重試（見 popup.js showListFail） -->
+  <div id="listFail" role="alertdialog" aria-modal="true" aria-labelledby="lfTitle" aria-describedby="lfBody">
+    <div class="optCard">
+      <svg class="lfScene" viewBox="0 0 180 104" aria-hidden="true">
+        <defs>
+          <linearGradient id="lfBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="rgb(255,138,176)" />
+            <stop offset="100%" stop-color="rgb(235,90,140)" />
+          </linearGradient>
+        </defs>
+        <rect class="optBench" x="10" y="96" width="160" height="4" rx="2" />
+        <!-- 擴充圖示本體（與 scripts/gen-icons.mjs 同一份畫法，不改）＋圖示外的一雙眼睛：連續鞠躬 -->
+        <g class="lfBow">
+          <g transform="translate(43,42) scale(0.105)">
+            <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#lfBg)" />
+            <g transform="translate(0,9)" fill="rgb(120,20,55)" fill-opacity="0.18">
+              <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
+              <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
+            </g>
+            <g fill="white">
+              <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
+              <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
+            </g>
+          </g>
+          <!-- 眼睛：長在圖示外、頂端兩角（像耳朵的位置），一直緊閉成 > < -->
+          <g fill="rgb(250,120,165)" stroke="rgb(235,90,140)" stroke-width="1.6">
+            <circle cx="49" cy="40" r="9" />
+            <circle cx="91" cy="40" r="9" />
+          </g>
+          <g stroke="rgb(70,20,40)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M45 36 L53 40 L45 44" />
+            <path d="M95 36 L87 40 L95 44" />
+          </g>
+          <!-- 汗珠：往兩邊噴 -->
+          <path class="lfSprayL" d="M38 32 q3 4.5 0 6.8 q-3 -2.3 0 -6.8z" fill="#4fc3f7" />
+          <path class="lfSprayR" d="M102 32 q3 4.5 0 6.8 q-3 -2.3 0 -6.8z" fill="#4fc3f7" />
+        </g>
+        <!-- 斷線的雲（往右挪一點，鞠躬時眼睛才不會撞到） -->
+        <g transform="translate(8,0)"><g class="lfCloud">
+          <path d="M122 54 a10 10 0 0 1 2 -19.8 a14 14 0 0 1 27 -2 a9 9 0 0 1 4 21.8 z" fill="#b0bec5" />
+          <g stroke="#e53935" stroke-width="3.5" stroke-linecap="round">
+            <line x1="134" y1="38" x2="146" y2="50" />
+            <line x1="146" y1="38" x2="134" y2="50" />
+          </g>
+          <g stroke="#90a4ae" stroke-width="2.5" stroke-linecap="round" fill="none">
+            <path d="M140 58 v8" />
+            <path d="M140 72 v8" />
+          </g>
+        </g></g>
+      </svg>
+      <div class="optTitle" id="lfTitle"></div>
+      <p class="lfBody" id="lfBody"></p>
+      <div class="lfActions">
+        <button type="button" id="lfRetry"></button>
+        <span class="lfNext" id="lfNext"></span>
+      </div>
+    </div>
+  </div>
+
   <div id="allWarn" role="alertdialog" aria-modal="true" aria-labelledby="awTitle">
     <div class="awCard">
       <div class="awHead">
@@ -3223,6 +3410,7 @@
   <script src="common.js"></script>
   <script src="lottery-text.js"></script>
   <script src="features.js"></script>
+  <script src="cdn-list.js"></script>
   <script src="popup.js"></script>
 </body>
 

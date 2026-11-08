@@ -115,7 +115,7 @@ def chromium_installs():
                     v = (s.get("manifest") or {}).get("version") or os.path.basename(path).split("_")[0]
                     out.append(dict(browser=browser, profile=prof, exe=exe, version=v, dev=False))
                 elif os.path.isabs(path) and all(os.path.isfile(os.path.join(path, x))
-                                                 for x in ("bridge.js", "main-hook.js", "cdn-list.json")):
+                                                 for x in ("bridge.js", "main-hook.js", "popup.html")):
                     out.append(dict(browser=browser, profile=prof, exe=exe, version="dev", dev=True))
     return out
 

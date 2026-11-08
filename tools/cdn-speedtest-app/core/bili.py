@@ -1,6 +1,6 @@
 # /cdn-speedtest 共用模組：B 站 API（含 WBI 簽名）、cookie、登入檢查、playurl、節點清單。
 # 只用 Python 標準函式庫。cookie 絕不印出或寫入任何結果檔。
-import json, os, time, hashlib, urllib.request, urllib.parse, urllib.error
+import json, os, re, time, hashlib, urllib.request, urllib.parse, urllib.error
 
 SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
@@ -87,6 +87,59 @@ def dash_streams(bvid, cid):
     return d["dash"]["video"]
 
 
+# 節點清單：跟擴充一樣以伺服器下發的為準（擴充端見 src/cdn-list.js），只用其中的「全部節點」（options）。
+# 兩個來源（主要／備援）都抓不到才用打包的 nodes.json。伺服器上的是 ES256 簽章檔，標準函式庫沒有 ECDSA，
+# 這裡不驗章、只收 B 站 CDN 網域的節點：測速只是量這些網域的速度，結果匯入擴充時擴充還會再用自己驗過章的清單檢查。
+LIST_SOURCES = ("https://static.biboost.app/", "https://dv1itfovv5waq.cloudfront.net/")
+_HOST_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.(?:bilivideo\.com|bilivideo\.cn|akamaized\.net|hdslb\.com)$")
+_nodes_cache = None
+NODES_FROM = ""   # "server" / "bundled"：這次用的是哪一份
+
+
+def _get(url, timeout=6):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8")
+
+
+def _server_options():
+    """伺服器清單的 options（不含 backup）→ [{value, name, pool}]；兩個來源都失敗回 None"""
+    import base64
+    for base in LIST_SOURCES:
+        try:
+            latest = json.loads(_get(base + "cdn-list/latest.json"))
+            jws = _get(base + latest["file"]).strip()
+            part = jws.split(".")[1]
+            payload = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+            opts = [o for o in payload["data"]["options"] if isinstance(o, dict) and o.get("value") != "backup"]
+            opts = [o for o in opts if isinstance(o.get("value"), str) and _HOST_RE.match(o["value"])]
+            if opts:
+                return opts
+        except Exception:
+            continue
+    return None
+
+
 def nodes():
-    """回傳 [{host, source, name?, group?}]：只讀本技能自己的節點清單 nodes.json"""
-    return json.load(open(os.path.join(SKILL_DIR, "nodes.json"), encoding="utf-8"))["nodes"]
+    """回傳 [{host, source, name?, group?}]：伺服器清單的全部節點；抓不到就用打包的 nodes.json。
+    source／group 沿用 nodes.json 的標記（project＝早期擴充內建的節點），nodes.json 沒有的新節點標 extra"""
+    global _nodes_cache, NODES_FROM
+    if _nodes_cache is not None:
+        return _nodes_cache
+    bundled = json.load(open(os.path.join(SKILL_DIR, "nodes.json"), encoding="utf-8"))["nodes"]
+    opts = _server_options()
+    if not opts:
+        NODES_FROM = "bundled"
+        _nodes_cache = bundled
+        return bundled
+    meta = {n["host"]: n for n in bundled}
+    out = []
+    for o in opts:
+        m = meta.get(o["value"], {})
+        n = dict(host=o["value"], source=m.get("source", "extra"), name=o.get("name") or m.get("name"))
+        if m.get("group"):
+            n["group"] = m["group"]
+        out.append(n)
+    NODES_FROM = "server"
+    _nodes_cache = out
+    return out
