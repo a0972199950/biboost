@@ -8,7 +8,7 @@
 //     back：登入在同一個視窗換頁，登入完 auth.html 換回這個擴充頁面（歡迎頁）
 //     onDone：成功動畫播完後呼叫（關掉視窗）
 //     onLater、laterText：fresh 未登入時的「稍後再說」
-//     onState(state, card)：每次畫完、雲端有沒有備份確定時呼叫，state = { signedIn, canRestore }（歡迎頁用來換「開始使用」的文字、畫鎖頭）
+//     onState(state, card)：每次畫完、雲端有沒有備份確定時、成功動畫開始時呼叫，state = { signedIn, canRestore, done }（歡迎頁用來換「開始使用」的文字、畫鎖頭、恢復成功時收起按鈕）
 //     onCancel、cancelText：（非 fresh）多一顆一樣樣式的「關閉」（登入回跳頁用）
 // 狀態：
 //   未登入：說明＋「使用 Google 登入」（popup 開小視窗；歡迎頁在同一個視窗換頁。登入完成後 storage 變動，視窗自己換成已登入）
@@ -38,7 +38,11 @@ var BBCloudUI = (function () {
     ".bbcAsk{font-size:14px;font-weight:600;margin:0 0 12px}",
     ".bbcMeta{font-size:12px;color:var(--muted,#61666d);margin:10px 0 0}",
     ".bbcAuto{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0 0;padding:10px 0 0;border-top:1px solid var(--border,#e3e5e7);text-align:left;font-size:13px}",
-    ".bbcAuto input{width:18px;height:18px;flex:none;accent-color:var(--accent,#fb7299)}",
+    // 自動同步的勾選框自己畫（瀏覽器內建的在淺色主題是粉底黑勾，使用者覺得醜）：沒勾＝灰框，勾了＝主題色底、白勾
+    ".bbcAuto input{-webkit-appearance:none;appearance:none;width:18px;height:18px;flex:none;margin:0;border:1.5px solid var(--border,#c9ccd0);border-radius:4px;background:var(--control-bg,#fff) center/12px 12px no-repeat;cursor:pointer;transition:background-color .15s,border-color .15s}",
+    ".bbcAuto input:checked{border-color:var(--accent,#fb7299);background-color:var(--accent,#fb7299);background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-4.9' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")}",
+    ".bbcAuto input:focus-visible{outline:2px solid var(--accent,#fb7299);outline-offset:2px}",
+    ".bbcAuto input:disabled{opacity:.5;cursor:default}",
     ".bbcErr{font-size:12.5px;color:var(--danger,#d93025);margin:10px 0 0}",
     ".bbcLogout{margin-top:12px;border:0;background:none;padding:0;font:inherit;font-size:11.5px;color:var(--muted,#61666d);text-decoration:underline;cursor:pointer}",
     ".bbcDone{padding:14px 0 6px}",
@@ -207,6 +211,7 @@ var BBCloudUI = (function () {
       box.textContent = errText(e);
     }
     function done(text) {
+      notify({ signedIn: true, canRestore: false, done: true });
       clear();
       var d = el("div", "bbcDone");
       d.insertAdjacentHTML("beforeend", DONE_SVG);

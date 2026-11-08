@@ -49,6 +49,9 @@ chrome.storage.onChanged.addListener(function (ch, area) { if (area === "local" 
 var cloudPanel = null, laterClicked = false, cloudAccess = { ok: true, reason: "" };
 // 面板每次畫完：換最下面按鈕的文字與樣式；不能用就把登入、恢復按鈕鎖起來
 function onCloudState(state, card) {
+  // 恢復成功：打勾動畫播完會自動關視窗、開 popup，這時不需要「跳過，開始使用」
+  $("startBtn").hidden = !!state.done;
+  if (state.done) return;
   var skip = state.signedIn && state.canRestore;
   $("startBtn").textContent = t(skip ? "welcomeSkipStart" : "cloudStart");
   $("startBtn").classList.toggle("skip", skip);
