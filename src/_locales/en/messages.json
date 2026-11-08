@@ -952,8 +952,5 @@
   },
   "welcomeBody": {
     "message": "Open any bilibili video and BiBoost switches to a faster node automatically. Click the extension icon at the top right of your browser to change settings."
-  },
-  "welcomeRestoreLink": {
-    "message": "Already have a backup? Restore from the cloud"
   }
 }

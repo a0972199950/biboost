@@ -952,8 +952,5 @@
   },
   "welcomeBody": {
     "message": "打開任何 B 站影片，BiBoost 就會自動轉去較快嘅節點。㩒瀏覽器右上角嘅擴充圖示可以調整設定。"
-  },
-  "welcomeRestoreLink": {
-    "message": "已經有備份？由雲端恢復"
   }
 }

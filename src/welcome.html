@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-<!-- 歡迎頁：全新安裝時 background 開（只在功能開關 cloud_sync 開啟時）。說明怎麼用，底下一個不顯眼的「已經有備份？從雲端恢復」連結，
-     點了開雲端備份視窗（cloud-ui.js）；還原後就不是新使用者，安裝後的自動優化取消（cloud.js 的 restore） -->
+<!-- 歡迎頁：全新安裝時 background 開（只在功能開關 cloud_sync 開啟時）。說明怎麼用，底下直接放雲端備份面板（cloud-ui.js 的 mount：
+     說明＋「使用 Google 登入」，登入後換成備份／還原）；還原後就不是新使用者，安裝後的自動優化取消（cloud.js 的 restore） -->
 <html>
 
 <head>
@@ -31,9 +31,7 @@
     img { width: 72px; height: 72px; }
     h1 { font-size: 24px; margin: 14px 0 8px; }
     p { color: var(--muted); margin: 0 auto; max-width: 440px; }
-    .restore { margin-top: 48px; }
-    .restore button { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--muted); text-decoration: underline; cursor: pointer; }
-    .restore button:hover { color: var(--link); }
+    .cloud { max-width: 360px; margin: 36px auto 0; }
   </style>
 </head>
 
@@ -42,7 +40,7 @@
     <img src="logo128.png" alt="" />
     <h1 id="welcomeTitle"></h1>
     <p id="welcomeBody"></p>
-    <div class="restore" id="restoreRow" hidden><button type="button" id="restoreLink"></button></div>
+    <div class="cloud" id="cloudPanel" hidden></div>
   </main>
   <script src="i18n.js"></script>
   <script src="common.js"></script>
