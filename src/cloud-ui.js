@@ -38,6 +38,9 @@ var BBCloudUI = (function () {
     ".bbcIcon{flex:none;width:58px;height:25px;color:var(--muted,#61666d);transition:color .15s}",
     ".bbcIcon *{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}",
     ".bbcBtn:hover:not(:disabled) .bbcIcon,.bbcBtn:focus-visible .bbcIcon{color:inherit}",
+    // 主色按鈕（歡迎頁的「從雲端恢復」）：圖標跟文字一樣是白色，整組置中
+    ".bbcBtn.primary .bbcIcon{color:inherit}",
+    ".bbcBtn.withIcon.center{justify-content:center}",
     // 主色按鈕（只有歡迎頁的「從雲端恢復」，使用者要求）
     ".bbcBtn.primary{background:var(--accent,#fb7299);border-color:var(--accent,#fb7299);color:var(--accent-text,#fff)}",
     ".bbcBtn.primary:hover:not(:disabled),.bbcBtn.primary:focus-visible{background:var(--accent-hover,var(--accent,#fb7299));border-color:var(--accent-hover,var(--accent,#fb7299));color:var(--accent-text,#fff);filter:brightness(.95)}",
@@ -152,7 +155,7 @@ var BBCloudUI = (function () {
       card.appendChild(el("p", "bbcEmail", t("cloudSignedInAs").replace("{email}", st.account.email || "—")));
       var ask = card.appendChild(el("p", "bbcAsk", t("cloudRestoreAsk")));
       var btns = card.appendChild(el("div", "bbcBtns"));
-      btns.appendChild(actionBtn(t("cloudRestoreShort"), "", function () { return BBCloud.restore(); }, t("cloudRestoreDone"), "primary"));
+      btns.appendChild(actionBtn(t("cloudRestoreShort"), "", function () { return BBCloud.restore(); }, t("cloudRestoreDone"), "primary center", ICON_DOWN));
       var meta = card.appendChild(el("p", "bbcMeta", t("cloudWorking")));
       ask.hidden = btns.hidden = true;
       notify({ signedIn: true, canRestore: false });
