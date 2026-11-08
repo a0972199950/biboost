@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { spawnSync } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath } from "node:url";
 
 // 雲端後台（biboost.app/admin，tools/site/src/index.js）打包進 Cloudflare Worker 時沒有 import.meta.url，也沒有 repo 的檔案：
@@ -22,18 +23,31 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class LotteryError extends Error {}
 
-let dbUrl = null;
-function getDbUrl() {
-  if (dbUrl == null) {
-    try {
-      process.loadEnvFile(path.join(ROOT, ".env.local"));
-    } catch {
-      // 沒有 .env.local 就看環境變數
-    }
-    dbUrl = (process.env.DATABASE_URL || "").trim();
+let envLoaded = false;
+function loadEnv() {
+  if (envLoaded) return;
+  envLoaded = true;
+  try {
+    process.loadEnvFile(path.join(ROOT, ".env.local"));
+  } catch {
+    // 沒有 .env.local 就看環境變數
   }
-  if (!dbUrl) throw new LotteryError("找不到 DATABASE_URL（.env.local 或環境變數）");
-  return dbUrl;
+}
+// 用哪個資料庫：預設正式（DATABASE_URL）；withDb("staging", fn) 裡面改用測試環境（DATABASE_URL_STAGING，Neon 的 staging 分支，
+// api-staging.biboost.app 讀的那份，本機載入的開發版擴充用它）。後台「功能管理」切換環境用
+const dbEnv = new AsyncLocalStorage();
+export const DB_ENVS = ["prod", "staging"];
+export function withDb(env, fn) {
+  if (env != null && !DB_ENVS.includes(env)) throw new LotteryError(`不認得的環境：${env}`);
+  return dbEnv.run(env || "prod", fn);
+}
+export function currentDb() { return dbEnv.getStore() || "prod"; }
+function getDbUrl() {
+  loadEnv();
+  const staging = currentDb() === "staging";
+  const url = ((staging ? process.env.DATABASE_URL_STAGING : process.env.DATABASE_URL) || "").trim();
+  if (!url) throw new LotteryError(staging ? "找不到 DATABASE_URL_STAGING（測試環境的資料庫，放在 .env.local）" : "找不到 DATABASE_URL（.env.local 或環境變數）");
+  return url;
 }
 
 export async function sql(query, params = []) {

@@ -37,6 +37,8 @@
   "background": {
     "scripts": [
       "cdn-list.js",
+      "features.js",
+      "cloud.js",
       "background.js"
     ]
   },
@@ -53,7 +55,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "donate.html"
+        "donate.html",
+        "auth.html"
       ],
       "matches": [
         "https://api.biboost.app/*",

@@ -33,7 +33,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "donate.html"
+        "donate.html",
+        "auth.html"
       ],
       "matches": [
         "https://api.biboost.app/*",

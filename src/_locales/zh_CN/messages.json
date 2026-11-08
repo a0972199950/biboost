@@ -856,5 +856,125 @@
   },
   "donateEmailBad": {
     "message": "Email 格式不对"
+  },
+  "cloudBtn": {
+    "message": "云端备份"
+  },
+  "cloudTitle": {
+    "message": "云端备份"
+  },
+  "cloudClose": {
+    "message": "关闭"
+  },
+  "cloudLoginHint": {
+    "message": "登录后就能把设置备份到云端，换电脑或重装扩展都能还原。账号与 BiBoost 手机 App 共用。"
+  },
+  "cloudLoginGoogle": {
+    "message": "使用 Google 登录"
+  },
+  "cloudLoginOpened": {
+    "message": "已打开 Google 登录窗口，完成后回到这里即可。"
+  },
+  "cloudSignedInAs": {
+    "message": "已登录：{email}"
+  },
+  "cloudBackupBtn": {
+    "message": "备份到云端"
+  },
+  "cloudBackupHint": {
+    "message": "用这台电脑当前的设置覆盖云端的备份"
+  },
+  "cloudRestoreBtn": {
+    "message": "从云端恢复设置"
+  },
+  "cloudRestoreHint": {
+    "message": "用云端的备份覆盖这台电脑的设置"
+  },
+  "cloudLastBackup": {
+    "message": "上次备份：{time}"
+  },
+  "cloudNoBackup": {
+    "message": "云端还没有备份"
+  },
+  "cloudAutoLabel": {
+    "message": "自动同步"
+  },
+  "cloudLogout": {
+    "message": "退出登录"
+  },
+  "cloudBackupDone": {
+    "message": "已备份到云端"
+  },
+  "cloudRestoreDone": {
+    "message": "已从云端还原"
+  },
+  "cloudWorking": {
+    "message": "处理中…"
+  },
+  "cloudErrNetwork": {
+    "message": "连不上服务器，请稍后再试"
+  },
+  "cloudErrNoBackup": {
+    "message": "云端还没有备份"
+  },
+  "cloudErrLogin": {
+    "message": "登录已失效，请重新登录"
+  },
+  "cloudErrUnavailable": {
+    "message": "云端备份目前无法使用"
+  },
+  "cloudErrGeneric": {
+    "message": "发生错误（{code}），请稍后再试"
+  },
+  "authTitle": {
+    "message": "登录 BiBoost"
+  },
+  "authDone": {
+    "message": "登录完成"
+  },
+  "authFail": {
+    "message": "登录失败"
+  },
+  "authFailHint": {
+    "message": "请回到扩展重新登录（{code}）"
+  },
+  "welcomeTitle": {
+    "message": "欢迎使用哔速！"
+  },
+  "welcomeBody": {
+    "message": "在海外看 B 站不再卡顿。装好就能用，不用另外设置。"
+  },
+  "cloudCancel": {
+    "message": "取消"
+  },
+  "cloudLater": {
+    "message": "以后再说"
+  },
+  "cloudWelcomeHint": {
+    "message": "之前用过哔速吗？登录就能把云端备份的设置搬过来。"
+  },
+  "cloudManage": {
+    "message": "管理"
+  },
+  "cloudAdvHint": {
+    "message": "把设置备份到云端，换电脑或重装扩展都能恢复。"
+  },
+  "authBack": {
+    "message": "返回"
+  },
+  "cloudStart": {
+    "message": "开始使用"
+  },
+  "cloudRestoreAsk": {
+    "message": "要从云端恢复设置吗？"
+  },
+  "cloudRestoreShort": {
+    "message": "从云端恢复"
+  },
+  "cloudNotSignedIn": {
+    "message": "未登录"
+  },
+  "welcomeSkipStart": {
+    "message": "跳过，开始使用"
   }
 }

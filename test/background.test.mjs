@@ -1,12 +1,13 @@
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, plain, closeAll, CDN_FIXTURE, cdnNodesOf, signCdnList, cdnListStorage } from "./helpers/load.mjs";
+import { createEnv, plain, closeAll, testKey, CDN_FIXTURE, cdnNodesOf, signCdnList, cdnListStorage } from "./helpers/load.mjs";
+import { signJws } from "../tools/report-worker/src/features.js";
 
 const A = "upos-sz-mirror08ct.bilivideo.com";
 const C = "upos-sz-estgcos.bilivideo.com";
 function boot(storage, extra) {
   const env = createEnv({ url: "chrome-extension://bcs-test/background.js", storage, ...extra });
-  env.load("cdn-list.js").load("background.js");
+  env.load("cdn-list.js").load("features.js").load("cloud.js").load("background.js");
   return env;
 }
 
@@ -287,7 +288,7 @@ describe("node list from the server", () => {
       if (listJws && url === PRIMARY + `cdn-list/v/${v}.jws`) return { ok: true, status: 200, text: () => Promise.resolve(listJws) };
       throw new TypeError("Failed to fetch");
     };
-    env.load("cdn-list.js").load("background.js");
+    env.load("cdn-list.js").load("features.js").load("cloud.js").load("background.js");
     return env;
   }
   test("install while offline: nothing selected, retry alarm armed; the alarm later gets the list and selects the country", async () => {
@@ -305,7 +306,7 @@ describe("node list from the server", () => {
       if (url === "https://static.biboost.app/cdn-list/v/1.jws") return { ok: true, status: 200, text: () => Promise.resolve(jws) };
       return orig(url);
     })(env.fetchHandler);
-    env.onAlarmListeners[0]({ name: "cdnListRetry" });
+    env.onAlarmListeners.forEach((fn) => fn({ name: "cdnListRetry" }));
     await env.settle(80);
     assert.equal(env.storage.cdnCountry, "SG");
     assert.equal(env.storage.cdnHost, cdnNodesOf("SG")[0]);
@@ -364,6 +365,42 @@ describe("node list from the server", () => {
     env.onStartupListeners[0]();
     await env.settle(80);
     assert.equal(env.storage.cdnList.v, 1);
+    env.close();
+  });
+});
+
+describe("cloud backup in the background", () => {
+  const FEATURES_API = "https://api.biboost.app/v1/features";
+  async function bootWith(features) {
+    const key = await testKey();
+    const jws = features && await signJws({ iat: 1, features }, key.priv, "t1");
+    const env = createEnv({ url: "chrome-extension://bcs-test/background.js", storage: {} });
+    env.fetchHandler = (url) => {
+      if (url === FEATURES_API && jws) return { ok: true, status: 200, json: () => Promise.resolve({ ok: true, jws }) };
+      throw new TypeError("Failed to fetch");
+    };
+    env.load("cdn-list.js").load("features.js");
+    env.window.BBFeatures.PUBLIC_KEYS.t1 = key.pub;
+    env.load("cloud.js").load("background.js");
+    return env;
+  }
+  test("fresh install always opens the welcome page (the cloud part checks cloud_sync itself)", async () => {
+    const off = await bootWith(null);
+    off.onInstalledListeners[0]({ reason: "install" });
+    await off.settle(60);
+    assert.ok(off.createdTabs.some((t) => t.url === "chrome-extension://bcs-test/welcome.html"));
+    off.close();
+    const on = await bootWith({ cloud_sync: { enabled: true } });
+    on.onInstalledListeners[0]({ reason: "install" });
+    await on.settle(60);
+    assert.ok(on.createdTabs.some((t) => t.url === "chrome-extension://bcs-test/welcome.html"));
+    on.close();
+  });
+  test("updates never open the welcome page", async () => {
+    const env = await bootWith({ cloud_sync: { enabled: true } });
+    env.onInstalledListeners[0]({ reason: "update", previousVersion: "2.9.0" });
+    await env.settle(60);
+    assert.equal(env.createdTabs.length, 0);
     env.close();
   });
 });

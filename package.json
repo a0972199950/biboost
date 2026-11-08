@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
     "test:private": "node --test \"src/private/test/*.test.mjs\"",
+    "e2e:cloud": "node scripts/e2e-cloud-sync.mjs",
     "build": "node scripts/build.mjs",
     "build:safari": "node scripts/build-safari.mjs",
     "package": "node scripts/package.mjs",
