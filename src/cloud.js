@@ -17,6 +17,7 @@
 //   cloudAccount = { api, token, email }：登入狀態（token 沒有到期日，登出時作廢）
 //   cloudAuthPending = { api, state, verifier, t }：登入進行中（auth.html 驗 state、拿 verifier 換 token）
 //   cloudSync = { auto, rev: { ns: n }, snap: { 欄位: JSON }, dirty: [欄位], lastUp, lastDown, lastErr }
+//   cloudAppliedAt：雲端的設定（還原、自動同步拉到的）寫進本機的時間；popup 看到它變了就重新載入，畫面才會是新的設定
 var BBCloud = (function () {
   var API = { prod: "https://api.biboost.app", dev: "https://api-staging.biboost.app" };
   var EXT_FIELDS = ["enabled", "cdnMode", "cdnCountry", "cdnHost", "videoEnabled", "liveEnabled", "liveRoute", "autoFallback", "showDebug", "sortBySpeed",
@@ -225,6 +226,7 @@ var BBCloud = (function () {
       if (!Object.keys(patch).length) throw CloudError("no_backup");
       patch.countryAutoDone = true;
       patch.installTestPending = false;
+      patch.cloudAppliedAt = Date.now();
       if (typeof patch.cdnMode === "string" && patch.cdnMode !== "custom" && patch.cdnMode !== "list") delete patch.cdnMode;
       applyUiPrefs(patch);
       var snap = {};
@@ -345,6 +347,7 @@ var BBCloud = (function () {
           // 拉到節點或國家＝跟還原一樣不是新使用者：IP 選國家、安裝後的自動優化都不要再蓋掉它
           var nodeFromCloud = patch.cdnCountry !== undefined || patch.cdnHost !== undefined;
           if (nodeFromCloud) { patch.countryAutoDone = true; patch.installTestPending = false; }
+          if (applied) patch.cloudAppliedAt = Date.now();
           return after.then(function () { return saveSync(c); })
             .then(function () { return nodeFromCloud ? remove("cdnListPending") : null; })
             .then(function () { return applied ? set(patch) : null; })
