@@ -891,16 +891,10 @@
     "message": "用雲端嘅備份蓋過呢部電腦嘅設定"
   },
   "cloudLastBackup": {
-    "message": "上次備份：{time}（{by}）"
+    "message": "上次備份：{time}"
   },
   "cloudNoBackup": {
     "message": "雲端仲未有備份"
-  },
-  "cloudByExt": {
-    "message": "瀏覽器擴充"
-  },
-  "cloudByApp": {
-    "message": "手機 App"
   },
   "cloudAutoLabel": {
     "message": "自動同步"
@@ -965,25 +959,19 @@
   "cloudAdvHint": {
     "message": "將設定備份上雲端，換電腦或者重裝擴充都可以恢復。"
   },
-  "cloudAutoOn": {
-    "message": "自動同步已開啟"
-  },
-  "cloudAutoOff": {
-    "message": "自動同步未開啟"
-  },
   "authBack": {
     "message": "返回"
   },
-  "welcomeTip1": {
-    "message": "打開任何 B 站影片，嗶速會自動轉去較快嘅節點"
-  },
-  "welcomeTip2": {
-    "message": "影片卡住嘅時候，會喺背景測速、轉去更快嘅節點"
-  },
-  "welcomeTip3": {
-    "message": "㩒瀏覽器右上角嘅拼圖圖示，將嗶速釘選喺工具列，之後㩒佢就可以調整設定"
-  },
   "cloudStart": {
     "message": "開始使用"
+  },
+  "cloudRestoreAsk": {
+    "message": "要唔要從雲端恢復設定？"
+  },
+  "cloudRestoreShort": {
+    "message": "從雲端恢復"
+  },
+  "cloudNotSignedIn": {
+    "message": "未登入"
   }
 }

@@ -604,8 +604,9 @@ describe("cloud backup buttons", () => {
     assert.equal(env.document.getElementById("cloudBtn").textContent, "Cloud backup");
     assert.ok(item.nextElementSibling.querySelector("#showDebug"), "card sits right above the debug overlay option");
     assert.equal(adv.textContent, "Manage");
-    assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync is off");
+    assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync");
     assert.equal(env.document.getElementById("cloudState").classList.contains("on"), false);
+    assert.equal(env.document.getElementById("cloudWho").textContent, "Not signed in");
     assert.equal(row.previousElementSibling.id, "reportHistory");
     adv.click();
     assert.ok(env.document.querySelector(".bbcMask"));
@@ -614,12 +615,13 @@ describe("cloud backup buttons", () => {
     assert.equal(env.document.querySelector(".bbcMask"), null);
     env.close();
   });
-  test("the settings card shows a green check while auto sync is on", async () => {
+  test("the settings card shows the account on the left and a green check next to 'Auto sync' while it is on", async () => {
     const env = await bootFlags({ cloud_sync: { enabled: true } });
     env.chrome.storage.local.set({ cloudAccount: { api: "https://api.biboost.app", token: "t", email: "a@b.c" }, cloudSync: { auto: true, rev: {}, snap: {}, dirty: [] } });
     await env.settle(40);
     assert.equal(env.document.getElementById("cloudState").classList.contains("on"), true);
-    assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync is on");
+    assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync");
+    assert.equal(env.document.getElementById("cloudWho").textContent, "a@b.c");
     env.close();
   });
 });

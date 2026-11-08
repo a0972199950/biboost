@@ -6,6 +6,8 @@
 // 讀不到時（離線、API 故障、驗章失敗）沿用上次驗過章的快取；完全沒有快取就用 DEFAULTS（現有功能＝開啟）。
 // 商店版問正式的 api.biboost.app，本機載入的開發版問測試環境（同 donate.js）。management.getSelf 不需要 management 權限。
 // 開關關閉＝所有人都不能用。關閉時：入口收起來；有專屬內頁的用 guardPage 整頁換成「找不到這個頁面」（擴充內頁是本機檔案，回不了 HTTP 404）。
+// 入口：check(flags, key) → { ok, reason }（reason "off"＝收起來）；mark(el, result) 依結果標示入口。
+//   有選用模組（擴充裡的 private/，開發時才有、打包不帶）就由它判斷與標示；沒有就只看開關。
 var BBFeatures = (function () {
   var API = { prod: "https://api.biboost.app", dev: "https://api-staging.biboost.app" };
   // kid → 公鑰（P-256）。換金鑰時先在這裡加新的 kid、發版，再換 report worker 的 FEATURES_SIGNING_KEY
@@ -154,7 +156,49 @@ var BBFeatures = (function () {
     });
   }
 
-  var api = { load: load, refresh: refresh, watch: watch, enabled: enabled, guardPage: guardPage, verifyJws: verifyJws, DEFAULTS: DEFAULTS, PUBLIC_KEYS: PUBLIC_KEYS, STORE_KEY: STORE_KEY, NOT_FOUND: NOT_FOUND };
+  // 選用模組：依序載入 private/ 的檔案，最後一支提供 window.BBGuard = { check(flags, key) → Promise<{ ok, reason }>, mark(el, result) }。
+  // 沒有這個資料夾（公開 repo、打包後的版本）就載入失敗，回 null
+  var OPTIONAL = { scripts: ["private/membership.js", "private/lock.js", "private/guard.js"], styles: ["private/lock.css"] };
+  var optionalPromise = null;
+  function optional() {
+    // 單元測試（__BCS_TEST__）不載入：jsdom 不會載外部 script，也不會回 onload／onerror
+    if (typeof document === "undefined" || globalThis.__BCS_TEST__) return Promise.resolve(null);
+    optionalPromise = optionalPromise || OPTIONAL.scripts.reduce(function (p, src) {
+      return p.then(function (ok) {
+        if (!ok) return false;
+        return new Promise(function (r) {
+          var s = document.createElement("script");
+          var timer = setTimeout(function () { r(false); }, 3000); // 保險：載入事件一直沒來也不要卡住
+          s.src = src;
+          s.onload = function () { clearTimeout(timer); r(true); };
+          s.onerror = function () { clearTimeout(timer); s.remove(); r(false); };
+          (document.head || document.documentElement).appendChild(s);
+        });
+      });
+    }, Promise.resolve(true)).then(function (ok) {
+      if (!ok || !window.BBGuard) return null;
+      OPTIONAL.styles.forEach(function (href) {
+        var l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = href;
+        (document.head || document.documentElement).appendChild(l);
+      });
+      return window.BBGuard;
+    });
+    return optionalPromise;
+  }
+  function check(flags, key) {
+    return optional().then(function (g) {
+      if (g) return g.check(flags, key);
+      var on = enabled(flags, key);
+      return { ok: on, reason: on ? "" : "off" };
+    });
+  }
+  function mark(el, result) {
+    if (el && window.BBGuard) window.BBGuard.mark(el, result);
+  }
+
+  var api = { load: load, refresh: refresh, watch: watch, enabled: enabled, guardPage: guardPage, check: check, mark: mark, verifyJws: verifyJws, DEFAULTS: DEFAULTS, PUBLIC_KEYS: PUBLIC_KEYS, STORE_KEY: STORE_KEY, NOT_FOUND: NOT_FOUND };
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") globalThis.__BCS_TEST__.register("features", api);
   return api;

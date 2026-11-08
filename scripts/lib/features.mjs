@@ -4,7 +4,7 @@
 //   · 擴充：report worker 的 GET /v1/features 把所有列簽章後下發（tools/report-worker/src/features.js），擴充驗章後使用（src/features.js）
 //   · biboost-site 的頁面直接查這張表（featureEnabled），在 Cloudflare 邊緣快取 60 秒
 // 現有功能不加開關；之後有新功能要開關時，加進 FEATURES（擴充那邊的預設值在 src/features.js 的 DEFAULTS，兩邊要一致，測試會比對）。
-import { sql } from "./lotteries.mjs";
+import { sql, currentDb } from "./lotteries.mjs";
 
 // 程式碼裡登記的功能：key、後台顯示的名稱與說明、預設值
 export const FEATURES = [
@@ -33,10 +33,11 @@ export class FeatureError extends Error {
 const catalog = (key) => FEATURES.find((f) => f.key === key) || null;
 const defaultsOf = (key) => ({ enabled: true, ...(catalog(key)?.defaults || {}) });
 
-let ready = null;
+const ready = {}; // 每個資料庫（正式／測試）各建一次表
 // 第一次建表時，把舊的 settings.donate_enabled 搬過來（後台之前的贊助開關）
 function ensureTable() {
-  ready ||= (async () => {
+  const db = currentDb();
+  ready[db] ||= (async () => {
     await sql(`create table if not exists features (
       key text primary key,
       data jsonb not null default '{}'::jsonb,
@@ -47,8 +48,8 @@ function ensureTable() {
         select 'donate', jsonb_build_object('enabled', value <> 'false'::jsonb) from settings where key = 'donate_enabled'
         on conflict (key) do nothing`);
     }
-  })().catch((e) => { ready = null; throw e; });
-  return ready;
+  })().catch((e) => { ready[db] = null; throw e; });
+  return ready[db];
 }
 
 // 後台清單：程式碼登記的功能（沒存過的用預設值）＋資料庫裡其他的列

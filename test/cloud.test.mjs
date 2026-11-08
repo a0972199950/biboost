@@ -315,7 +315,7 @@ describe("cloud dialog", () => {
     assert.match(card.textContent, /Restore settings from cloud/);
     assert.equal(card.querySelectorAll(".bbcBtn.alt").length, 0, "no primary/secondary: every button looks the same");
     assert.doesNotMatch(card.textContent, /whenever a setting changes/, "no hint under auto sync");
-    assert.match(card.querySelector(".bbcMeta").textContent, /^Last backup: .*\(browser extension\)$/);
+    assert.match(card.querySelector(".bbcMeta").textContent, /^Last backup: [^()（）]+$/, "time only, no source");
     assert.ok(card.querySelector(".bbcAuto input"));
     assert.ok(card.querySelector(".bbcLogout"));
     card.querySelector(".bbcBtn").click();
@@ -326,45 +326,45 @@ describe("cloud dialog", () => {
     assert.equal(env.document.querySelector(".bbcMask"), null, "closed by itself");
     env.close();
   });
-  test("welcome page (fresh install), signed out: Google sign-in in this window plus 'Maybe later' that closes it", async () => {
+  test("welcome page (fresh install), signed out: Google sign-in above 'Maybe later'", async () => {
     const { env, UI } = bootUi({});
-    let cancelled = 0;
-    UI.mount(env.document.body, { fresh: true, back: "welcome.html", onCancel: () => cancelled++, laterText: "Maybe later" });
+    let later = 0;
+    UI.mount(env.document.body, { fresh: true, back: "welcome.html", onLater: () => later++, laterText: "Maybe later" });
     await env.settle(30);
     const btns = [...env.document.querySelectorAll(".bbcBtn")].map((b) => b.textContent);
     assert.deepEqual(btns, ["Sign in with Google", "Maybe later"]);
+    assert.equal(env.document.querySelector(".bbcBtns").classList.contains("row"), false, "stacked, not side by side");
     assert.match(env.document.body.textContent, /Used BiBoost before\?/);
     env.document.querySelectorAll(".bbcBtn")[1].click();
-    assert.equal(cancelled, 1);
+    assert.equal(later, 1);
     env.close();
   });
-  test("welcome page (fresh install), signed in: only restore and cancel; restore waits for a backup; done closes the window", async () => {
+  test("welcome page (fresh install), signed in: asks to restore, one main-color button, no cancel or sign out; done → onDone", async () => {
     const { env, UI } = bootUi({ ...ACCOUNT, stVideoMb: 4 }, { extension: { data: { stVideoMb: 9 }, rev: 1, updatedAt: Date.UTC(2026, 10, 1), updatedBy: "extension" } });
-    let closed = 0, cancelled = 0;
-    UI.mount(env.document.body, { fresh: true, onDone: () => closed++, onCancel: () => cancelled++ });
+    let done = 0;
+    UI.mount(env.document.body, { fresh: true, onDone: () => done++ });
     await env.settle(40);
     const btns = [...env.document.querySelectorAll(".bbcBtn")];
-    assert.deepEqual(btns.map((b) => b.textContent), ["Restore settings from cloud", "Cancel"], "no backup button on a fresh install");
+    assert.deepEqual(btns.map((b) => b.textContent), ["Restore from cloud"], "no backup button, no cancel on a fresh install");
+    assert.ok(btns[0].classList.contains("primary"));
+    assert.equal(env.document.querySelector(".bbcAsk").textContent, "Restore your settings from the cloud?");
+    assert.equal(env.document.querySelector(".bbcAsk").hidden, false);
+    assert.equal(env.document.querySelector(".bbcLogout"), null, "sign out only lives in the popup dialog");
     assert.equal(env.document.querySelector(".bbcAuto"), null, "no auto sync switch (it would upload the fresh defaults)");
-    assert.equal(btns[0].disabled, false);
     btns[0].click();
     await env.settle(40);
     assert.equal(env.storage.stVideoMb, 9);
     assert.ok(env.document.querySelector(".bbcDone"));
     await env.settle(UI.DONE_MS + 100);
-    assert.equal(closed, 1);
-    assert.equal(cancelled, 0);
+    assert.equal(done, 1);
     env.close();
   });
-  test("welcome page (fresh install): nothing in the cloud → no restore button, just 'Get started'", async () => {
+  test("welcome page (fresh install): nothing in the cloud → no question and no button, just 'No backup in the cloud yet'", async () => {
     const { env, UI } = bootUi({ ...ACCOUNT });
-    let closed = 0;
-    UI.mount(env.document.body, { fresh: true, onCancel: () => closed++ });
+    UI.mount(env.document.body, { fresh: true });
     await env.settle(40);
-    const btns = [...env.document.querySelectorAll(".bbcBtn")];
-    assert.deepEqual(btns.map((b) => b.textContent), ["Get started"]);
-    btns[0].click();
-    assert.equal(closed, 1);
+    assert.equal(env.document.querySelector(".bbcAsk").hidden, true);
+    assert.equal(env.document.querySelector(".bbcBtns").hidden, true);
     assert.match(env.document.querySelector(".bbcMeta").textContent, /No backup in the cloud yet/);
     env.close();
   });

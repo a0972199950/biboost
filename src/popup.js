@@ -545,25 +545,29 @@ if (detectBrowser() !== "safari") {
 }
 syncRateRow();
 // 雲端備份（cloud.js／cloud-ui.js）：首頁「問題回報」下面一顆；進階設定是 debug 疊層上面的一張選項卡片（右邊「管理」打開視窗，
-// 說明底下顯示自動同步開了沒：登入且開著＝綠色圓圈打勾，其他＝灰色）。功能開關 cloud_sync 關閉時都收起來
-function setCloudVisible(on) {
+// 說明底下一列：左邊登入的 email 或「未登入」，右邊「自動同步」：登入且開著＝綠色圓圈勾，其他＝灰色）。
+// 能不能用看 BBFeatures.check：功能開關 cloud_sync 關閉（off）時都收起來；其他不能用的情況由 BBFeatures.mark 標示在按鈕上
+function setCloudVisible(r) {
+  var on = r.reason !== "off";
   document.getElementById("cloudRow").style.display = on ? "" : "none";
   document.getElementById("cloudAdvItem").style.display = on ? "" : "none";
+  if (on) ["cloudBtn", "cloudAdvBtn"].forEach(function (id) { BBFeatures.mark(document.getElementById(id), r); });
 }
 ["cloudBtn", "cloudAdvBtn"].forEach(function (id) { document.getElementById(id).addEventListener("click", function () { BBCloudUI.open(); }); });
 function showCloudState() {
   if (typeof BBCloud === "undefined") return;
   BBCloud.status().then(function (st) {
     var on = !!(st.account && st.sync && st.sync.auto);
+    document.getElementById("cloudWho").textContent = st.account ? (st.account.email || "—") : t("cloudNotSignedIn");
     document.getElementById("cloudState").classList.toggle("on", on);
-    document.getElementById("cloudStateText").textContent = t(on ? "cloudAutoOn" : "cloudAutoOff");
+    document.getElementById("cloudStateText").textContent = t("cloudAutoLabel");
   });
 }
 showCloudState();
 try { chrome.storage.onChanged.addListener(function (ch, area) { if (area === "local" && (ch.cloudAccount || ch.cloudSync)) showCloudState(); }); } catch (e) {}
 BBFeatures.watch(function (flags) {
   if (donateByFlag) setDonateVisible(BBFeatures.enabled(flags, "donate"));
-  setCloudVisible(BBFeatures.enabled(flags, "cloud_sync"));
+  BBFeatures.check(flags, "cloud_sync").then(setCloudVisible);
 });
 // 視窗裡按「從雲端恢復設定」把雲端的設定寫進 storage 後，popup 畫面還是打開時讀的舊值：重新載入（等打勾動畫播完、視窗關掉）
 try {

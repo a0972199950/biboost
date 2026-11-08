@@ -1,5 +1,5 @@
 // 雲端備份的端對端測試：用 Chrome for Testing（puppeteer）載入 src/，打 staging 後台（api-staging.biboost.app）。
-//   npm run e2e:cloud [-- --only on|off] [--headful] [--out <截圖資料夾>]
+//   npm run e2e:cloud [-- --only on|off|locked] [--headful] [--out <截圖資料夾>]
 //
 // 功能開關不看 staging 資料庫：攔截擴充對 /v1/features 的請求，回本機用 FEATURES_SIGNING_KEY（.env.local）簽的開／關。
 // Google 登入畫面沒辦法自動化（要真的 Google 帳號），所以：
@@ -10,7 +10,8 @@
 // 開啟（on）：歡迎頁（小視窗）有動畫與雲端備份面板 → 在同一個視窗換到 Google 授權頁（沒錯誤）→ 登入失敗可返回 → 登入後只有「從雲端恢復設定」「取消」
 //            → 取消關掉視窗 → 設定頁卡片（灰／綠）、視窗兩顆按鈕一樣且滑過變色 → A 備份 → B 歡迎頁恢復後視窗自己關掉
 //            → 兩台打開自動同步：改設定（含節點與國家）會自動上傳、但不會蓋掉另一台，另一台手動恢復才拿到 → 登出 → 從 popup 登入開小視窗
-// 關閉（off）：全新安裝不開歡迎頁、popup 沒有雲端備份按鈕、直接開歡迎頁也沒有面板
+// 關閉（off）：全新安裝照樣開歡迎頁，但只有歡迎詞與「開始使用」；popup 沒有雲端備份按鈕與設定卡片
+// 進階（locked）：功能開著但等級是進階、沒有會員資格：popup 的按鈕灰掉加鎖頭（private/ 的模組），歡迎頁不放雲端備份
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -78,7 +79,8 @@ const cloudData = async (token, ns) => ((await api("GET", "/me/settings", undefi
 
 // ---- 瀏覽器 ----
 async function featuresJws(on) {
-  return signJws({ iat: Math.floor(Date.now() / 1000), features: { cloud_sync: { enabled: on, tier: "basic" } } }, SIGNING_KEY);
+  const flag = typeof on === "object" ? on : { enabled: on, tier: "basic" };
+  return signJws({ iat: Math.floor(Date.now() / 1000), features: { cloud_sync: flag } }, SIGNING_KEY);
 }
 // 一台「電腦」：獨立的設定檔、全新安裝擴充；cloudOn 決定 /v1/features 回開或關
 async function machine(name, cloudOn) {
@@ -133,18 +135,42 @@ async function scenarioOff() {
   console.log("\n【功能關閉】");
   const c = await machine("C", false);
   try {
-    await sleep(6000);
-    const welcome = await c.findPage("welcome.html", 500);
-    check("全新安裝不開歡迎頁", !welcome);
+    const w = await c.findPage("welcome.html");
+    check("全新安裝照樣開歡迎頁", w);
+    await sleep(3000);
+    await c.shot(w, "welcome");
+    check("歡迎頁有歡迎詞與「開始使用」", (await text(w, "#welcomeTitle")).length > 3 && await visible(w, "#startBtn"));
+    check("歡迎頁沒有雲端備份面板", !(await visible(w, "#cloudPanel")) && !(await w.$(".bbcCard")));
     const pop = await c.page("popup.html");
     await sleep(2500);
     await c.shot(pop, "popup");
     check("popup 首頁沒有「雲端備份」按鈕", !(await visible(pop, "#cloudBtn")));
     check("popup 設定頁沒有「雲端備份」卡片", !(await pop.$eval("#cloudAdvItem", (e) => e.style.display !== "none").catch(() => false)));
-    const w = await c.page("welcome.html");
-    await sleep(2000);
+  } finally { await c.close(); }
+}
+
+// ---- 情境：功能開著，但等級是進階、沒有會員資格（鎖頭由 src/private/ 的模組畫）----
+async function scenarioLocked() {
+  current = "locked";
+  console.log("\n【進階等級、沒有資格】");
+  const hasPrivate = fs.existsSync(path.join(ROOT, "src/private/guard.js"));
+  if (!check("有 src/private/（鎖頭模組）", hasPrivate, hasPrivate ? "" : "公開 repo 沒有這個資料夾，略過")) return;
+  const c = await machine("L", { enabled: true, tier: "premium" });
+  try {
+    const w = await c.findPage("welcome.html");
+    await sleep(3000);
     await c.shot(w, "welcome");
-    check("直接開歡迎頁也沒有雲端備份面板", !(await visible(w, "#cloudPanel")) && !(await w.$(".bbcCard")));
+    check("歡迎頁不放雲端備份", !(await visible(w, "#cloudPanel")));
+    const pop = await c.page("popup.html");
+    const locked = await until(async () => pop.$eval("#cloudBtn", (e) => e.classList.contains("bb-locked") && !!e.querySelector(".bb-lock-badge")).catch(() => false), 10000);
+    await c.shot(pop, "popup");
+    check("popup 首頁的「雲端備份」灰掉加鎖頭", locked);
+    await pop.click("#cloudBtn");
+    await sleep(500);
+    check("點了不開雲端備份視窗，改開說明", !(await pop.$(".bbcMask")) && await visible(pop, ".bb-lock-dialog"));
+    await c.shot(pop, "popup-dialog");
+    const adv = await pop.$eval("#cloudAdvBtn", (e) => e.classList.contains("bb-locked")).catch(() => false);
+    check("設定頁卡片的「管理」也鎖住", adv);
   } finally { await c.close(); }
 }
 
@@ -167,7 +193,7 @@ async function scenarioOn() {
   }
   const closed = (p, ms = 8000) => until(async () => p.isClosed(), ms, 200);
   try {
-    // 1. 歡迎頁（小視窗）：動畫、歡迎詞、三步驟，雲端備份面板直接在下面（使用 Google 登入／稍後再說）
+    // 1. 歡迎頁（小視窗）：動畫、大大的歡迎詞與賣點（沒有三步驟），雲端備份（Google 登入／稍後再說，上下排），最下面「開始使用」
     const wa = await A.findPage("welcome.html");
     if (!check("全新安裝自動開歡迎頁", wa)) return;
     await wa.waitForSelector("#cloudPanel .bbcBtn.google", { timeout: 15000 }).catch(() => {});
@@ -175,10 +201,17 @@ async function scenarioOn() {
     await A.shot(wa, "1-welcome");
     check("歡迎頁是小視窗（不是分頁）", await wa.evaluate(() => new Promise((r) => chrome.windows.getCurrent((w) => r(w.type)))) === "popup");
     check("歡迎頁有開場動畫（圖示＋眼睛）", await wa.$("#hero svg.wh .eye") !== null);
-    check("歡迎頁有標題與三步驟", (await text(wa, "#welcomeTitle")).length > 3 && (await wa.$$(".tips li")).length === 3);
+    check("歡迎頁有大標題與賣點、沒有三步驟", (await text(wa, "#welcomeTitle")).length > 3 && (await text(wa, "#welcomeBody")).length > 5 && !(await wa.$(".tips")));
     check("歡迎頁直接顯示雲端備份說明", (await text(wa, "#cloudPanel .bbcText")).length > 10, await text(wa, "#cloudPanel .bbcText"));
-    const loginBtns = await wa.$$eval("#cloudPanel .bbcBtn", (bs) => bs.map((b) => b.textContent.trim()));
-    check("未登入：只有「使用 Google 登入」跟「稍後再說」", loginBtns.length === 2 && (await visible(wa, "#cloudPanel .bbcBtn.google")), loginBtns.join("／"));
+    const loginBtns = await wa.$$eval("#cloudPanel .bbcBtn", (bs) => bs.map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), top: r.top }; }));
+    check("未登入：「使用 Google 登入」在上、「稍後再說」在下", loginBtns.length === 2 && loginBtns[1].top > loginBtns[0].top && (await visible(wa, "#cloudPanel .bbcBtn.google")), loginBtns.map((b) => b.t).join("／"));
+    check("最下面有主按鈕「開始使用」", await visible(wa, "#startBtn"));
+    // puppeteer 預設把頁面設成 800×600：換成歡迎視窗真正的內容大小（500×700 的視窗扣掉標題列）再量
+    await wa.setViewport({ width: 500, height: 660 });
+    await sleep(300);
+    await A.shot(wa, "1-welcome-500");
+    const fits = await wa.evaluate(() => { const b = document.getElementById("startBtn").getBoundingClientRect(); return b.bottom <= window.innerHeight; });
+    check("不用捲動就看得到「開始使用」", fits);
 
     // 2. Google 登入：在同一個視窗換頁到 Google 授權頁（不能有 redirect_uri_mismatch），不另開分頁
     const pagesBefore = (await A.browser.pages()).length;
@@ -207,13 +240,14 @@ async function scenarioOn() {
     check("登入後歡迎頁面板換成帳號", await until(async () => (await text(wa, "#cloudPanel .bbcEmail")).includes(EMAIL), 10000));
     await sleep(1200);
     await A.shot(wa, "3-signed-in");
-    check("剛安裝：沒有自動同步開關", !(await wa.$("#cloudPanel .bbcAuto")));
-    // 雲端沒有備份：不顯示「從雲端恢復設定」，只留「開始使用」
-    const freshBtns = await until(async () => { const t = await wa.$$eval("#cloudPanel .bbcBtn", (bs) => bs.map((x) => x.textContent.trim())); return t.length === 1 ? t : null; }, 8000);
-    check("剛安裝且雲端沒有備份：只有一顆「開始使用」", freshBtns && freshBtns.length === 1, (freshBtns || []).join("／"));
-    await A.shot(wa, "3-no-backup");
-    await wa.click("#cloudPanel .bbcCancel");
+    check("登入後不再顯示歡迎的部分", !(await visible(wa, "#welcomeHero")));
+    check("登入後沒有自動同步開關、沒有登出、沒有取消", !(await wa.$("#cloudPanel .bbcAuto")) && !(await wa.$("#cloudPanel .bbcLogout")) && !(await wa.$("#cloudPanel .bbcCancel")));
+    check("雲端沒有備份：不問要不要恢復，只寫雲端還沒有備份", await until(async () => !(await visible(wa, "#cloudPanel .bbcAsk")) && (await text(wa, "#cloudPanel .bbcMeta")).length > 0, 8000), await text(wa, "#cloudPanel .bbcMeta"));
+    await wa.click("#startBtn");
     check("按「開始使用」就關掉歡迎頁", await closed(wa));
+    const popT = await A.browser.waitForTarget((t) => t.url() === A.base + "popup.html", { timeout: 5000 }).catch(() => null);
+    check("按「開始使用」會打開擴充的 popup 一次", popT, popT ? "" : "沒看到 popup（無頭瀏覽器可能不支援 action.openPopup）");
+    if (popT) { const pp = await popT.page().catch(() => null); if (pp) await pp.close().catch(() => {}); }
 
     // 4. 設定頁：雲端備份卡片在 debug 疊層上面，顯示自動同步沒開（灰色）
     const settingsA = { showDebug: true, uiTheme: "dark", stVideoSec: 7, customHosts: ["upos-sz-mirrorcos.bilivideo.com"], cdnCountry: "JP", cdnHost: "upos-sz-mirrorakam.akamaized.net" };
@@ -225,11 +259,15 @@ async function scenarioOn() {
     const card = await pa.evaluate(() => {
       const item = document.getElementById("cloudAdvItem");
       return { shown: item.style.display !== "none", aboveDebug: !!(item.nextElementSibling && item.nextElementSibling.querySelector("#showDebug")),
-        btn: document.getElementById("cloudAdvBtn").textContent, on: document.getElementById("cloudState").classList.contains("on"), state: document.getElementById("cloudStateText").textContent };
+        btn: document.getElementById("cloudAdvBtn").textContent, on: document.getElementById("cloudState").classList.contains("on"), state: document.getElementById("cloudStateText").textContent,
+        who: document.getElementById("cloudWho").textContent };
     });
+    await pa.evaluate(() => document.getElementById("cloudAdvItem").scrollIntoView({ block: "center" }));
+    await sleep(200);
     await A.shot(pa, "4-settings-card");
     check("設定頁有雲端備份卡片，在 debug 疊層上面", card.shown && card.aboveDebug, JSON.stringify(card));
-    check("卡片顯示自動同步未開啟（灰色）", !card.on && card.state.length > 0, card.state);
+    check("卡片左邊是登入的帳號", card.who === EMAIL, card.who);
+    check("卡片右邊是灰色的「自動同步」", !card.on && card.state.length > 0 && card.state.length <= 8, card.state);
     await pa.click("#cloudAdvBtn");
     await pa.waitForSelector(".bbcMask .bbcBtn", { timeout: 15000 });
     await until(async () => (await text(pa, ".bbcMask .bbcEmail")).includes(EMAIL), 10000);
@@ -260,10 +298,13 @@ async function scenarioOn() {
     await settled(B);
     await B.setStorage({ cloudAccount: account });
     await until(async () => (await text(wb, "#cloudPanel .bbcEmail")).includes(EMAIL), 10000);
-    check("雲端有備份時只有「從雲端恢復設定」與「取消」", (await wb.$$("#cloudPanel .bbcBtn")).length === 2);
-    check("雲端有備份時「從雲端恢復設定」可以按", await until(async () => !(await wb.$eval("#cloudPanel .bbcBtn", (b) => b.disabled)), 10000));
+    check("雲端有備份：問「要從雲端恢復設定嗎？」", await until(async () => visible(wb, "#cloudPanel .bbcAsk"), 10000), await text(wb, "#cloudPanel .bbcAsk"));
+    const restoreBtns = await wb.$$eval("#cloudPanel .bbcBtn", (bs) => bs.map((b) => b.className + ":" + b.textContent.trim()));
+    check("只有一顆主色的「從雲端恢復」", restoreBtns.length === 1 && /primary/.test(restoreBtns[0]), restoreBtns.join("／"));
+    await wb.setViewport({ width: 500, height: 660 });
+    await sleep(500);
     await B.shot(wb, "5-welcome-restore");
-    const r2 = await panelAction(wb, "#cloudPanel .bbcBtn");
+    const r2 = await panelAction(wb, "#cloudPanel .bbcBtn.primary");
     check("B「從雲端恢復設定」成功", r2 === "done", r2);
     check("恢復完歡迎頁自己關掉", await closed(wb));
     const sb = await B.storage(null);
@@ -280,7 +321,7 @@ async function scenarioOn() {
       await p.click(".bbcMask .bbcClose");
       const on = await until(async () => p.$eval("#cloudState", (e) => e.classList.contains("on")), 5000);
       check(`${m.name} 設定頁卡片變成綠色打勾（自動同步已開啟）`, on, await text(p, "#cloudStateText"));
-      if (m === A) { await p.evaluate(() => document.getElementById("gearBtn").click()); await sleep(600); await A.shot(p, "6-card-on"); }
+      if (m === A) { await p.evaluate(() => { document.getElementById("gearBtn").click(); document.getElementById("cloudAdvItem").scrollIntoView({ block: "center" }); }); await sleep(600); await A.shot(p, "6-card-on"); }
       await p.close();
     }
     await A.setStorage({ stVideoSec: 9, cdnCountry: "HK", cdnHost: "upos-sz-mirrorali.bilivideo.com" });
@@ -340,6 +381,7 @@ async function scenarioOn() {
 
 try {
   if (!ONLY || ONLY === "off") await scenarioOff();
+  if (!ONLY || ONLY === "locked") await scenarioLocked();
   if (!ONLY || ONLY === "on") await scenarioOn();
 } catch (e) {
   check("執行過程沒有例外", false, e.stack || String(e));
