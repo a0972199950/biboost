@@ -32,6 +32,12 @@ var BBCloudUI = (function () {
     ".bbcBtn:hover:not(:disabled) small{color:inherit;opacity:.85}",
     ".bbcBtn:disabled{opacity:.5;cursor:default}",
     ".bbcBtn.google{flex-direction:row;gap:8px}",
+    // 帶圖標的按鈕（備份到雲端、從雲端恢復設定）：圖標在左、文字靠左；圖標是細線，平常灰色，滑過時跟著變主題色
+    ".bbcBtn.withIcon{flex-direction:row;justify-content:flex-start;gap:12px;padding:9px 14px;text-align:left}",
+    ".bbcBtn.withIcon .bbcLbl{display:flex;flex-direction:column;gap:1px;min-width:0}",
+    ".bbcIcon{flex:none;width:58px;height:25px;color:var(--muted,#61666d);transition:color .15s}",
+    ".bbcIcon *{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}",
+    ".bbcBtn:hover:not(:disabled) .bbcIcon,.bbcBtn:focus-visible .bbcIcon{color:inherit}",
     // 主色按鈕（只有歡迎頁的「從雲端恢復」，使用者要求）
     ".bbcBtn.primary{background:var(--accent,#fb7299);border-color:var(--accent,#fb7299);color:var(--accent-text,#fff)}",
     ".bbcBtn.primary:hover:not(:disabled),.bbcBtn.primary:focus-visible{background:var(--accent-hover,var(--accent,#fb7299));border-color:var(--accent-hover,var(--accent,#fb7299));color:var(--accent-text,#fff);filter:brightness(.95)}",
@@ -55,6 +61,13 @@ var BBCloudUI = (function () {
     "@media (prefers-reduced-motion:reduce){.bbcDone circle,.bbcDone path,.bbcDone .bbcTitle{animation:none;stroke-dashoffset:0}}"
   ].join("\n");
   var GOOGLE_SVG = '<svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>';
+  // 圖標：電腦 → 箭頭 → 雲（備份）、雲 → 箭頭 → 電腦（恢復）。viewBox 46×20：螢幕 0–14、箭頭 17–28、雲 31–45
+  var ICON_MON = '<rect x="1" y="3" width="13" height="9.5" rx="1.8"/><path d="M7.5 12.5v3M4.5 16.5h6"/>';
+  var ICON_CLOUD = '<path d="M34.2 15.5h7.6a3.1 3.1 0 0 0 .5-6.15 4.4 4.4 0 0 0-8.45-.9 3.55 3.55 0 0 0 .35 7.05z"/>';
+  var ICON_ARROW = '<path d="M18 9.5h9M24.2 6.6 27.1 9.5l-2.9 2.9"/>';
+  function iconSvg(inner) { return '<svg class="bbcIcon" viewBox="0 0 46 20" aria-hidden="true">' + inner + "</svg>"; }
+  var ICON_UP = iconSvg(ICON_MON + ICON_ARROW + ICON_CLOUD);
+  var ICON_DOWN = iconSvg('<g transform="translate(-30 0)">' + ICON_CLOUD + "</g>" + ICON_ARROW + '<g transform="translate(31 0)">' + ICON_MON + "</g>");
   var DONE_SVG = '<svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="25"/><path d="M16 29l8 8 16-17"/></svg>';
   var DONE_MS = 1500;
 
@@ -154,8 +167,8 @@ var BBCloudUI = (function () {
       if (opts.fresh) return renderFreshAccount(st);
       card.appendChild(el("p", "bbcEmail", t("cloudSignedInAs").replace("{email}", st.account.email || "—")));
       var btns = el("div", "bbcBtns");
-      btns.appendChild(actionBtn(t("cloudBackupBtn"), t("cloudBackupHint"), function () { return BBCloud.backup(); }, t("cloudBackupDone")));
-      btns.appendChild(actionBtn(t("cloudRestoreBtn"), t("cloudRestoreHint"), function () { return BBCloud.restore(); }, t("cloudRestoreDone")));
+      btns.appendChild(actionBtn(t("cloudBackupBtn"), t("cloudBackupHint"), function () { return BBCloud.backup(); }, t("cloudBackupDone"), "", ICON_UP));
+      btns.appendChild(actionBtn(t("cloudRestoreBtn"), t("cloudRestoreHint"), function () { return BBCloud.restore(); }, t("cloudRestoreDone"), "", ICON_DOWN));
       if (opts.onCancel) btns.appendChild(cancelBtn());
       card.appendChild(btns);
       var meta = card.appendChild(el("p", "bbcMeta", t("cloudWorking")));
@@ -186,21 +199,23 @@ var BBCloudUI = (function () {
       out.addEventListener("click", function () { out.disabled = true; BBCloud.logout().then(render); });
       card.appendChild(out);
     }
-    function actionBtn(label, hint, run, doneText, cls) {
-      var b = el("button", "bbcBtn" + (cls ? " " + cls : ""));
+    function actionBtn(label, hint, run, doneText, cls, icon) {
+      var b = el("button", "bbcBtn" + (cls ? " " + cls : "") + (icon ? " withIcon" : ""));
       b.type = "button";
-      b.appendChild(el("span", "", label));
-      if (hint) b.appendChild(el("small", "", hint));
+      var box = b;
+      if (icon) { b.insertAdjacentHTML("beforeend", icon); box = b.appendChild(el("span", "bbcLbl")); }
+      var name = box.appendChild(el("span", "", label));
+      if (hint) box.appendChild(el("small", "", hint));
       b.addEventListener("click", function () {
         if (busy) return;
         busy = true;
         card.querySelectorAll("button,input").forEach(function (x) { x.disabled = true; });
-        b.firstChild.textContent = t("cloudWorking");
+        name.textContent = t("cloudWorking");
         run().then(function () { busy = false; done(doneText); }, function (e) {
           busy = false;
           if (e && e.code === "unauthorized") { render(); return; }
           card.querySelectorAll("button,input").forEach(function (x) { x.disabled = false; });
-          b.firstChild.textContent = label;
+          name.textContent = label;
           showErr(e);
         });
       });
