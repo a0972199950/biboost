@@ -1,6 +1,7 @@
 // 登入回跳頁（auth.html）：網址上的 code／state（或 error）→ BBCloud.finishLogin 換 token。
 // 從歡迎頁登入的（cloudAuthPending.back）：整個登入都在歡迎頁那個小視窗裡，換完 token 直接換回歡迎頁（不會多一頁）。
-// 從 popup 登入的（小視窗）：顯示雲端備份面板；備份、還原完成或按「關閉」就把這個視窗關掉。
+// 從 popup 登入的（小視窗）：請 background 關掉這個視窗、重新打開 popup 並開雲端備份視窗（只留 popup 一個）；
+//   打不開 popup（Firefox 等）才在這個視窗顯示雲端備份面板，備份、還原完成或按「關閉」就把這個視窗關掉。
 // 網址上的 code 用完就從網址列拿掉（重新整理也不會再送一次）
 "use strict";
 document.title = t("authTitle");
@@ -28,7 +29,11 @@ function closeSelf() {
       if (backUrl) { location.replace(backUrl); return; }
       head.textContent = t("authDone");
       lead.textContent = ""; // 面板裡已經有「已登入：email」
-      BBCloudUI.mount($("authPanel"), { onDone: closeSelf, onCancel: closeSelf, cancelText: t("cloudClose") });
+      chrome.runtime.sendMessage({ type: "CDN_SWITCHER_LOGIN_DONE" }, function (r) {
+        void chrome.runtime.lastError;
+        if (r && r.popup) return; // background 關掉這個視窗、改開 popup 了
+        BBCloudUI.mount($("authPanel"), { onDone: closeSelf, onCancel: closeSelf, cancelText: t("cloudClose") });
+      });
     }, function (e) {
       head.textContent = t("authFail");
       lead.textContent = t("authFailHint").replace("{code}", (e && e.code) || "error");

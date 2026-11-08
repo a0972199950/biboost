@@ -107,7 +107,7 @@ document.documentElement.lang = uiLanguage();
   ["customAddBtn", "customAddBtn"], ["customClearBtn", "customClearBtn"], ["resetAllBtn", "resetAllBtn"],
   ["wnSubtitle", "whatsNewSubtitle"], ["wnClose", "whatsNewClose"],
   ["lfTitle", "listFailTitle"], ["lfBody", "listFailBody"],
-  ["cloudBtn", "cloudBtn"], ["cloudAdvLabel", "cloudTitle"], ["cloudAdvBtn", "cloudManage"], ["cloudAdvHint", "cloudAdvHint"]
+  ["cloudAdvLabel", "cloudTitle"], ["cloudAdvBtn", "cloudManage"], ["cloudAdvHint", "cloudAdvHint"]
 ].forEach(function (pair) { document.getElementById(pair[0]).textContent = t(pair[1]); });
 // -------- 介面語言（進階設定第一項）--------
 // 選項存 localStorage（i18n.js 開頭同步讀）＋ chrome.storage.local 的 uiLang / uiMsgs（bridge.js 的頁內提示用，uiMsgs 為 null = 跟隨瀏覽器）。
@@ -544,16 +544,27 @@ if (detectBrowser() !== "safari") {
   }
 }
 syncRateRow();
-// 雲端備份（cloud.js／cloud-ui.js）：首頁「問題回報」下面一顆；進階設定是 debug 疊層上面的一張選項卡片（右邊「管理」打開視窗，
+// 雲端備份（cloud.js／cloud-ui.js）：只在進階設定，是 debug 疊層上面的一張選項卡片（右邊「管理」打開視窗，
 // 說明底下一列：左邊登入的 email 或「未登入」，右邊「自動同步」：登入且開著＝綠色圓圈勾，其他＝灰色）。
 // 能不能用看 BBFeatures.check：功能開關 cloud_sync 關閉（off）時都收起來；其他不能用的情況由 BBFeatures.mark 標示在按鈕上
+// 從 popup 的雲端備份視窗登入：登入視窗那頭換完 token 後，background 關掉登入視窗、重新打開 popup，並留下 cloudOpenOnPopup（時間）；
+// popup 看到就直接打開進階設定與雲端備份視窗（使用者要求：登入完只留 popup 這一個，不要登入視窗裡再一個）
+var OPEN_ON_POPUP_MS = 60 * 1000;
 function setCloudVisible(r) {
   var on = r.reason !== "off";
-  document.getElementById("cloudRow").style.display = on ? "" : "none";
   document.getElementById("cloudAdvItem").style.display = on ? "" : "none";
-  if (on) ["cloudBtn", "cloudAdvBtn"].forEach(function (id) { BBFeatures.mark(document.getElementById(id), r); });
+  if (on) BBFeatures.mark(document.getElementById("cloudAdvBtn"), r);
+  if (!on || !r.ok) return;
+  chrome.storage.local.get("cloudOpenOnPopup", function (s) {
+    var at = s && s.cloudOpenOnPopup;
+    if (!at) return;
+    chrome.storage.local.remove("cloudOpenOnPopup");
+    if (Date.now() - at > OPEN_ON_POPUP_MS || document.querySelector(".bbcMask")) return;
+    showAdvancedView();
+    BBCloudUI.open();
+  });
 }
-["cloudBtn", "cloudAdvBtn"].forEach(function (id) { document.getElementById(id).addEventListener("click", function () { BBCloudUI.open(); }); });
+document.getElementById("cloudAdvBtn").addEventListener("click", function () { BBCloudUI.open(); });
 function showCloudState() {
   if (typeof BBCloud === "undefined") return;
   BBCloud.status().then(function (st) {

@@ -973,5 +973,8 @@
   },
   "cloudNotSignedIn": {
     "message": "未ログイン"
+  },
+  "welcomeSkipStart": {
+    "message": "スキップしてはじめる"
   }
 }

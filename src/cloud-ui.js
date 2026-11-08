@@ -8,6 +8,7 @@
 //     back：登入在同一個視窗換頁，登入完 auth.html 換回這個擴充頁面（歡迎頁）
 //     onDone：成功動畫播完後呼叫（關掉視窗）
 //     onLater、laterText：fresh 未登入時的「稍後再說」
+//     onState(state, card)：每次畫完、雲端有沒有備份確定時呼叫，state = { signedIn, canRestore }（歡迎頁用來換「開始使用」的文字、畫鎖頭）
 //     onCancel、cancelText：（非 fresh）多一顆一樣樣式的「關閉」（登入回跳頁用）
 // 狀態：
 //   未登入：說明＋「使用 Google 登入」（popup 開小視窗；歡迎頁在同一個視窗換頁。登入完成後 storage 變動，視窗自己換成已登入）
@@ -125,7 +126,9 @@ var BBCloudUI = (function () {
       } else if (opts.onCancel) btns.appendChild(cancelBtn());
       card.appendChild(btns);
       if (err) showErr(err);
+      notify({ signedIn: false, canRestore: false });
     }
+    function notify(state) { if (alive && typeof opts.onState === "function") opts.onState(state, card); }
     function lastText(l) { return l ? t("cloudLastBackup").replace("{time}", timeText(l.at)) : t("cloudNoBackup"); }
     // 歡迎頁（剛安裝）登入後：只問要不要從雲端恢復。確定雲端有備份才出現問句與按鈕
     function renderFreshAccount(st) {
@@ -135,10 +138,12 @@ var BBCloudUI = (function () {
       btns.appendChild(actionBtn(t("cloudRestoreShort"), "", function () { return BBCloud.restore(); }, t("cloudRestoreDone"), "primary"));
       var meta = card.appendChild(el("p", "bbcMeta", t("cloudWorking")));
       ask.hidden = btns.hidden = true;
+      notify({ signedIn: true, canRestore: false });
       BBCloud.remoteInfo().then(function (info) {
         if (!alive) return;
         meta.textContent = lastText(info.last);
         ask.hidden = btns.hidden = !info.last;
+        notify({ signedIn: true, canRestore: !!info.last });
       }, function (e) { if (!alive) return; meta.textContent = errText(e); if (e.code === "unauthorized") render(); });
     }
     function renderAccount(st) {

@@ -1,5 +1,7 @@
 // 歡迎頁（welcome.html）：全新安裝時 background 開成小視窗。開場動畫（welcome-hero.js：探頭→一直開心跳跳＋彩帶）、歡迎詞、主要賣點；
-// 雲端備份面板（fresh 模式）只在功能開關 cloud_sync 開著、而且可以用時出現（BBFeatures.check；不能用就整塊不顯示）。
+// 雲端備份面板（fresh 模式）在功能開關 cloud_sync 開著時出現；開著但不能用（BBFeatures.check 不是 ok，例如付費限定）時照樣顯示，
+// 登入／恢復按鈕由 BBFeatures.mark 畫上鎖頭（點了說明為什麼不能用）。
+// 登入後在問要不要恢復時，最下面的按鈕是灰色的「跳過，開始使用」。
 //   未登入：Google 登入／稍後再說（收起這塊）
 //   登入後（同一個視窗換頁回來）：不再顯示歡迎的部分，只問要不要從雲端恢復
 // 最下面「開始使用」：background 關掉這個視窗、打開擴充的 popup 一次（打不開就只關視窗）。從雲端恢復完也一樣
@@ -44,12 +46,19 @@ function showWelcome(signedIn) { $("welcomeHero").hidden = !!signedIn; }
 BBCloud.status().then(function (st) { showWelcome(st.account); });
 chrome.storage.onChanged.addListener(function (ch, area) { if (area === "local" && ch.cloudAccount) showWelcome(ch.cloudAccount.newValue); });
 
-var cloudPanel = null, laterClicked = false;
+var cloudPanel = null, laterClicked = false, cloudAccess = { ok: true, reason: "" };
+// 面板每次畫完：換最下面按鈕的文字與樣式；不能用就把登入、恢復按鈕鎖起來
+function onCloudState(state, card) {
+  var skip = state.signedIn && state.canRestore;
+  $("startBtn").textContent = t(skip ? "welcomeSkipStart" : "cloudStart");
+  $("startBtn").classList.toggle("skip", skip);
+  card.querySelectorAll(".bbcBtn.google, .bbcBtn.primary").forEach(function (b) { BBFeatures.mark(b, cloudAccess); });
+}
 function setCloud(on) {
   var box = $("cloudPanel");
   box.hidden = !on;
-  if (on && !cloudPanel) cloudPanel = BBCloudUI.mount(box, { fresh: true, back: "welcome.html", onDone: start, onLater: function () { laterClicked = true; setCloud(false); } });
-  if (!on && cloudPanel) { cloudPanel.destroy(); box.textContent = ""; cloudPanel = null; }
+  if (on && !cloudPanel) cloudPanel = BBCloudUI.mount(box, { fresh: true, back: "welcome.html", onDone: start, onState: onCloudState, onLater: function () { laterClicked = true; setCloud(false); } });
+  if (!on && cloudPanel) { cloudPanel.destroy(); box.textContent = ""; cloudPanel = null; $("startBtn").textContent = t("cloudStart"); $("startBtn").classList.remove("skip"); }
 }
 // 視窗高度跟著內容：background 先開 500×700，但瀏覽器的預設縮放（例如 110%）、語言的字數、雲端備份那塊有沒有出現都會改變內容高度，
 // 裝不下就要捲動才看得到「開始使用」（使用者的 Chrome 預設 110% 就發生過）。內容變了或視窗大小變了就重新對齊，最多連調幾次。
@@ -79,5 +88,10 @@ try { new ResizeObserver(function () { fitSoon(true); }).observe(document.queryS
 window.addEventListener("resize", function () { fitSoon(false); });
 
 BBFeatures.watch(function (flags) {
-  BBFeatures.check(flags, "cloud_sync").then(function (r) { setCloud(r.ok && !laterClicked); });
+  BBFeatures.check(flags, "cloud_sync").then(function (r) {
+    var changed = r.ok !== cloudAccess.ok || r.reason !== cloudAccess.reason;
+    cloudAccess = r;
+    setCloud(r.reason !== "off" && !laterClicked);
+    if (changed && cloudPanel) cloudPanel.render();
+  });
 });

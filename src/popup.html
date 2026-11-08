@@ -1066,13 +1066,8 @@
       text-align: center;
     }
 
-    /* 雲端備份（功能開關 cloud_sync）：首頁是一般按鈕；進階設定是一張選項卡片（在 debug 疊層上面），右邊一顆按鈕打開雲端備份視窗，
+    /* 雲端備份（功能開關 cloud_sync）：只在進階設定，是一張選項卡片（在 debug 疊層上面），右邊一顆按鈕打開雲端備份視窗，
        說明底下一列：左邊是登入的帳號（或「未登入」），右邊是自動同步開了沒（開＝綠色圓圈打勾，沒開＝灰色） */
-    button#cloudBtn {
-      border: 1px solid var(--border);
-      background: var(--control-bg);
-      color: inherit;
-    }
 
     button.advOpenBtn {
       flex: none;
@@ -2873,7 +2868,6 @@
       <button id="feedbackBtn" type="button" style="display:none"></button>
     </div>
     <div id="reportHistory" class="reportHistory" style="display:none"></div>
-    <div class="footerBtns" id="cloudRow" style="display:none"><button id="cloudBtn" type="button"></button></div>
 
     <div class="versionRow"><button id="versionLink" type="button" class="linkBtn"></button></div>
   </div>

@@ -47,6 +47,37 @@ function finishWelcome(windowId) {
   });
 }
 
+// 從 popup 登入（cloud.js 的 startLogin 開的小視窗）完成：auth.html 送 CDN_SWITCHER_LOGIN_DONE。
+// 關掉登入視窗（分頁），在一般視窗重新打開 popup，popup 看到 cloudOpenOnPopup 就打開雲端備份視窗——只留 popup 這一個。
+// popup 本來就開著（例如固定在旁邊）就只關登入分頁，它自己會跟著登入狀態重畫。打不開 popup（Firefox 要使用者手勢等）回 false，
+// auth.html 照舊在登入視窗裡顯示雲端備份面板
+function loginDone(tabId) {
+  function closeLoginTab() { if (tabId != null) chrome.tabs.remove(tabId, function () { void chrome.runtime.lastError; }); }
+  if (!chrome.action || typeof chrome.action.openPopup !== "function" || !chrome.windows) return Promise.resolve(false);
+  var popupOpen = chrome.runtime.getContexts
+    ? Promise.resolve(chrome.runtime.getContexts({ contextTypes: ["POPUP"] })).then(function (c) { return !!(c && c.length); }, function () { return false; })
+    : Promise.resolve(false);
+  return popupOpen.then(function (open) {
+    if (open) { closeLoginTab(); return true; }
+    return new Promise(function (r) { chrome.storage.local.set({ cloudOpenOnPopup: Date.now() }, r); }).then(function () {
+      return new Promise(function (r) {
+        chrome.windows.getLastFocused({ windowTypes: ["normal"] }, function (w) {
+          void chrome.runtime.lastError;
+          if (!w) return r(false);
+          chrome.windows.update(w.id, { focused: true }, function () {
+            void chrome.runtime.lastError;
+            Promise.resolve().then(function () { return chrome.action.openPopup({ windowId: w.id }); })
+              .then(function () { closeLoginTab(); r(true); }, function () { r(false); });
+          });
+        });
+      });
+    }).then(function (ok) {
+      if (!ok) chrome.storage.local.remove("cloudOpenOnPopup");
+      return ok;
+    });
+  });
+}
+
 chrome.runtime.onInstalled.addListener(function (details) {
   if (details.reason === "install") {
     chrome.storage.local.set({ installedAt: Date.now(), installTestPending: true });
@@ -308,6 +339,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   }
   if (msg.type === "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW") { openAnnouncementWindow(msg.id); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_HANDOFF_URL" && /^macappstore:/.test(msg.url || "")) { openHandoffUrl(msg.url); sendResponse({ ok: true }); return true; }
+  if (msg.type === "CDN_SWITCHER_LOGIN_DONE") { loginDone(sender && sender.tab ? sender.tab.id : null).then(function (ok) { sendResponse({ popup: ok }); }); return true; }
   if (msg.type === "CDN_SWITCHER_WELCOME_DONE") { finishWelcome(msg.windowId); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_REPORT_WINDOW") { openReportWindow(msg.tab != null ? msg.tab : tabId); sendResponse({ ok: true }); return true; }
 });

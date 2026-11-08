@@ -577,9 +577,9 @@ describe("cloud backup buttons", () => {
   const FEATURES_API = "https://api.biboost.app/v1/features";
   let key;
   before(async () => { key = await testKey(); });
-  async function bootFlags(features) {
+  async function bootFlags(features, extra) {
     const jws = features && await signJws({ iat: 1, features }, key.priv, "t1");
-    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true } });
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, ...(extra || {}) } });
     env.fetchHandler = (url) => {
       if (url === FEATURES_API && jws) return { ok: true, status: 200, json: () => Promise.resolve({ ok: true, jws }) };
       throw new TypeError("Failed to fetch");
@@ -592,27 +592,37 @@ describe("cloud backup buttons", () => {
   }
   test("hidden while the cloud_sync switch is off (the default)", async () => {
     const env = await bootFlags(null);
-    assert.equal(env.document.getElementById("cloudRow").style.display, "none");
     assert.equal(env.document.getElementById("cloudAdvItem").style.display, "none");
     env.close();
   });
-  test("switched on: the home button under bug report and a settings card above the debug overlay; both open the dialog", async () => {
+  test("switched on: only a settings card above the debug overlay (no button on the home screen); Manage opens the dialog", async () => {
     const env = await bootFlags({ cloud_sync: { enabled: true } });
-    const row = env.document.getElementById("cloudRow"), item = env.document.getElementById("cloudAdvItem"), adv = env.document.getElementById("cloudAdvBtn");
-    assert.equal(row.style.display, "");
+    const item = env.document.getElementById("cloudAdvItem"), adv = env.document.getElementById("cloudAdvBtn");
     assert.equal(item.style.display, "");
-    assert.equal(env.document.getElementById("cloudBtn").textContent, "Cloud backup");
+    assert.equal(env.document.getElementById("cloudBtn"), null, "no cloud backup button on the home screen");
     assert.ok(item.nextElementSibling.querySelector("#showDebug"), "card sits right above the debug overlay option");
     assert.equal(adv.textContent, "Manage");
     assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync");
     assert.equal(env.document.getElementById("cloudState").classList.contains("on"), false);
     assert.equal(env.document.getElementById("cloudWho").textContent, "Not signed in");
-    assert.equal(row.previousElementSibling.id, "reportHistory");
     adv.click();
     assert.ok(env.document.querySelector(".bbcMask"));
     await env.settle(40);
     env.document.querySelector(".bbcClose").click();
     assert.equal(env.document.querySelector(".bbcMask"), null);
+    env.close();
+  });
+  test("after signing in from the popup, the reopened popup goes straight to the cloud backup dialog (once)", async () => {
+    const env = await bootFlags({ cloud_sync: { enabled: true } }, { cloudOpenOnPopup: Date.now() });
+    assert.ok(env.document.querySelector(".bbcMask"), "dialog opened by itself");
+    assert.equal(env.document.getElementById("advancedView").style.display, "block", "on the settings page");
+    assert.equal("cloudOpenOnPopup" in env.storage, false, "only once");
+    env.close();
+  });
+  test("a stale request to open the dialog is ignored", async () => {
+    const env = await bootFlags({ cloud_sync: { enabled: true } }, { cloudOpenOnPopup: Date.now() - 5 * 60 * 1000 });
+    assert.equal(env.document.querySelector(".bbcMask"), null);
+    assert.equal("cloudOpenOnPopup" in env.storage, false);
     env.close();
   });
   test("the settings card shows the account on the left and a green check next to 'Auto sync' while it is on", async () => {
