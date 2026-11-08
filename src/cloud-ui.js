@@ -164,7 +164,8 @@ var BBCloudUI = (function () {
       setTimeout(function () { if (onDone) onDone(); else render(); }, DONE_MS);
     }
     // 登入／登出（別的分頁）、自動同步狀態變了 → 重畫
-    function onChange(ch, area) { if (area === "local" && !busy && (ch.cloudAccount || ch.cloudSync && !card.querySelector(".bbcAuto"))) render(); }
+    // 成功的打勾動畫播放中不重畫（動畫播完會自己關掉或重畫）
+    function onChange(ch, area) { if (area === "local" && !busy && !card.querySelector(".bbcDone") && (ch.cloudAccount || ch.cloudSync && !card.querySelector(".bbcAuto"))) render(); }
     chrome.storage.onChanged.addListener(onChange);
     render();
     return { destroy: function () { alive = false; try { chrome.storage.onChanged.removeListener(onChange); } catch (e) {} }, render: render };

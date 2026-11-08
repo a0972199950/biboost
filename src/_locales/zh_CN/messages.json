@@ -906,7 +906,7 @@
     "message": "自动同步"
   },
   "cloudAutoHint": {
-    "message": "设置一改就自动备份（包含当前节点与国家），每 15 分钟从云端更新一次。"
+    "message": "设置一改就自动备份到云端（包含当前节点与国家）。"
   },
   "cloudLogout": {
     "message": "退出登录"

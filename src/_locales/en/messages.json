@@ -906,7 +906,7 @@
     "message": "Auto sync"
   },
   "cloudAutoHint": {
-    "message": "Back up automatically whenever a setting changes (including the current node and country), and update from the cloud every 15 minutes."
+    "message": "Back up to the cloud automatically whenever a setting changes (including the current node and country)."
   },
   "cloudLogout": {
     "message": "Sign out"

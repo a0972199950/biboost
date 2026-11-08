@@ -8,7 +8,7 @@
 // 測試帳號：E2E_EMAIL（預設 e2e-extension@example.com）；每次開始先清空它在雲端的備份。
 //
 // 開啟（on）：歡迎頁直接有雲端備份面板 → Google 授權頁沒錯 → 登入後面板換成帳號 → A 手動備份 → B 全新安裝後還原
-//            → 兩台打開自動同步、互相改設定（含節點與國家）都會同步過去 → 登出
+//            → 兩台打開自動同步：改設定（含節點與國家）會自動上傳、但不會蓋掉另一台，另一台手動還原才拿到 → 登出
 // 關閉（off）：全新安裝不開歡迎頁、popup 沒有雲端備份按鈕、直接開歡迎頁也沒有面板
 import fs from "node:fs";
 import os from "node:os";
@@ -220,7 +220,7 @@ async function scenarioOn() {
     check("B 的設定跟 A 一樣（含節點與國家）", !same.length, same.length ? `不同：${same.join("、")}` : "");
     check("還原後 B 不再被當成新使用者", sb.countryAutoDone === true && sb.installTestPending === false);
 
-    // 6. 自動同步：兩台都在面板打開
+    // 6. 自動同步（單向）：本機一改就上傳；不會把雲端的改動拉回別台，別台要自己按「從雲端同步到本地」
     for (const [m, p] of [[A, wa], [B, wb]]) {
       await until(async () => p.$("#cloudPanel .bbcAuto input"), 10000);
       await p.click("#cloudPanel .bbcAuto input");
@@ -229,20 +229,23 @@ async function scenarioOn() {
     await A.setStorage({ stVideoSec: 9, cdnCountry: "HK", cdnHost: "upos-sz-mirrorali.bilivideo.com" });
     const up = await until(async () => { const d = await cloudData(token, "extension"); return d.stVideoSec === 9 && d.cdnHost === "upos-sz-mirrorali.bilivideo.com" ? d : null; }, 20000, 1000);
     check("A 改設定（含切換節點）約 2 秒後自動上傳", up);
-    const pb = await B.page("popup.html"); // 打開 popup 會拉一次
-    const down = await until(async () => { const s = await B.storage(["stVideoSec", "cdnCountry", "cdnHost"]); return s.stVideoSec === 9 && s.cdnCountry === "HK" && s.cdnHost === "upos-sz-mirrorali.bilivideo.com" ? s : null; }, 20000, 1000);
-    check("B 打開 popup 就拉到 A 的改動（含節點與國家）", down, down ? "" : JSON.stringify(await B.storage(["stVideoSec", "cdnCountry", "cdnHost"])));
-    // 打開當下的這個 popup 畫面也要是新的（拉到後重新載入），不是下次打開才對
+    const pb = await B.page("popup.html");
+    await sleep(4000);
+    const still = await B.storage(["stVideoSec", "cdnCountry"]);
+    check("B 不會自動被雲端蓋掉（打開 popup 也不拉）", still.stVideoSec === 7 && still.cdnCountry === "JP", JSON.stringify(still));
+    await pb.click("#cloudBtn");
+    const r3 = await panelAction(pb, ".bbcMask .bbcBtn.alt");
+    check("B 在 popup 按「從雲端同步到本地」拿到 A 的改動", r3 === "done", r3);
+    // 還原後開著的 popup 要重新載入，畫面直接是新的設定
     const shown = await until(async () => (await pb.$eval("#countrySelect", (e) => e.value).catch(() => "")) === "HK", 10000, 500);
-    check("同一個 popup 畫面直接顯示拉到的國家", shown, shown ? "" : await pb.$eval("#countrySelect", (e) => e.value).catch(() => "?"));
-    await B.shot(pb, "6-popup-synced");
+    check("同一個 popup 畫面直接顯示還原的國家", shown, shown ? "" : await pb.$eval("#countrySelect", (e) => e.value).catch(() => "?"));
+    await B.shot(pb, "6-popup-restored");
     await pb.close();
     await B.setStorage({ uiTheme: "light", customHosts: ["upos-sz-mirrorcos.bilivideo.com", "upos-sz-mirrorhw.bilivideo.com"] });
-    await until(async () => (await cloudData(token, "extension")).uiTheme === "light", 20000, 1000);
-    const pa2 = await A.page("popup.html");
-    const back = await until(async () => { const s = await A.storage(["uiTheme", "customHosts"]); return s.uiTheme === "light" && (s.customHosts || []).length === 2 ? s : null; }, 20000, 1000);
-    check("反過來 B 的改動也同步到 A（含共用的自訂節點）", back);
-    await pa2.close();
+    const upB = await until(async () => { const e = await cloudData(token, "extension"), sh = await cloudData(token, "shared"); return e.uiTheme === "light" && (sh.customHosts || []).length === 2; }, 20000, 1000);
+    check("B 的改動也自動上傳（含共用的自訂節點）", upB);
+    const sa0 = await A.storage(["uiTheme", "customHosts"]);
+    check("A 不會自動被 B 的改動蓋掉", sa0.uiTheme === "dark" && (sa0.customHosts || []).length === 1, JSON.stringify(sa0));
     const errs = [(await A.storage("cloudSync")).cloudSync?.lastErr, (await B.storage("cloudSync")).cloudSync?.lastErr].filter(Boolean);
     check("自動同步沒有錯誤", !errs.length, errs.join("、"));
 

@@ -175,17 +175,25 @@ describe("manual backup / restore", () => {
 
 describe("auto sync", () => {
   const settle = (env) => env.settle(30);
-  test("turning it on pulls the cloud first, then pushes fields the cloud doesn't have; the current node syncs too", async () => {
-    const docs = { extension: { data: { stVideoMb: 9, cdnHost: "cloud.bilivideo.com" }, rev: 3, updatedAt: 1, updatedBy: "extension" } };
+  test("turning it on uploads everything local once (one-way: the cloud never overwrites this computer)", async () => {
+    const docs = { extension: { data: { stVideoMb: 9, cdnHost: "cloud.bilivideo.com", fromApp: 1 }, rev: 3, updatedAt: 1, updatedBy: "extension" } };
     const { env, C, srv } = boot({ storage: { ...ACCOUNT, stVideoMb: 4, autoFallback: false, cdnHost: "mine.bilivideo.com" }, docs });
     await C.setAuto(true);
-    await settle(env);
-    assert.equal(env.storage.stVideoMb, 9, "cloud wins");
-    assert.equal(env.storage.cdnHost, "cloud.bilivideo.com", "current node syncs like any other setting");
-    assert.equal(env.storage.countryAutoDone, true, "node from the cloud = not a new user");
-    assert.equal(env.storage.installTestPending, false);
-    assert.equal(srv.docs.extension.data.autoFallback, false, "local-only field pushed");
-    assert.ok(env.alarms.cloudSyncPull, "pulls every 15 minutes");
+    assert.equal(env.storage.cloudSync.auto, true);
+    assert.equal(env.storage.stVideoMb, 4, "local stays as it is");
+    assert.equal(env.storage.cdnHost, "mine.bilivideo.com");
+    assert.equal(srv.docs.extension.data.stVideoMb, 4, "local wins in the cloud");
+    assert.equal(srv.docs.extension.data.cdnHost, "mine.bilivideo.com", "current node is backed up too");
+    assert.equal(srv.docs.extension.data.autoFallback, false);
+    assert.equal(srv.docs.extension.data.fromApp, 1, "fields this extension doesn't know are kept");
+    assert.deepEqual(Object.keys(env.alarms || {}), [], "no periodic pull");
+    env.close();
+  });
+  test("turning it on stays off when the first upload fails", async () => {
+    const { env, C, srv } = boot({ storage: { ...ACCOUNT, stVideoMb: 4 } });
+    srv.down = true;
+    await assert.rejects(C.setAuto(true));
+    assert.equal(env.storage.cloudSync.auto, false);
     env.close();
   });
   test("a local change is pushed after a short delay; unchanged values and unrelated keys are ignored", async () => {
@@ -205,39 +213,28 @@ describe("auto sync", () => {
     assert.equal(srv.docs.extension.data.cdnHost, "x.bilivideo.com");
     env.close();
   });
-  test("pull applies newer cloud values but never overwrites a field still waiting to be pushed", async () => {
-    const docs = { extension: { data: { stVideoMb: 9, autoFallback: false, cdnCountry: "TW" }, rev: 5, updatedAt: 1, updatedBy: "extension" } };
-    const { env, C } = boot({ storage: { ...ACCOUNT, stVideoMb: 6, autoFallback: true, cdnCountry: "JP", cdnListPending: { reason: "install" }, cloudSync: { auto: true, rev: { extension: 4 }, snap: {}, dirty: ["stVideoMb"] } }, docs });
-    const r = await C.pull();
-    assert.equal(r.applied, 2);
-    assert.equal(env.storage.autoFallback, false);
-    assert.equal(env.storage.stVideoMb, 6, "dirty field kept");
-    assert.equal(env.storage.cdnCountry, "TW", "country syncs too");
-    assert.equal(env.storage.countryAutoDone, true);
-    assert.equal(env.storage.cdnListPending, undefined, "a late node list won't pick a country over the synced one");
-    assert.equal(env.storage.cloudSync.rev.extension, 5);
-    assert.equal(typeof env.storage.cloudAppliedAt, "number", "an open popup reloads to show the pulled settings");
+  test("another computer's change in the cloud is not pulled in automatically", async () => {
+    const docs = { extension: { data: { stVideoMb: 9 }, rev: 5, updatedAt: 1, updatedBy: "extension" } };
+    const { env, C } = boot({ storage: { ...ACCOUNT, stVideoMb: 6, cloudSync: { auto: true, rev: { extension: 4 }, snap: { stVideoMb: "6" }, dirty: [] } }, docs });
+    assert.equal(C.pull, undefined, "no pull at all");
+    await C.push();
+    assert.equal(env.storage.stVideoMb, 6);
+    assert.equal(env.storage.cloudAppliedAt, undefined);
     env.close();
   });
-  test("pull does nothing when auto sync is off or the cloud has nothing newer", async () => {
-    const docs = { extension: { data: { autoFallback: false }, rev: 5 } };
-    const off = boot({ storage: { ...ACCOUNT, autoFallback: true }, docs });
-    assert.equal((await off.C.pull()).applied, 0);
-    assert.equal(off.srv.calls.length, 0);
-    off.env.close();
-    const same = boot({ storage: { ...ACCOUNT, autoFallback: true, cloudSync: { auto: true, rev: { extension: 5 }, snap: {}, dirty: [] } }, docs });
-    assert.equal((await same.C.pull()).applied, 0);
-    assert.equal(same.env.storage.autoFallback, true);
-    assert.equal(same.env.storage.cloudAppliedAt, undefined, "nothing applied → the popup must not reload (no reload loop)");
-    same.env.close();
+  test("restoring while auto sync is on doesn't send the restored values straight back", async () => {
+    const docs = { extension: { data: { stVideoMb: 9, cdnCountry: "TW" }, rev: 5, updatedAt: 1, updatedBy: "extension" } };
+    const { env, C } = boot({ storage: { ...ACCOUNT, stVideoMb: 6, cdnCountry: "JP", cloudSync: { auto: true, rev: { extension: 4 }, snap: {}, dirty: [] } }, docs });
+    await C.restore();
+    assert.equal(await C.onLocalChange({ stVideoMb: { newValue: 9 }, cdnCountry: { newValue: "TW" } }), false, "same as the snapshot saved before the write");
+    assert.deepEqual(env.storage.cloudSync.dirty, []);
+    env.close();
   });
-  test("turning it off stops the alarm and forgets pending changes", async () => {
+  test("turning it off forgets pending changes", async () => {
     const { env, C } = boot({ storage: { ...ACCOUNT, cloudSync: { auto: true, rev: {}, snap: {}, dirty: ["x"] } } });
-    env.alarms.cloudSyncPull = {};
     await C.setAuto(false);
     assert.equal(env.storage.cloudSync.auto, false);
     assert.deepEqual(env.storage.cloudSync.dirty, []);
-    assert.equal("cloudSyncPull" in env.alarms, false);
     env.close();
   });
 });
