@@ -70,6 +70,7 @@
 		2B5E4C77851DA266CBA13714 /* welcome.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E629B55BE32DD91C5EE36 /* welcome.html */; };
 		2B5E355960E2825FFFFF869B /* auth.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2D0D58052D8EA7AFFD52 /* auth.html */; };
 		2B5E2A99CC6751B6F66DB91F /* welcome.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E3749C3E920D9263438EC /* welcome.js */; };
+		2B5E71A0C4D8F3B5E6A19C03 /* welcome-hero.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */; };
 		2B5E96EE9ECE258427295F62 /* auth.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E1D709CD3B5992C72F8F5 /* auth.js */; };
 		2B5EF0E01488730AB3C7D75A /* cloud-ui.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */; };
 		2B5E18199489D3223EF1BBD4 /* cloud.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E925FE59B8B6ABDF6648D /* cloud.js */; };
@@ -78,6 +79,7 @@
 		2B5E83DC678D2E4562E3C24A /* welcome.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E629B55BE32DD91C5EE36 /* welcome.html */; };
 		2B5E53D09B39E8CAB12061BE /* auth.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2D0D58052D8EA7AFFD52 /* auth.html */; };
 		2B5E6834A8B013C884193683 /* welcome.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E3749C3E920D9263438EC /* welcome.js */; };
+		2B5E71A0C4D8F3B5E6A19C04 /* welcome-hero.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */; };
 		2B5E12A7F13A6E6F9AA9B520 /* auth.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E1D709CD3B5992C72F8F5 /* auth.js */; };
 		2B5E98ED0ACF107F81176EE8 /* cloud-ui.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */; };
 		2B5EBDC8B0AF61A1BF448103 /* cloud.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E925FE59B8B6ABDF6648D /* cloud.js */; };
@@ -182,6 +184,7 @@
 		2B5E629B55BE32DD91C5EE36 /* welcome.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "welcome.html"; path = "../../../src/welcome.html"; sourceTree = "<group>"; };
 		2B5E2D0D58052D8EA7AFFD52 /* auth.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "auth.html"; path = "../../../src/auth.html"; sourceTree = "<group>"; };
 		2B5E3749C3E920D9263438EC /* welcome.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "welcome.js"; path = "../../../src/welcome.js"; sourceTree = "<group>"; };
+		2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "welcome-hero.js"; path = "../../../src/welcome-hero.js"; sourceTree = "<group>"; };
 		2B5E1D709CD3B5992C72F8F5 /* auth.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "auth.js"; path = "../../../src/auth.js"; sourceTree = "<group>"; };
 		2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "cloud-ui.js"; path = "../../../src/cloud-ui.js"; sourceTree = "<group>"; };
 		2B5E925FE59B8B6ABDF6648D /* cloud.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "cloud.js"; path = "../../../src/cloud.js"; sourceTree = "<group>"; };
@@ -344,6 +347,7 @@
 				2B5E629B55BE32DD91C5EE36 /* welcome.html */,
 				2B5E2D0D58052D8EA7AFFD52 /* auth.html */,
 				2B5E3749C3E920D9263438EC /* welcome.js */,
+				2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */,
 				2B5E1D709CD3B5992C72F8F5 /* auth.js */,
 				2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */,
 				2B5E925FE59B8B6ABDF6648D /* cloud.js */,
@@ -548,6 +552,7 @@
 				2B5E83DC678D2E4562E3C24A /* welcome.html in Resources */,
 				2B5E53D09B39E8CAB12061BE /* auth.html in Resources */,
 				2B5E6834A8B013C884193683 /* welcome.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C04 /* welcome-hero.js in Resources */,
 				2B5E12A7F13A6E6F9AA9B520 /* auth.js in Resources */,
 				2B5E98ED0ACF107F81176EE8 /* cloud-ui.js in Resources */,
 				2B5EBDC8B0AF61A1BF448103 /* cloud.js in Resources */,
@@ -585,6 +590,7 @@
 				2B5E4C77851DA266CBA13714 /* welcome.html in Resources */,
 				2B5E355960E2825FFFFF869B /* auth.html in Resources */,
 				2B5E2A99CC6751B6F66DB91F /* welcome.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C03 /* welcome-hero.js in Resources */,
 				2B5E96EE9ECE258427295F62 /* auth.js in Resources */,
 				2B5EF0E01488730AB3C7D75A /* cloud-ui.js in Resources */,
 				2B5E18199489D3223EF1BBD4 /* cloud.js in Resources */,
