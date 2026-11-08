@@ -51,6 +51,33 @@ function setCloud(on) {
   if (on && !cloudPanel) cloudPanel = BBCloudUI.mount(box, { fresh: true, back: "welcome.html", onDone: start, onLater: function () { laterClicked = true; setCloud(false); } });
   if (!on && cloudPanel) { cloudPanel.destroy(); box.textContent = ""; cloudPanel = null; }
 }
+// 視窗高度跟著內容：background 先開 500×700，但瀏覽器的預設縮放（例如 110%）、語言的字數、雲端備份那塊有沒有出現都會改變內容高度，
+// 裝不下就要捲動才看得到「開始使用」（使用者的 Chrome 預設 110% 就發生過）。內容變了或視窗大小變了就重新對齊，最多連調幾次。
+// 視窗高度是螢幕單位、內容是 CSS 單位（差一個縮放倍率 k）：先當 1，調過一次後用實際變化量算出來
+var fit = { tries: 0, k: 1, lastH: 0, lastInner: 0, timer: 0 };
+function fitWindow() {
+  if (!chrome.windows || !chrome.windows.update) return;
+  chrome.windows.getCurrent(function (w) {
+    if (!w || w.type !== "popup" || w.state !== "normal" || location.pathname.indexOf("welcome.html") < 0) return;
+    var need = document.querySelector(".top").offsetHeight + document.querySelector("main").offsetHeight;
+    var diff = need - window.innerHeight;
+    if (Math.abs(diff) < 3 || fit.tries >= 4) return;
+    if (fit.lastH && w.height !== fit.lastH && window.innerHeight !== fit.lastInner) fit.k = (w.height - fit.lastH) / (window.innerHeight - fit.lastInner);
+    fit.lastH = w.height;
+    fit.lastInner = window.innerHeight;
+    fit.tries++;
+    var h = Math.round(w.height + diff * fit.k);
+    chrome.windows.update(w.id, { height: Math.max(360, Math.min(h, screen.availHeight)) }, function () { void chrome.runtime.lastError; });
+  });
+}
+function fitSoon(reset) {
+  if (reset) fit.tries = 0;
+  clearTimeout(fit.timer);
+  fit.timer = setTimeout(fitWindow, 120);
+}
+try { new ResizeObserver(function () { fitSoon(true); }).observe(document.querySelector("main")); } catch (e) {}
+window.addEventListener("resize", function () { fitSoon(false); });
+
 BBFeatures.watch(function (flags) {
   BBFeatures.check(flags, "cloud_sync").then(function (r) { setCloud(r.ok && !laterClicked); });
 });
