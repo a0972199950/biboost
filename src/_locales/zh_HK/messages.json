@@ -873,7 +873,7 @@
     "message": "用 Google 登入"
   },
   "cloudLoginOpened": {
-    "message": "已經喺新分頁開咗 Google 登入，搞掂之後返嚟呢度就得。"
+    "message": "已經開咗 Google 登入視窗，搞掂之後返嚟呢度就得。"
   },
   "cloudSignedInAs": {
     "message": "已登入：{email}"
@@ -885,7 +885,7 @@
     "message": "用呢部電腦而家嘅設定蓋過雲端嘅備份"
   },
   "cloudRestoreBtn": {
-    "message": "由雲端同步返本機"
+    "message": "從雲端恢復設定"
   },
   "cloudRestoreHint": {
     "message": "用雲端嘅備份蓋過呢部電腦嘅設定"
@@ -904,9 +904,6 @@
   },
   "cloudAutoLabel": {
     "message": "自動同步"
-  },
-  "cloudAutoHint": {
-    "message": "設定一改就自動備份到雲端（包括目前節點同國家）。"
   },
   "cloudLogout": {
     "message": "登出"
@@ -948,9 +945,45 @@
     "message": "請返去擴充重新登入（{code}）"
   },
   "welcomeTitle": {
-    "message": "安裝完成！"
+    "message": "歡迎使用嗶速！"
   },
   "welcomeBody": {
-    "message": "打開任何 B 站影片，BiBoost 就會自動轉去較快嘅節點。㩒瀏覽器右上角嘅擴充圖示可以調整設定。"
+    "message": "喺海外睇 B 站唔再卡。裝好就用得，唔使另外設定。"
+  },
+  "cloudCancel": {
+    "message": "取消"
+  },
+  "cloudLater": {
+    "message": "遲啲先算"
+  },
+  "cloudWelcomeHint": {
+    "message": "之前用過嗶速？登入就可以將雲端備份嘅設定搬返過嚟。"
+  },
+  "cloudManage": {
+    "message": "管理"
+  },
+  "cloudAdvHint": {
+    "message": "將設定備份上雲端，換電腦或者重裝擴充都可以恢復。"
+  },
+  "cloudAutoOn": {
+    "message": "自動同步已開啟"
+  },
+  "cloudAutoOff": {
+    "message": "自動同步未開啟"
+  },
+  "authBack": {
+    "message": "返回"
+  },
+  "welcomeTip1": {
+    "message": "打開任何 B 站影片，嗶速會自動轉去較快嘅節點"
+  },
+  "welcomeTip2": {
+    "message": "影片卡住嘅時候，會喺背景測速、轉去更快嘅節點"
+  },
+  "welcomeTip3": {
+    "message": "㩒瀏覽器右上角嘅拼圖圖示，將嗶速釘選喺工具列，之後㩒佢就可以調整設定"
+  },
+  "cloudStart": {
+    "message": "開始使用"
   }
 }

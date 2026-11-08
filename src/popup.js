@@ -107,7 +107,7 @@ document.documentElement.lang = uiLanguage();
   ["customAddBtn", "customAddBtn"], ["customClearBtn", "customClearBtn"], ["resetAllBtn", "resetAllBtn"],
   ["wnSubtitle", "whatsNewSubtitle"], ["wnClose", "whatsNewClose"],
   ["lfTitle", "listFailTitle"], ["lfBody", "listFailBody"],
-  ["cloudBtn", "cloudBtn"], ["cloudAdvBtn", "cloudBtn"]
+  ["cloudBtn", "cloudBtn"], ["cloudAdvLabel", "cloudTitle"], ["cloudAdvBtn", "cloudManage"], ["cloudAdvHint", "cloudAdvHint"]
 ].forEach(function (pair) { document.getElementById(pair[0]).textContent = t(pair[1]); });
 // -------- 介面語言（進階設定第一項）--------
 // 選項存 localStorage（i18n.js 開頭同步讀）＋ chrome.storage.local 的 uiLang / uiMsgs（bridge.js 的頁內提示用，uiMsgs 為 null = 跟隨瀏覽器）。
@@ -544,17 +544,28 @@ if (detectBrowser() !== "safari") {
   }
 }
 syncRateRow();
-// 雲端備份（cloud.js／cloud-ui.js）：首頁「問題回報」下面一顆、進階設定最下面跟「恢復原始設置」並排（備份在左）；功能開關 cloud_sync 關閉時收起來
+// 雲端備份（cloud.js／cloud-ui.js）：首頁「問題回報」下面一顆；進階設定是 debug 疊層上面的一張選項卡片（右邊「管理」打開視窗，
+// 說明底下顯示自動同步開了沒：登入且開著＝綠色圓圈打勾，其他＝灰色）。功能開關 cloud_sync 關閉時都收起來
 function setCloudVisible(on) {
   document.getElementById("cloudRow").style.display = on ? "" : "none";
-  document.getElementById("cloudAdvBtn").style.display = on ? "" : "none";
+  document.getElementById("cloudAdvItem").style.display = on ? "" : "none";
 }
 ["cloudBtn", "cloudAdvBtn"].forEach(function (id) { document.getElementById(id).addEventListener("click", function () { BBCloudUI.open(); }); });
+function showCloudState() {
+  if (typeof BBCloud === "undefined") return;
+  BBCloud.status().then(function (st) {
+    var on = !!(st.account && st.sync && st.sync.auto);
+    document.getElementById("cloudState").classList.toggle("on", on);
+    document.getElementById("cloudStateText").textContent = t(on ? "cloudAutoOn" : "cloudAutoOff");
+  });
+}
+showCloudState();
+try { chrome.storage.onChanged.addListener(function (ch, area) { if (area === "local" && (ch.cloudAccount || ch.cloudSync)) showCloudState(); }); } catch (e) {}
 BBFeatures.watch(function (flags) {
   if (donateByFlag) setDonateVisible(BBFeatures.enabled(flags, "donate"));
   setCloudVisible(BBFeatures.enabled(flags, "cloud_sync"));
 });
-// 視窗裡按「從雲端同步到本地」把雲端的設定寫進 storage 後，popup 畫面還是打開時讀的舊值：重新載入（等打勾動畫播完、視窗關掉）
+// 視窗裡按「從雲端恢復設定」把雲端的設定寫進 storage 後，popup 畫面還是打開時讀的舊值：重新載入（等打勾動畫播完、視窗關掉）
 try {
   chrome.storage.onChanged.addListener(function (ch, area) {
     if (area !== "local" || !ch.cloudAppliedAt) return;

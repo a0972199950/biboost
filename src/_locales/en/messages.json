@@ -873,7 +873,7 @@
     "message": "Sign in with Google"
   },
   "cloudLoginOpened": {
-    "message": "Google sign-in opened in a new tab. Come back here when you're done."
+    "message": "Google sign-in opened in a new window. Come back here when you're done."
   },
   "cloudSignedInAs": {
     "message": "Signed in as {email}"
@@ -885,7 +885,7 @@
     "message": "Replace the cloud backup with this computer's settings"
   },
   "cloudRestoreBtn": {
-    "message": "Restore from cloud"
+    "message": "Restore settings from cloud"
   },
   "cloudRestoreHint": {
     "message": "Replace this computer's settings with the cloud backup"
@@ -904,9 +904,6 @@
   },
   "cloudAutoLabel": {
     "message": "Auto sync"
-  },
-  "cloudAutoHint": {
-    "message": "Back up to the cloud automatically whenever a setting changes (including the current node and country)."
   },
   "cloudLogout": {
     "message": "Sign out"
@@ -948,9 +945,45 @@
     "message": "Please go back to the extension and sign in again ({code})."
   },
   "welcomeTitle": {
-    "message": "You're all set!"
+    "message": "Welcome to BiBoost!"
   },
   "welcomeBody": {
-    "message": "Open any bilibili video and BiBoost switches to a faster node automatically. Click the extension icon at the top right of your browser to change settings."
+    "message": "No more buffering when you watch bilibili overseas. It works right away, no setup needed."
+  },
+  "cloudCancel": {
+    "message": "Cancel"
+  },
+  "cloudLater": {
+    "message": "Maybe later"
+  },
+  "cloudWelcomeHint": {
+    "message": "Used BiBoost before? Sign in to bring over the settings you backed up to the cloud."
+  },
+  "cloudManage": {
+    "message": "Manage"
+  },
+  "cloudAdvHint": {
+    "message": "Back up your settings to the cloud and restore them on a new computer or after reinstalling."
+  },
+  "cloudAutoOn": {
+    "message": "Auto sync is on"
+  },
+  "cloudAutoOff": {
+    "message": "Auto sync is off"
+  },
+  "authBack": {
+    "message": "Back"
+  },
+  "welcomeTip1": {
+    "message": "Open any bilibili video and BiBoost switches to a faster node automatically"
+  },
+  "welcomeTip2": {
+    "message": "If a video stalls, it tests speeds in the background and moves to a faster node"
+  },
+  "welcomeTip3": {
+    "message": "Click the puzzle icon at the top right of your browser and pin BiBoost to the toolbar to change settings later"
+  },
+  "cloudStart": {
+    "message": "Get started"
   }
 }

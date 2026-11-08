@@ -593,22 +593,33 @@ describe("cloud backup buttons", () => {
   test("hidden while the cloud_sync switch is off (the default)", async () => {
     const env = await bootFlags(null);
     assert.equal(env.document.getElementById("cloudRow").style.display, "none");
-    assert.equal(env.document.getElementById("cloudAdvBtn").style.display, "none");
+    assert.equal(env.document.getElementById("cloudAdvItem").style.display, "none");
     env.close();
   });
-  test("switched on: the home button under bug report and the advanced one left of reset; both open the dialog", async () => {
+  test("switched on: the home button under bug report and a settings card above the debug overlay; both open the dialog", async () => {
     const env = await bootFlags({ cloud_sync: { enabled: true } });
-    const row = env.document.getElementById("cloudRow"), adv = env.document.getElementById("cloudAdvBtn");
+    const row = env.document.getElementById("cloudRow"), item = env.document.getElementById("cloudAdvItem"), adv = env.document.getElementById("cloudAdvBtn");
     assert.equal(row.style.display, "");
-    assert.equal(adv.style.display, "");
+    assert.equal(item.style.display, "");
     assert.equal(env.document.getElementById("cloudBtn").textContent, "Cloud backup");
-    assert.equal(adv.nextElementSibling.id, "resetAllBtn", "backup sits left of reset");
+    assert.ok(item.nextElementSibling.querySelector("#showDebug"), "card sits right above the debug overlay option");
+    assert.equal(adv.textContent, "Manage");
+    assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync is off");
+    assert.equal(env.document.getElementById("cloudState").classList.contains("on"), false);
     assert.equal(row.previousElementSibling.id, "reportHistory");
     adv.click();
     assert.ok(env.document.querySelector(".bbcMask"));
     await env.settle(40);
     env.document.querySelector(".bbcClose").click();
     assert.equal(env.document.querySelector(".bbcMask"), null);
+    env.close();
+  });
+  test("the settings card shows a green check while auto sync is on", async () => {
+    const env = await bootFlags({ cloud_sync: { enabled: true } });
+    env.chrome.storage.local.set({ cloudAccount: { api: "https://api.biboost.app", token: "t", email: "a@b.c" }, cloudSync: { auto: true, rev: {}, snap: {}, dirty: [] } });
+    await env.settle(40);
+    assert.equal(env.document.getElementById("cloudState").classList.contains("on"), true);
+    assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync is on");
     env.close();
   });
 });

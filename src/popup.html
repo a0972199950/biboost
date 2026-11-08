@@ -1066,15 +1066,79 @@
       text-align: center;
     }
 
-    /* 雲端備份（功能開關 cloud_sync）：首頁是一般按鈕；進階設定跟「恢復原始設置」並排、在左邊 */
+    /* 雲端備份（功能開關 cloud_sync）：首頁是一般按鈕；進階設定是一張選項卡片（在 debug 疊層上面），右邊一顆按鈕打開雲端備份視窗，
+       說明底下顯示自動同步開了沒（開＝綠色圓圈打勾，沒開＝灰色） */
     button#cloudBtn {
       border: 1px solid var(--border);
       background: var(--control-bg);
       color: inherit;
     }
 
-    button#cloudAdvBtn {
+    button.advOpenBtn {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px 3px 11px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--control-bg);
+      color: inherit;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background-color .15s, border-color .15s, color .15s;
+    }
+
+    button.advOpenBtn::after {
+      content: "›";
+      font-size: 15px;
+      line-height: 1;
+      margin-top: -1px;
+    }
+
+    button.advOpenBtn:hover,
+    button.advOpenBtn:focus-visible {
+      border-color: var(--accent);
+      background: var(--hover-bg);
       color: var(--accent);
+      outline: none;
+    }
+
+    .cloudState {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .cloudState svg {
+      display: block;
+      width: 16px;
+      height: 16px;
+      flex: none;
+    }
+
+    .cloudState circle {
+      fill: var(--slider-off);
+    }
+
+    .cloudState path {
+      fill: none;
+      stroke: #fff;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .cloudState.on circle {
+      fill: var(--ok);
+    }
+
+    .cloudState.on {
+      color: var(--text);
     }
 
     button#resetAllBtn {
@@ -2859,6 +2923,18 @@
       <div class="hint" id="sortBySpeedHint"></div>
     </div>
 
+    <div class="advItem" id="cloudAdvItem" style="display:none">
+      <div class="row">
+        <span id="cloudAdvLabel"></span>
+        <button type="button" class="advOpenBtn" id="cloudAdvBtn"></button>
+      </div>
+      <div class="hint" id="cloudAdvHint"></div>
+      <div class="cloudState" id="cloudState">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="8" /><path d="M4.5 8.2l2.3 2.3 4.7-4.9" /></svg>
+        <span id="cloudStateText"></span>
+      </div>
+    </div>
+
     <div class="advItem">
       <div class="row">
         <span id="showDebugLabel"></span>
@@ -2871,7 +2947,7 @@
       </div>
     </div>
 
-    <div class="resetAllRow"><button type="button" class="linkBtn" id="cloudAdvBtn" style="display:none"></button><button type="button" class="linkBtn" id="resetAllBtn"></button></div>
+    <div class="resetAllRow"><button type="button" class="linkBtn" id="resetAllBtn"></button></div>
   </div>
 
   <div id="speedtestView">

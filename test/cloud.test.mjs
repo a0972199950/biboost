@@ -74,6 +74,27 @@ describe("login (PKCE)", () => {
     await assert.rejects(C.finishLogin({ code: "c1", state }), { code: "bad_state" });
     env.close();
   });
+  test("login from the welcome page remembers where to go back to; finishLogin hands it to auth.html", async () => {
+    const { env, C } = boot();
+    await C.loginUrl("welcome.html");
+    const { state } = env.storage.cloudAuthPending;
+    assert.equal(env.storage.cloudAuthPending.back, "welcome.html");
+    const r = await C.finishLogin({ code: "c1", state });
+    assert.equal(r.back, "welcome.html");
+    env.close();
+  });
+  test("login from the popup opens a small window (not a tab) when the browser has windows", async () => {
+    const { env, C } = boot();
+    const wins = [];
+    env.chrome.windows = { create: (o, cb) => { wins.push(o); cb && cb({ id: 1 }); } };
+    await C.startLogin();
+    assert.equal(wins.length, 1);
+    assert.equal(wins[0].type, "popup");
+    assert.match(wins[0].url, /\/auth\/oauth\/google\/start\?/);
+    assert.equal(env.createdTabs.length, 0);
+    assert.equal(env.storage.cloudAuthPending.back, undefined);
+    env.close();
+  });
   test("a wrong state or an error from the server never exchanges", async () => {
     const { env, C, srv } = boot();
     await C.loginUrl();
@@ -127,6 +148,17 @@ describe("manual backup / restore", () => {
     assert.equal(srv.docs.extension.data.cdnHost, "a.bilivideo.com");
     env.close();
   });
+  test("backup removes from the cloud what this computer has at its default (stale values from an older backup don't come back)", async () => {
+    const docs = { extension: { data: { uiTheme: "light", showDebug: true, cdnHost: "old", futureField: 1 }, rev: 4, updatedAt: 1, updatedBy: "extension" } };
+    const { env, C, srv } = boot({ storage: { ...ACCOUNT, cdnHost: "a.bilivideo.com" }, docs });
+    await C.backup();
+    const d = srv.docs.extension.data;
+    assert.equal(d.cdnHost, "a.bilivideo.com");
+    assert.equal("uiTheme" in d, false);
+    assert.equal("showDebug" in d, false);
+    assert.equal(d.futureField, 1, "fields this extension doesn't know are kept");
+    env.close();
+  });
   test("restore overwrites the backed-up fields, marks the user as not new, leaves other fields alone", async () => {
     const docs = {
       shared: { data: { customHosts: ["z.bilivideo.com"] }, rev: 2, updatedAt: 1, updatedBy: "extension" },
@@ -141,7 +173,8 @@ describe("manual backup / restore", () => {
     assert.equal(s.cdnHost, "z.bilivideo.com");
     assert.equal(s.uiTheme, "light");
     assert.equal(s.stVideoMb, 9);
-    assert.equal(s.uiLang, "ja", "not in the backup → untouched");
+    assert.equal("uiLang" in s, false, "not in the backup → the backed-up machine had the default, so back to the default");
+    assert.equal(s.uiMsgs, null);
     assert.equal(s.reportHistory.length, 1, "malformed field ignored");
     assert.equal("unknown" in s, false);
     assert.equal(s.countryAutoDone, true);
@@ -168,7 +201,8 @@ describe("manual backup / restore", () => {
   test("lastBackup picks the newest namespace", () => {
     const { env, C } = boot();
     assert.equal(C.lastBackup({}), null);
-    assert.deepEqual(plain(C.lastBackup({ shared: { data: {}, rev: 1, updatedAt: 5, updatedBy: "android" }, extension: { data: {}, rev: 2, updatedAt: 9, updatedBy: "extension" } })), { at: 9, by: "extension" });
+    assert.deepEqual(plain(C.lastBackup({ shared: { data: { customHosts: [] }, rev: 1, updatedAt: 5, updatedBy: "android" }, extension: { data: { a: 1 }, rev: 2, updatedAt: 9, updatedBy: "extension" } })), { at: 9, by: "extension" });
+    assert.equal(C.lastBackup({ extension: { data: {}, rev: 3, updatedAt: 9, updatedBy: "extension" } }), null, "emptied backup counts as none");
     env.close();
   });
 });
@@ -211,6 +245,18 @@ describe("auto sync", () => {
     assert.equal(await C.onLocalChange({ cdnHost: { newValue: "x.bilivideo.com" } }), true, "switching node is backed up too");
     await C.push();
     assert.equal(srv.docs.extension.data.cdnHost, "x.bilivideo.com");
+    env.close();
+  });
+  test("a setting put back to its default (removed from storage) is removed from the cloud too, and isn't re-sent forever", async () => {
+    const docs = { extension: { data: { uiTheme: "light", stVideoMb: 6, fromApp: 1 }, rev: 2, updatedAt: 1, updatedBy: "extension" } };
+    const { env, C, srv } = boot({ storage: { ...ACCOUNT, cloudSync: { auto: true, rev: { extension: 2 }, snap: { uiTheme: "\"light\"", stVideoMb: "6" }, dirty: [] } }, docs });
+    assert.equal(await C.onLocalChange({ uiTheme: { oldValue: "light" } }), true);
+    await C.push();
+    assert.equal("uiTheme" in srv.docs.extension.data, false);
+    assert.equal(srv.docs.extension.data.stVideoMb, 6);
+    assert.equal(srv.docs.extension.data.fromApp, 1);
+    assert.deepEqual(env.storage.cloudSync.dirty, [], "nothing left to send");
+    assert.equal(await C.onLocalChange({ uiTheme: { oldValue: "light" } }), false, "already in sync");
     env.close();
   });
   test("another computer's change in the cloud is not pulled in automatically", async () => {
@@ -266,7 +312,9 @@ describe("cloud dialog", () => {
     const card = env.document.querySelector(".bbcCard");
     assert.match(card.textContent, /Signed in as me@example\.com/);
     assert.match(card.textContent, /Back up to cloud/);
-    assert.match(card.textContent, /Restore from cloud/);
+    assert.match(card.textContent, /Restore settings from cloud/);
+    assert.equal(card.querySelectorAll(".bbcBtn.alt").length, 0, "no primary/secondary: every button looks the same");
+    assert.doesNotMatch(card.textContent, /whenever a setting changes/, "no hint under auto sync");
     assert.match(card.querySelector(".bbcMeta").textContent, /^Last backup: .*\(browser extension\)$/);
     assert.ok(card.querySelector(".bbcAuto input"));
     assert.ok(card.querySelector(".bbcLogout"));
@@ -276,6 +324,48 @@ describe("cloud dialog", () => {
     assert.ok(env.document.querySelector(".bbcDone"), "success animation");
     await env.settle(UI.DONE_MS + 100);
     assert.equal(env.document.querySelector(".bbcMask"), null, "closed by itself");
+    env.close();
+  });
+  test("welcome page (fresh install), signed out: Google sign-in in this window plus 'Maybe later' that closes it", async () => {
+    const { env, UI } = bootUi({});
+    let cancelled = 0;
+    UI.mount(env.document.body, { fresh: true, back: "welcome.html", onCancel: () => cancelled++, laterText: "Maybe later" });
+    await env.settle(30);
+    const btns = [...env.document.querySelectorAll(".bbcBtn")].map((b) => b.textContent);
+    assert.deepEqual(btns, ["Sign in with Google", "Maybe later"]);
+    assert.match(env.document.body.textContent, /Used BiBoost before\?/);
+    env.document.querySelectorAll(".bbcBtn")[1].click();
+    assert.equal(cancelled, 1);
+    env.close();
+  });
+  test("welcome page (fresh install), signed in: only restore and cancel; restore waits for a backup; done closes the window", async () => {
+    const { env, UI } = bootUi({ ...ACCOUNT, stVideoMb: 4 }, { extension: { data: { stVideoMb: 9 }, rev: 1, updatedAt: Date.UTC(2026, 10, 1), updatedBy: "extension" } });
+    let closed = 0, cancelled = 0;
+    UI.mount(env.document.body, { fresh: true, onDone: () => closed++, onCancel: () => cancelled++ });
+    await env.settle(40);
+    const btns = [...env.document.querySelectorAll(".bbcBtn")];
+    assert.deepEqual(btns.map((b) => b.textContent), ["Restore settings from cloud", "Cancel"], "no backup button on a fresh install");
+    assert.equal(env.document.querySelector(".bbcAuto"), null, "no auto sync switch (it would upload the fresh defaults)");
+    assert.equal(btns[0].disabled, false);
+    btns[0].click();
+    await env.settle(40);
+    assert.equal(env.storage.stVideoMb, 9);
+    assert.ok(env.document.querySelector(".bbcDone"));
+    await env.settle(UI.DONE_MS + 100);
+    assert.equal(closed, 1);
+    assert.equal(cancelled, 0);
+    env.close();
+  });
+  test("welcome page (fresh install): nothing in the cloud → no restore button, just 'Get started'", async () => {
+    const { env, UI } = bootUi({ ...ACCOUNT });
+    let closed = 0;
+    UI.mount(env.document.body, { fresh: true, onCancel: () => closed++ });
+    await env.settle(40);
+    const btns = [...env.document.querySelectorAll(".bbcBtn")];
+    assert.deepEqual(btns.map((b) => b.textContent), ["Get started"]);
+    btns[0].click();
+    assert.equal(closed, 1);
+    assert.match(env.document.querySelector(".bbcMeta").textContent, /No backup in the cloud yet/);
     env.close();
   });
   test("restore with no backup shows the error and keeps the dialog open", async () => {

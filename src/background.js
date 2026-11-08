@@ -20,11 +20,11 @@
 // Chrome／Safari 的 background 是 service worker，要自己載入；Firefox 在 manifest 的 background.scripts 裡已經先載入
 if (typeof BBCdnList === "undefined" && typeof importScripts === "function") importScripts("cdn-list.js", "features.js", "cloud.js");
 
-// 7) 雲端備份（cloud.js）：自動同步在這裡跑（監看設定變動、每 15 分鐘拉一次）；全新安裝且功能開關 cloud_sync 開著時開歡迎頁
+// 7) 雲端備份（cloud.js）：自動同步在這裡跑（監看設定變動、上傳到雲端）；全新安裝且功能開關 cloud_sync 開著時開歡迎頁（小視窗，跟問題回報一樣）
 BBCloud.attachBackground();
 function openWelcome() {
   return BBFeatures.refresh().then(function (flags) {
-    if (flags && BBFeatures.enabled(flags, "cloud_sync")) chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+    if (flags && BBFeatures.enabled(flags, "cloud_sync")) openExtWindow(chrome.runtime.getURL("welcome.html"), 500, 800);
   }).catch(function () {});
 }
 
