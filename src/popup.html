@@ -2324,7 +2324,7 @@
     }
 
     /* 節點清單載入失敗：蓋在整個 popup 上、關不掉的遮罩（見 popup.js showListFail）。拿到清單前擴充不啟用；
-       每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示（加了一張臉）一直鞠躬道歉、冒汗，彎到底時眼睛閉成 > <，旁邊是斷線的雲 */
+       每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示頂端兩角長出一雙委屈的眼睛，一直鞠躬道歉、冒汗，彎到底時眼睛閉成 > <，旁邊是斷線的雲 */
     #listFail {
       display: none;
       position: fixed;
@@ -3331,49 +3331,54 @@
           </linearGradient>
         </defs>
         <rect class="optBench" x="10" y="96" width="160" height="4" rx="2" />
-        <!-- 擴充圖示（底色、箭頭與 scripts/gen-icons.mjs 同一份畫法）加上一張道歉的臉：鞠躬 -->
+        <!-- 擴充圖示本體（與 scripts/gen-icons.mjs 同一份畫法，不改）＋圖示外的一雙眼睛：鞠躬 -->
         <g class="lfBow">
-          <g transform="translate(40.5,37) scale(0.115)">
+          <g transform="translate(43,42) scale(0.105)">
             <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#lfBg)" />
-            <!-- 箭頭縮小移到下半部，上半部是臉 -->
-            <g transform="translate(256,388) scale(0.4) translate(-256,-256)">
-              <g transform="translate(0,12)" fill="rgb(120,20,55)" fill-opacity="0.18">
-                <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
-                <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
-              </g>
-              <g fill="white">
-                <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
-                <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
-              </g>
+            <g transform="translate(0,9)" fill="rgb(120,20,55)" fill-opacity="0.18">
+              <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
+              <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
             </g>
-            <!-- 臉：八字眉、水汪汪的眼睛（鞠躬時閉成 > <）、腮紅、癟嘴 -->
-            <g fill="rgb(200,30,80)" fill-opacity="0.38">
-              <ellipse cx="112" cy="262" rx="36" ry="20" />
-              <ellipse cx="400" cy="262" rx="36" ry="20" />
+            <g fill="white">
+              <polygon points="92,140 320,140 320,82 420,166 320,250 320,192 92,192" />
+              <polygon points="420,320 192,320 192,262 92,346 192,430 192,372 420,372" />
             </g>
-            <g stroke="rgb(90,15,45)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none">
-              <path d="M112 136 L194 108" />
-              <path d="M400 136 L318 108" />
-              <path d="M228 290 q28 -20 56 0" stroke-width="16" />
+          </g>
+          <!-- 眼睛：長在圖示外、頂端兩角（像耳朵的位置）。眼皮內高外低（八字、委屈），眼珠往下看；彎到底時閉成 > < -->
+          <g class="lfEyesOpen">
+            <g fill="white" stroke="rgb(235,90,140)" stroke-width="1.6">
+              <circle cx="49" cy="40" r="9" />
+              <circle cx="91" cy="40" r="9" />
             </g>
-            <g class="lfEyesOpen">
-              <ellipse cx="168" cy="200" rx="36" ry="42" fill="rgb(90,15,45)" />
-              <ellipse cx="344" cy="200" rx="36" ry="42" fill="rgb(90,15,45)" />
-              <g fill="white">
-                <circle cx="180" cy="184" r="13" /><circle cx="157" cy="218" r="7" />
-                <circle cx="356" cy="184" r="13" /><circle cx="333" cy="218" r="7" />
-              </g>
+            <g fill="rgb(70,20,40)">
+              <circle cx="50.5" cy="43" r="4.6" />
+              <circle cx="89.5" cy="43" r="4.6" />
             </g>
-            <g class="lfEyesShut" stroke="rgb(90,15,45)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" fill="none">
-              <path d="M140 172 L198 200 L140 228" />
-              <path d="M372 172 L314 200 L372 228" />
+            <g fill="white">
+              <circle cx="52" cy="41.4" r="1.6" /><circle cx="49" cy="45" r=".8" />
+              <circle cx="91" cy="41.4" r="1.6" /><circle cx="88" cy="45" r=".8" />
+            </g>
+            <!-- 下垂的眼皮：用圖示的粉紅色蓋住眼白上半，邊緣內高外低 -->
+            <g fill="rgb(250,120,165)" stroke="rgb(205,60,110)" stroke-width="1.2" stroke-linejoin="round">
+              <path d="M40.2 39.2 A9 9 0 0 1 56.6 33.6 Z" />
+              <path d="M99.8 39.2 A9 9 0 0 0 83.4 33.6 Z" />
+            </g>
+          </g>
+          <g class="lfEyesShut">
+            <g fill="rgb(250,120,165)" stroke="rgb(235,90,140)" stroke-width="1.6">
+              <circle cx="49" cy="40" r="9" />
+              <circle cx="91" cy="40" r="9" />
+            </g>
+            <g stroke="rgb(70,20,40)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M45 36 L53 40 L45 44" />
+              <path d="M95 36 L87 40 L95 44" />
             </g>
           </g>
           <!-- 汗珠 -->
-          <path class="lfSweat" d="M100 40 q4 6 0 9 q-4 -3 0 -9z" fill="#4fc3f7" />
+          <path class="lfSweat" d="M101 50 q4 6 0 9 q-4 -3 0 -9z" fill="#4fc3f7" />
         </g>
-        <!-- 斷線的雲 -->
-        <g class="lfCloud">
+        <!-- 斷線的雲（往右挪一點，鞠躬時眼睛才不會撞到） -->
+        <g transform="translate(8,0)"><g class="lfCloud">
           <path d="M122 54 a10 10 0 0 1 2 -19.8 a14 14 0 0 1 27 -2 a9 9 0 0 1 4 21.8 z" fill="#b0bec5" />
           <g stroke="#e53935" stroke-width="3.5" stroke-linecap="round">
             <line x1="134" y1="38" x2="146" y2="50" />
@@ -3383,7 +3388,7 @@
             <path d="M140 58 v8" />
             <path d="M140 72 v8" />
           </g>
-        </g>
+        </g></g>
       </svg>
       <div class="optTitle" id="lfTitle"></div>
       <p class="lfBody" id="lfBody"></p>
