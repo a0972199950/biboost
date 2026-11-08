@@ -1,15 +1,20 @@
 // 歡迎頁的開場動畫：擴充圖示（跟 scripts/gen-icons.mjs 同一份畫法，不改）＋頂端兩角一雙眼睛（跟 popup 道歉動畫同一種長法）。
 // 使用者從 10 種風格裡挑了 2＋3＋10 合在一起：
-//   先「探頭」：從地面只露出一雙眼睛，左看右看，跳出來笑瞇瞇（2.8 秒）
-//   接著一直「開心跳跳」：連跳兩下、停一下，空中笑瞇瞇（每輪 1.9 秒）
+//   先「探頭」：從地面只露出一雙眼睛，左看右看（約 1.7 秒）
+//   跳出地面那一下就是「開心跳跳」循環的第一跳（使用者要求：不要先落地再開始跳），之後一直連跳兩下、停一下，空中笑瞇瞇（每輪 1.9 秒）
 //   每次起跳，周圍噴出「彩帶」（兩下各一組）
 //   BBWelcomeHero.render(el)  在 el 裡畫出來
-// 結構：svg > 彩帶 > 地面、影子 > .a1（探頭）> .a2（跳）> .a3（落地壓扁）> 圖示＋眼睛
+// 結構：svg > 彩帶 > 地面、影子 > .a1（探頭：從地面下升到原位）> .a2（跳）> .a3（落地壓扁）> 圖示＋眼睛
+// 時間：循環的起跳點在每輪 18%，所以循環延後 JUMP − 18%×HOP 開始，讓第一輪的起跳剛好落在探頭看完的時候；
+//       .a1 在同一段（起跳到最高點）從地面下升回原位，兩層加起來就是從地面下一路跳到最高點
 // 眼睛：.open（白眼珠＋.pupil 黑眼珠）、.happy（笑瞇瞇 ^），用 opacity 切換
 var BBWelcomeHero = (function () {
   var STYLE_ID = "bbWelcomeHeroStyle";
   var INK = "#3a1424";
-  var INTRO = "2.8s", HOP = "1.9s";
+  var JUMP_S = 1.7, HOP_S = 1.9, RISE_S = 0.2 * HOP_S; // 探頭看完起跳的時間、每輪長度、起跳到最高點（每輪 18%→38%）
+  var HOP = HOP_S + "s", LOOP = (JUMP_S - 0.18 * HOP_S).toFixed(3) + "s", PEEK = (JUMP_S + RISE_S).toFixed(3) + "s";
+  var EASE = "cubic-bezier(.3,0,.3,1)";
+  function pct(sec) { return (sec / (JUMP_S + RISE_S) * 100).toFixed(1) + "%"; }
   var CSS = [
     ".wh{display:block;width:220px;height:165px;margin:0 auto;overflow:visible}",
     ".wh .a1,.wh .a2,.wh .a3{transform-box:view-box;transform-origin:100px 118px}",
@@ -19,32 +24,30 @@ var BBWelcomeHero = (function () {
     ".wh .ground{fill:var(--border,#e3e5e7)}",
     ".wh .fx{opacity:0}",
 
-    // 探頭：先只露出眼睛（地面以下藏起來），左看右看，跳出來
-    ".wh .a1{animation:whPeek " + INTRO + " ease-out both}",
-    "@keyframes whPeek{0%{transform:translateY(100px)}18%,60%{transform:translateY(66px)}70%{transform:translateY(-12px)}78%{transform:translateY(3px)}84%,100%{transform:translateY(0)}}",
-    ".wh .pupil{animation:whPeekLook " + INTRO + " both}",
-    "@keyframes whPeekLook{0%,24%{transform:translate(0,0)}29%,37%{transform:translate(-3.6px,.4px)}42%,50%{transform:translate(3.6px,.4px)}55%,100%{transform:translate(0,0)}}",
+    // 探頭：先只露出眼睛（地面以下藏起來），左看右看；起跳時跟著循環的第一跳一起升回原位
+    ".wh .a1{animation:whPeek " + PEEK + " ease-out both}",
+    "@keyframes whPeek{0%{transform:translateY(100px)}" + pct(0.5) + "{transform:translateY(66px)}" + pct(JUMP_S) + "{transform:translateY(66px);animation-timing-function:" + EASE + "}100%{transform:translateY(0)}}",
+    ".wh .pupil{animation:whPeekLook " + PEEK + " both}",
+    "@keyframes whPeekLook{0%," + pct(0.65) + "{transform:translate(0,0)}" + pct(0.8) + "," + pct(1.05) + "{transform:translate(-3.6px,.4px)}" + pct(1.2) + "," + pct(1.45) + "{transform:translate(3.6px,.4px)}" + pct(1.6) + ",100%{transform:translate(0,0)}}",
 
-    // 開心跳跳（探頭完接著跳，一直重複）：連跳兩下，空中笑瞇瞇
-    ".wh .a2{animation:whHop " + HOP + " cubic-bezier(.3,0,.3,1) " + INTRO + " infinite}",
+    // 開心跳跳（第一跳就是跳出地面那一下，一直重複）：連跳兩下，空中笑瞇瞇
+    ".wh .a2{animation:whHop " + HOP + " " + EASE + " " + LOOP + " infinite}",
     "@keyframes whHop{0%,18%{transform:translateY(0)}38%{transform:translateY(-30px)}54%,62%{transform:translateY(0)}74%{transform:translateY(-15px)}86%,100%{transform:translateY(0)}}",
-    ".wh .a3{animation:whSquash " + HOP + " " + INTRO + " infinite}",
+    ".wh .a3{animation:whSquash " + HOP + " " + LOOP + " infinite}",
     "@keyframes whSquash{0%{transform:scale(1)}12%{transform:scale(1.1,.88)}20%{transform:scale(.94,1.08)}38%{transform:scale(1)}54%{transform:scale(1.1,.9)}60%{transform:scale(.97,1.04)}66%{transform:scale(1)}86%{transform:scale(1.06,.94)}92%,100%{transform:scale(1)}}",
-    // 眼睛：探頭時睜眼、跳出來那下笑；之後每次在空中笑（後面那個動畫開始後蓋過前面的）
-    ".wh .open{animation:whPeekOpen " + INTRO + " both,whAirOpen " + HOP + " " + INTRO + " infinite}",
-    ".wh .happy{animation:whPeekHappy " + INTRO + " both,whAirHappy " + HOP + " " + INTRO + " infinite}",
-    "@keyframes whPeekOpen{0%,70%{opacity:1}72%,94%{opacity:0}100%{opacity:1}}",
-    "@keyframes whPeekHappy{0%,70%{opacity:0}72%,94%{opacity:1}100%{opacity:0}}",
+    // 眼睛：探頭時睜眼，之後每次在空中笑（第一次就是跳出地面那下）
+    ".wh .open{animation:whAirOpen " + HOP + " " + LOOP + " infinite}",
+    ".wh .happy{animation:whAirHappy " + HOP + " " + LOOP + " infinite}",
     "@keyframes whAirOpen{0%,20%,88%,100%{opacity:1}22%,86%{opacity:0}}",
     "@keyframes whAirHappy{0%,20%,88%,100%{opacity:0}22%,86%{opacity:1}}",
-    // 影子：探頭時沒有，跳出來才出現；跳起來時變小變淡
-    ".wh .shadow{animation:whFadeIn .3s 2.2s both,whHopShadow " + HOP + " cubic-bezier(.3,0,.3,1) " + INTRO + " infinite}",
+    // 影子：探頭時沒有，跳出地面後才出現；跳起來時變小（淡入只管開始前：探頭時藏起來，之後交給循環）
+    ".wh .shadow{animation:whHopShadow " + HOP + " " + EASE + " " + LOOP + " infinite,whFadeIn .3s " + (JUMP_S + 0.1) + "s backwards}",
     "@keyframes whFadeIn{from{opacity:0}to{opacity:1}}",
     "@keyframes whHopShadow{0%,18%,54%,62%,86%,100%{transform:scaleX(1);opacity:1}38%{transform:scaleX(.6);opacity:.45}74%{transform:scaleX(.8);opacity:.7}}",
 
     // 彩帶：每次起跳噴一組（第一下大跳用 .b1、第二下小跳用 .b2，飛得近一點）
-    ".wh .fx.b1{animation:whConfetti1 " + HOP + " cubic-bezier(.2,.7,.4,1) " + INTRO + " infinite}",
-    ".wh .fx.b2{animation:whConfetti2 " + HOP + " cubic-bezier(.2,.7,.4,1) " + INTRO + " infinite}",
+    ".wh .fx.b1{animation:whConfetti1 " + HOP + " cubic-bezier(.2,.7,.4,1) " + LOOP + " infinite}",
+    ".wh .fx.b2{animation:whConfetti2 " + HOP + " cubic-bezier(.2,.7,.4,1) " + LOOP + " infinite}",
     "@keyframes whConfetti1{0%,16%{opacity:0;transform:translate(0,0) rotate(0) scale(.4)}20%{opacity:1}40%{opacity:1;transform:translate(var(--x),var(--y)) rotate(var(--r)) scale(1)}58%,100%{opacity:0;transform:translate(var(--x),calc(var(--y) + 30px)) rotate(calc(var(--r) * 2)) scale(1)}}",
     "@keyframes whConfetti2{0%,54%{opacity:0;transform:translate(0,0) rotate(0) scale(.4)}58%{opacity:1}74%{opacity:1;transform:translate(calc(var(--x) * .7),calc(var(--y) * .7)) rotate(var(--r)) scale(.9)}90%,100%{opacity:0;transform:translate(calc(var(--x) * .7),calc(var(--y) * .7 + 24px)) rotate(calc(var(--r) * 2)) scale(.9)}}",
 
