@@ -321,7 +321,7 @@
     "message": "When on, nodes are sorted fastest-first as the test runs, and the order is kept until the next test. Applies to video and live; turn off to restore the default order."
   },
   "hvLabel": {
-    "message": "Old / new homepage (experimental)"
+    "message": "Old / new homepage (beta)"
   },
   "hvOld": {
     "message": "Old"
