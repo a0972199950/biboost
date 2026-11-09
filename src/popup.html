@@ -1031,16 +1031,17 @@
     }
 
     /* 新舊版頁面：左「舊」右「新」，兩邊平等，沒有開／關的意思——軌道不分顏色，目前選的那一邊字比較深、比較粗 */
-    .hvPick {
-      display: flex;
-      justify-content: center;
-      margin: 10px 0 8px;
+    /* 標題太長（英日韓）就在自己那一格裡換行；「舊 ◯ 新」固定在右邊，不被擠掉 */
+    #hvLabel {
+      flex: 1 1 0;
+      min-width: 0;
     }
 
     .lrSwitch {
       display: inline-flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
+      flex: 0 0 auto;
     }
 
     .lrSide {
@@ -2965,8 +2966,8 @@
 
     <!-- 切換新舊版頁面（實驗性）：改 B 站的站點偏好 cookie（background.js 的 HV_*）；瀏覽器沒有 cookies API 時整張卡片不顯示 -->
     <div class="advItem" id="hvItem" style="display:none">
-      <div class="advTitle" id="hvLabel"></div>
-      <div class="hvPick">
+      <div class="row">
+        <span id="hvLabel"></span>
         <span class="lrSwitch">
           <span class="lrSide" id="hvOldLabel"></span>
           <label class="switch lr"><input type="checkbox" id="homeVersion" aria-labelledby="hvLabel" /><span class="slider"></span></label>
