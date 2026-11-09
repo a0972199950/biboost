@@ -736,7 +736,9 @@ describe("node change on a stalled tab (#41)", () => {
     assert.equal(mh.stallState.stuckSince, null);
     assert.equal(mh.health.rebuf.length, 0);
     assert.equal(mh.maybeFallback("stalled"), false, "within the grace period");
-    mh.FALLBACK.lastSwitchAt -= 15000; // grace over
+    mh.FALLBACK.lastSwitchAt -= 9000; // 9 秒：還在寬限內
+    assert.equal(mh.maybeFallback("stalled"), false);
+    mh.FALLBACK.lastSwitchAt -= 1100; // 過了 10 秒
     assert.equal(mh.maybeFallback("stalled"), true);
     env.close();
   });
