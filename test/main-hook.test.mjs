@@ -10,19 +10,24 @@ const MCDN = "xy1.mcdn.bilivideo.cn";
 const FUTURE = Math.floor(Date.now() / 1000) + 3600;
 const PAST = Math.floor(Date.now() / 1000) - 3600;
 
-// Boots main-hook.js on a bilibili page with the given config already in localStorage
-function boot(cfg, url = VIDEO_URL) {
+// Boots main-hook.js on a bilibili page with the given config already in localStorage.
+// 每秒的 interval 停掉：測試自己呼叫 checkStall／checkHealth，不讓它在 async 測試的空檔自己跑（會多觸發救援、亂改狀態）。
+// before(env)：載入前要先放進 window 的東西（例如假的 PerformanceObserver）
+function boot(cfg, url = VIDEO_URL, before) {
   const env = createEnv({ url });
   env.window.localStorage.setItem("__CDN_SWITCHER_CFG__", JSON.stringify({ cdnHost: HOST, ...cfg }));
+  if (before) before(env);
   env.load("main-hook.js");
+  env.internals("main-hook").stopTick();
   return env;
 }
-function playurl(extra) {
+// bandwidth：v80 的碼率（bits/s），null = 不給
+function playurl(extra, bandwidth = 4000000) {
   return {
     code: 0, data: {
       quality: 80,
       dash: {
-        video: [{ id: 80, baseUrl: `https://${COS}/upgcxcode/1/2/3/v80.m4s?deadline=${FUTURE}&x=1`, backupUrl: [`https://${ALI}/upgcxcode/1/2/3/v80.m4s`, `https://${MCDN}:4483/upgcxcode/1/2/3/v80.m4s`] },
+        video: [{ id: 80, ...(bandwidth == null ? {} : { bandwidth }), baseUrl: `https://${COS}/upgcxcode/1/2/3/v80.m4s?deadline=${FUTURE}&x=1`, backupUrl: [`https://${ALI}/upgcxcode/1/2/3/v80.m4s`, `https://${MCDN}:4483/upgcxcode/1/2/3/v80.m4s`] },
           { id: 64, baseUrl: `https://${COS}/upgcxcode/1/2/3/v64.m4s`, backupUrl: [] }],
         audio: [{ id: 30280, baseUrl: `https://${COS}/upgcxcode/1/2/3/a.m4s`, backupUrl: [] }]
       }, ...extra
@@ -208,14 +213,25 @@ describe("playurl rewriting", () => {
     assert.equal(mh.debug.pickAudioHost, HOST);
     assert.deepEqual(plain(mh.videoQnByPath()), { "/upgcxcode/1/2/3/v80.m4s": 80, "/upgcxcode/1/2/3/v64.m4s": 64 });
   });
-  test("pickFallbackHost skips the current host and already-tried hosts", () => {
-    mh.FALLBACK.tried = {};
+  test("pickFallbackHost (blind switch, only when there is nothing to test with) skips failed hosts", () => {
+    mh.FALLBACK.failed = {};
     assert.equal(mh.pickFallbackHost(), COS);
-    mh.FALLBACK.tried[COS] = true;
+    mh.markFailed(COS);
     assert.equal(mh.pickFallbackHost(), ALI);
-    mh.FALLBACK.tried[ALI] = true;
+    mh.markFailed(ALI);
     assert.equal(mh.pickFallbackHost(), null);
-    mh.FALLBACK.tried = {};
+    mh.FALLBACK.failed = {};
+  });
+  test("pickFallbackHost skips the current host", () => {
+    const e2 = boot({ cdnHost: COS });
+    const m2 = e2.internals("main-hook");
+    m2.rewriteRoot(playurl(), "playurl");
+    assert.equal(m2.effHost(), COS);
+    assert.equal(m2.pickFallbackHost(), ALI);
+    e2.close();
+  });
+  test("the current quality's bitrate comes from the dash bandwidth", () => {
+    assert.equal(mh.currentBitrateBps(), 4000000 / 8);
   });
   test("durl (flv) and snake_case keys", () => {
     const root = { data: { quality: 64, durl: [{ url: `https://${COS}/upgcxcode/1/c.flv`, backup_url: [`https://${ALI}/upgcxcode/1/c.flv`] }] } };
@@ -418,14 +434,45 @@ function akamPlayurl(dir = "1/2/3") {
   };
 }
 // jsdom has no media pipeline: give the page a <video> with the given state
-function addVideo(env, { paused = true, ended = false, currentTime = 10, buffered = null, readyState = 4 } = {}) {
+// played：這個 video 播放過沒有（預設 currentTime > 0 就算播過）；props 之後可以用 setVideo 改
+function addVideo(env, { paused = true, ended = false, currentTime = 10, buffered = null, readyState = 4, played = currentTime > 0, seeking = false, duration = 600 } = {}) {
   const v = env.window.document.createElement("video");
-  const ranges = buffered ? { length: 1, start: () => buffered[0], end: () => buffered[1] } : { length: 0, start() {}, end() {} };
-  for (const [k, val] of Object.entries({ paused, ended, currentTime, readyState, buffered: ranges })) {
-    Object.defineProperty(v, k, { configurable: true, get: () => val, set() {} });
-  }
+  setVideo(v, { paused, ended, currentTime, readyState, buffered, played, seeking, duration });
   env.window.document.body.appendChild(v);
   return v;
+}
+// 測速用的假 fetch：speeds[host] = "fast"（一次給 9 MB）｜數字（約 30 ms 給這麼多 bytes）｜"403"｜沒列 = 一直等（測速掛著）。
+// 回傳被問到的 host（依序）
+function speedFetch(env, speeds) {
+  const asked = [];
+  env.fetchHandler = (url) => {
+    const host = new URL(url).host;
+    asked.push(host);
+    const sp = speeds[host];
+    if (sp === undefined) return new Promise(() => {});
+    if (sp === "403") return { ok: false, status: 403 };
+    let sent = false;
+    return { ok: true, status: 206, body: { getReader: () => ({ cancel() {},
+      read: () => sent ? Promise.resolve({ done: true })
+        // 「fast」也要過幾毫秒：同一毫秒內讀完的話 measureHost 算出的 ms = 0、速度會記成 0
+        : new Promise((r) => setTimeout(() => { sent = true; r({ done: false, value: { length: sp === "fast" ? 9e6 : sp } }); }, sp === "fast" ? 5 : 30))
+    }) } };
+  };
+  return asked;
+}
+// main-hook 送出去的 window.postMessage（給 bridge 的）收下來看
+function capturePosts(env) {
+  const posted = [];
+  env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m); };
+  return posted;
+}
+function setVideo(v, props) {
+  for (const [k, val0] of Object.entries(props)) {
+    let val = val0;
+    if (k === "buffered") val = val0 ? { length: 1, start: () => val0[0], end: () => val0[1] } : { length: 0, start() {}, end() {} };
+    if (k === "played") val = { length: val0 ? 1 : 0, start: () => 0, end: () => 1 };
+    Object.defineProperty(v, k, { configurable: true, get: () => val, set() {} });
+  }
 }
 
 describe("akamai needs its own signed URL", () => {
@@ -463,18 +510,20 @@ describe("akamai needs its own signed URL", () => {
   });
 });
 
-describe("fallback budget is per video, not per playurl", () => {
-  test("a second playurl for the same video keeps attempts and tried hosts; a new video resets them", () => {
+describe("rescue state across playurls and videos", () => {
+  test("a new video resets the question and the user's stop; failed marks stay (they follow the network) and expire after 10 minutes", () => {
     const env = boot({});
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
-    mh.FALLBACK.attempts = 1; mh.FALLBACK.tried[COS] = true;
+    mh.FALLBACK.asked = true; mh.FALLBACK.userStopped = true; mh.markFailed(COS);
     mh.rewriteRoot(playurl(), "playurl"); // what player.reload() triggers now
-    assert.equal(mh.FALLBACK.attempts, 1);
-    assert.equal(mh.FALLBACK.tried[COS], true);
+    assert.equal(mh.FALLBACK.asked, true, "same video");
     mh.rewriteRoot(akamPlayurl("4/5/6"), "playurl");
-    assert.equal(mh.FALLBACK.attempts, 0);
-    assert.deepEqual(plain(mh.FALLBACK.tried), {});
+    assert.equal(mh.FALLBACK.asked, false);
+    assert.equal(mh.FALLBACK.userStopped, false);
+    assert.equal(mh.isFailed(COS), true);
+    mh.FALLBACK.failed[COS] = Date.now() - 11 * 60 * 1000;
+    assert.equal(mh.isFailed(COS), false);
     env.close();
   });
 });
@@ -483,17 +532,16 @@ describe("segment failures", () => {
   test("failures with plenty of buffer are deferred, however many; the switch comes once the buffer runs low", () => {
     const env = boot({});
     const mh = env.internals("main-hook");
+    speedFetch(env, {});
     mh.rewriteRoot(playurl(), "playurl");
     const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 32] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    mh.FALLBACK.holdUntil = 0;
     for (let i = 0; i < 5; i++) mh.onSegFailure("network-error");
     mh.checkSegFailure();
-    assert.equal(mh.FALLBACK.attempts, 0, "switching would throw the 22s of buffer away");
-    assert.equal(mh.autoHost(), null);
+    assert.equal(mh.isFailed(HOST), false, "switching would throw the 22s of buffer away");
     Object.defineProperty(v, "buffered", { configurable: true, get: () => ({ length: 1, start: () => 0, end: () => 13 }) });
     mh.checkSegFailure();
-    assert.equal(mh.FALLBACK.attempts, 1, "buffer below 5s after a recent failure");
-    assert.equal(mh.autoHost(), COS);
+    assert.equal(mh.isFailed(HOST), true, "buffer below 5s after a recent failure → rescue");
     env.close();
   });
   test("a deferred failure that is not repeated expires (the player's own retry worked)", () => {
@@ -501,23 +549,64 @@ describe("segment failures", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 32] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("network-error");
     mh.segFail.at = Date.now() - 21000;
     Object.defineProperty(v, "buffered", { configurable: true, get: () => ({ length: 1, start: () => 0, end: () => 12 }) });
     mh.checkSegFailure();
     assert.equal(mh.segFail.reason, null);
-    assert.equal(mh.FALLBACK.attempts, 0);
+    assert.equal(mh.isFailed(HOST), false);
     env.close();
   });
-  test("with the buffer nearly gone a single failure switches right away", () => {
+  test("with the buffer nearly gone (< 1 s) a single failure switches right away", () => {
     const env = boot({});
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
-    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.5] });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1);
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+  });
+  test("buffer 1–5 s: one failure gets one retry; a second failure within 10 s rescues, otherwise it expires", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] }); // 3 秒
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    mh.onSegFailure("http-403");
+    mh.checkSegFailure();
+    assert.equal(mh.isFailed(HOST), false, "one failure with 3 s ahead: wait for the player's retry");
+    mh.onSegFailure("http-403");
+    assert.equal(mh.isFailed(HOST), true, "second failure → rescue");
+    env.close();
+    const env2 = boot({});
+    const m2 = env2.internals("main-hook");
+    m2.rewriteRoot(playurl(), "playurl");
+    const v2 = addVideo(env2, { paused: false, currentTime: 10, buffered: [0, 13] });
+    speedFetch(env2, {});
+    m2.FALLBACK.holdUntil = 0;
+    m2.onSegFailure("http-403");
+    m2.segFail.at = Date.now() - 11000; m2.checkSegFailure();
+    assert.equal(m2.segFail.reason, null, "expired: the retry worked");
+    setVideo(v2, { buffered: [0, 10.5] }); m2.checkSegFailure();
+    assert.equal(m2.isFailed(HOST), false);
+    void v;
+    env2.close();
+  });
+  test("a waiting single failure still rescues once the buffer drops below 1 s", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    mh.onSegFailure("network-error");
+    setVideo(v, { buffered: [0, 10.5] });
+    mh.checkSegFailure();
+    assert.equal(mh.isFailed(HOST), true);
     env.close();
   });
 });
@@ -528,64 +617,281 @@ describe("fallback waits for the install optimization", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 0, "the optimization will pick a node anyway");
+    assert.equal(mh.isFailed(HOST), false, "the optimization will pick a node anyway");
     env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { installTestPending: false } });
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.optimized, true, "flag cleared → the stall path runs (its first step is the list optimization)");
+    assert.equal(mh.isFailed(HOST), true, "flag cleared → the rescue runs");
     env.close();
   });
   test("pending but no list to test (nothing will run) → the switch still works", () => {
     const env = boot({ installTestPending: true, autoSpeedHosts: [] });
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
-    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.5] });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1);
+    assert.equal(mh.isFailed(HOST), true);
     env.close();
   });
 });
 
-describe("stall: optimize within the list first, then bilibili's backup", () => {
-  function bootStall(speed) {
-    const env = boot({ autoSpeedHosts: [HOST, COS] });
-    env.fetchHandler = () => {
-      let sent = false;
-      return { ok: true, status: 206, body: { getReader: () => ({ cancel() {},
-        read: () => sent ? Promise.resolve({ done: true }) : new Promise((r) => setTimeout(() => { sent = true; r({ done: false, value: { length: speed } }); }, 5)) }) } };
-    };
+describe("rescue: test the candidates, switch to a fast one, skip failures, ask when they run out", () => {
+  const HW = "upos-sz-mirrorhw.bilivideo.com";
+  // 目前節點 HOST、清單 [HOST, HW]、B 站備援 [COS, ALI]（mcdn 不算）→ 候選依序 HW、COS、ALI。
+  // 碼率預設 800 kbps → 「撐得住畫質」的門檻 = 150 kB/s：數字速度（約 30 ms 給 N bytes）就算計時器被拖慢到 400 ms 也量得出夠不夠
+  function bootRescue(speeds, cfg = {}, bandwidth = 800000) {
+    const env = boot({ autoSpeedHosts: [HOST, HW], ...cfg });
+    const asked = speedFetch(env, speeds);
+    const posted = capturePosts(env);
     const mh = env.internals("main-hook");
-    mh.rewriteRoot(playurl(), "playurl");
-    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
-    return { env, mh };
+    mh.rewriteRoot(playurl({}, bandwidth), "playurl");
+    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    return { env, mh, asked, posted };
   }
-  test("first failure runs the optimization instead of switching; the next one (after the cooldown) goes to the backup", async () => {
-    const { env, mh } = bootStall(9e6); // current node is fast → optimization keeps it
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.optimized, true);
-    assert.equal(mh.FALLBACK.attempts, 0);
+  const of = (posted, dir) => posted.filter((m) => m.dir === dir).map((m) => m.payload);
+  async function ended(env, posted, n = 1) {
+    for (let i = 0; i < 300 && of(posted, "autotest-end").length < n; i++) await env.settle(10);
+    if (of(posted, "autotest-end").length < n) assert.fail(`測速第 ${n} 輪沒有在 3 秒內結束`);
+  }
+
+  test("candidates: the list plus bilibili's backups, minus the current node and failed ones", () => {
+    const { env, mh } = bootRescue({});
+    assert.deepEqual(plain(mh.rescueCandidates()), [HW, COS, ALI]);
+    mh.markFailed(HW);
+    assert.deepEqual(plain(mh.rescueCandidates()), [COS, ALI]);
+    env.close();
+  });
+  test("the current node is not tested again (it just failed in real playback); the first fast list node is written to the settings", async () => {
+    const { env, mh, asked, posted } = bootRescue({ [HOST]: "fast", [HW]: "fast", [COS]: "fast" });
+    assert.equal(mh.maybeFallback("stalled"), true);
+    assert.equal(mh.isFailed(HOST), true);
+    await ended(env, posted);
+    assert.deepEqual(asked, [HW], "stops at the first node that is fast enough");
+    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
+    assert.ok(mh.FALLBACK.holdUntil > Date.now(), "grace starts right away, before the settings round-trip");
+    env.close();
+  });
+  test("bilibili's backups are measured too, never switched to blindly; slower ones tested on the way are marked failed", async () => {
+    const { env, mh, asked, posted } = bootRescue({ [HW]: 1000, [COS]: "fast" });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.deepEqual(asked, [HW, COS]);
+    assert.equal(mh.autoHost(), COS, "a backup is applied in this tab only");
+    assert.deepEqual(of(posted, "autotest-done"), [], "not written to the settings");
+    assert.equal(mh.isFailed(HW), true);
+    env.close();
+  });
+  test("still stuck on the new node after the grace → only the untested candidates are tried", async () => {
+    const { env, mh, asked, posted } = bootRescue({ [HW]: 1000, [COS]: "fast", [ALI]: "fast" });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.equal(mh.autoHost(), COS);
+    assert.equal(mh.maybeFallback("stalled"), false, "within the grace period");
+    mh.FALLBACK.holdUntil = 0;
+    asked.length = 0;
+    assert.equal(mh.maybeFallback("stalled"), true);
+    await ended(env, posted, 2);
+    assert.deepEqual(asked, [ALI], "HOST, HW and COS all failed already");
+    assert.equal(mh.autoHost(), ALI);
+    env.close();
+  });
+  test("nothing reaches 4K: the fastest wins only if it can carry the current quality (1.5× its bitrate)", async () => {
+    // 門檻 150 kB/s：HW 約 0.15～2 MB/s（不到 4K 的 3.1 MB/s，不會提早停）、COS 約 25～330 kB/s → 選最快的 HW
+    const { env, mh, posted } = bootRescue({ [HW]: 60000, [COS]: 10000, [ALI]: "403" });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
+    env.close();
+  });
+  test("nothing can carry the quality → no switch, all marked failed; the next stall asks the user", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 1000, [COS]: 1000, [ALI]: 1000 });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
     assert.equal(mh.autoHost(), null);
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 0, "no switch while it is measuring / cooling down");
-    for (let i = 0; i < 100 && mh.FALLBACK.lastSwitchAt < Date.now() - 1000; i++) await env.settle(10);
-    await env.settle(30);
-    mh.FALLBACK.lastSwitchAt = 0; // cooldown over
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1, "still failing after the optimization → bilibili's backup");
+    assert.deepEqual(of(posted, "autotest-done"), []);
+    assert.deepEqual(plain(mh.rescueCandidates()), []);
+    assert.equal(mh.maybeFallback("predicted"), false, "a prediction never pops the question");
+    assert.equal(mh.FALLBACK.asked, false);
+    assert.equal(mh.maybeFallback("stalled"), true);
+    assert.equal(mh.FALLBACK.asked, true);
+    assert.equal(mh.maybeFallback("stalled"), false, "asked once");
+    env.close();
+  });
+  test("on a backup, the user's own node can come back once its failure expired (the override is dropped)", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 1000, [COS]: "fast" });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.equal(mh.autoHost(), COS);
+    mh.FALLBACK.failed[HOST] = Date.now() - 11 * 60 * 1000; // 10 分鐘過了
+    const asked = speedFetch(env, { [HOST]: "fast" });
+    mh.FALLBACK.holdUntil = 0;
+    mh.maybeFallback("stalled");
+    await ended(env, posted, 2);
+    assert.deepEqual(asked, [HOST], "HW failed, COS is the current one");
+    assert.equal(mh.autoHost(), null, "back on the user's node");
+    assert.deepEqual(of(posted, "autotest-done"), [], "the settings already say HOST");
+    env.close();
+  });
+  test("the user pressed stop → this video only asks from now on; a manual test taking over changes nothing", async () => {
+    // 假 fetch 不理會中止訊號：讓每個節點都會慢慢回資料，這一輪才收得了尾（真的 fetch 被中止會直接結束）
+    const a = bootRescue({ [HW]: 1000, [COS]: 1000, [ALI]: 1000 });
+    a.mh.maybeFallback("stalled");
+    a.mh.stopAutoTest();
+    await ended(a.env, a.posted);
+    assert.equal(a.mh.FALLBACK.userStopped, true);
+    a.mh.FALLBACK.holdUntil = 0;
+    a.mh.maybeFallback("stalled");
+    assert.equal(a.mh.FALLBACK.asked, true, "no more automatic tests, straight to the question");
+    a.env.close();
+
+    const b = bootRescue({ [HW]: 1000 });
+    b.mh.maybeFallback("stalled");
+    b.mh.runSpeedTest([HW], {});
+    await ended(b.env, b.posted);
+    assert.equal(b.mh.FALLBACK.userStopped, false);
+    assert.equal(b.mh.isFailed(HW), false, "the interrupted round marks nothing");
+    b.env.close();
+  });
+  test("preconditions: no rescue (and nothing marked) when the switch is off, in backup-URL mode, off a watch page, or while a speed test runs", () => {
+    const cases = [
+      ["autoFallback off", { autoFallback: false }, VIDEO_URL, null],
+      ["backup-URL mode", { cdnHost: "backup" }, VIDEO_URL, null],
+      ["not a watch page", {}, "https://www.bilibili.com/", null],
+      ["speed test running", {}, VIDEO_URL, (mh) => mh.runSpeedTest([HW], {})]
+    ];
+    for (const [name, cfg, url, prep] of cases) {
+      const env = boot({ autoSpeedHosts: [HOST, HW], ...cfg }, url);
+      speedFetch(env, {});
+      const mh = env.internals("main-hook");
+      mh.rewriteRoot(playurl(), "playurl");
+      addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
+      mh.FALLBACK.holdUntil = 0;
+      if (prep) prep(mh);
+      assert.equal(mh.maybeFallback("stalled"), false, name);
+      assert.deepEqual(plain(mh.failedHosts()), [], name + ": nothing marked");
+      env.close();
+    }
+  });
+  test("the user changes the node while the rescue is testing → the result is not applied", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 1000, [COS]: "fast" });
+    mh.maybeFallback("stalled");
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: "cn-bj-se-01-05.bilivideo.com" } }); // 使用者在 popup 換了
+    await ended(env, posted);
+    assert.equal(mh.autoHost(), null);
+    assert.deepEqual(of(posted, "autotest-done"), []);
+    assert.equal(mh.effHost(), "cn-bj-se-01-05.bilivideo.com");
+    env.close();
+  });
+  test("high-bitrate video: a node above 25 Mbps but below 1.5× the bitrate does not stop the search early", async () => {
+    const { env, mh } = bootRescue({}, {}, 20000000); // 20 Mbps → 至少 3.75 MB/s
+    assert.equal(mh.currentBitrateBps(), 2500000);
+    const asked = speedFetch(env, { [HW]: 120000, [COS]: "fast" }); // HW 約 1.5～4 MB/s：不到 good 的 1e8
+    let res = null;
+    mh.runAutoSpeedTest([HW, COS], "stall", (how, r) => { res = r; }, { good: 1e8, floor: 0 });
+    for (let i = 0; i < 300 && !res; i++) await env.settle(10);
+    assert.deepEqual(asked, [HW, COS], "HW is below 'good', so COS is tested too");
+    assert.equal(res.pick, COS, "the faster one");
+    env.close();
+  });
+  test("no bitrate in the playurl → floor 0: the fastest is taken even if slow", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 1000, [COS]: 3000, [ALI]: "403" }, {}, null);
+    assert.equal(mh.currentBitrateBps(), 0);
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
     assert.equal(mh.autoHost(), COS);
     env.close();
   });
-  test("node list 'All' (no hosts to test) → straight to the backup, as before", () => {
-    const env = boot({ autoSpeedHosts: [] });
+  test("candidates are de-duplicated, and an akamai node without bilibili's own URL for this file is left out (and cannot be measured)", async () => {
+    const AKAM = "upos-hz-mirrorakam.akamaized.net";
+    const { env, mh } = bootRescue({}, { autoSpeedHosts: [HOST, HW, COS, AKAM] });
+    assert.deepEqual(plain(mh.rescueCandidates()), [HW, COS, ALI], "COS once; AKAM has no own URL in this playurl");
+    assert.equal(mh.testUrlFor(AKAM), null);
+    const r = await mh.measureHost(AKAM);
+    assert.equal(r.error, "no-url");
+    env.close();
+  });
+  test("with bilibili's own akamai URL the akamai node is a candidate and is measured on that URL", () => {
+    const AKAM = "upos-hz-mirrorakam.akamaized.net";
+    const env = boot({ autoSpeedHosts: [HOST] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(akamPlayurl(), "playurl");
+    assert.ok(mh.rescueCandidates().includes(AKAM));
+    assert.ok(mh.testUrlFor(AKAM).includes("hmac=v80.m4s"), "the URL bilibili signed for this file");
+    env.close();
+  });
+  test("speed-test requests are not player segments: no line sample, no 'player switched node', no busy fetching", async () => {
+    let poCallback = null;
+    const env = boot({ autoSpeedHosts: [HOST, HW] }, VIDEO_URL, (e) => {
+      e.window.PerformanceObserver = class { constructor(cb) { poCallback = cb; } observe() {} };
+    });
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
-    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1);
+    speedFetch(env, { [HW]: 1000 });
+    const before = mh.debug.currentCdn;
+    await mh.measureHost(HW);
+    const testUrl = mh.testUrlFor(HW);
+    assert.equal(mh.segBusy(Date.now() + 5000), false, "the test does not count as the player fetching");
+    poCallback({ getEntries: () => [{ name: testUrl, transferSize: 9e6, duration: 50 }] });
+    mh.updateSpeed();
+    assert.equal(mh.debug.currentCdn, before, "not logged as the player switching to HW");
+    assert.equal(mh.debug.speedBps || 0, 0, "not a line sample");
+    poCallback({ getEntries: () => [{ name: `https://${HOST}/upgcxcode/1/2/3/v80.m4s?x=1`, transferSize: 1e6, duration: 500 }] });
+    assert.equal(mh.debug.currentCdn, HOST, "a real player segment still is");
+    env.close();
+  });
+  test("1080P (2 Mbps): the first node that comfortably carries it (4× bitrate) is taken; no need to reach 25 Mbps", async () => {
+    const { env, mh, asked, posted } = bootRescue({ [HW]: 70000, [COS]: "fast" }, {}, 2000000); // HW 約 1～2.3 MB/s，good = 1 MB/s
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.deepEqual(asked, [HW], "stopped at HW, did not go on testing everything");
+    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
+    env.close();
+  });
+  test("tested-but-not-picked: only nodes that cannot carry the quality are marked, and only for a minute", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 60000, [COS]: 30000, [ALI]: "403" }, {}, null); // 沒碼率：floor 0、good 25 Mbps
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }], "fastest");
+    assert.equal(mh.isFailed(COS), false, "COS works, just not the fastest → not marked");
+    assert.equal(mh.isFailed(ALI), true);
+    assert.ok(mh.FALLBACK.failed[ALI] < Date.now() + 61000, "a test failure lasts about a minute");
+    assert.ok(mh.FALLBACK.failed[HOST] > Date.now() + 9 * 60000, "the node that failed in real playback: 10 minutes");
+    env.close();
+  });
+  test("whole network down: a round where nothing connects marks nothing and asks nothing; it retries later", async () => {
+    const { env, mh, posted } = bootRescue({});
+    env.fetchHandler = () => Promise.reject(new TypeError("Failed to fetch")); // 斷網
+    for (let round = 1; round <= 3; round++) {
+      mh.FALLBACK.holdUntil = 0;
+      assert.equal(mh.maybeFallback("stalled"), true);
+      await ended(env, posted, round);
+      assert.deepEqual(plain(mh.failedHosts()), [], "round " + round + ": nothing marked (not even the current node)");
+      assert.ok(mh.FALLBACK.holdUntil > Date.now(), "waits a bit before trying again");
+      assert.equal(mh.FALLBACK.asked, false);
+    }
+    mh.FALLBACK.holdUntil = 0;
+    mh.maybeFallback("stalled"); // 第 4 輪還是全連不上：當成真的都壞了
+    await ended(env, posted, 4);
+    assert.ok(mh.failedHosts().length > 0);
+    env.close();
+  });
+  test("a rate above 1× raises the speed the current quality needs", () => {
+    const { env, mh } = bootRescue({});
+    assert.equal(mh.currentBitrateBps(), 100000);
+    setVideo(env.window.document.querySelector("video"), { playbackRate: 2 });
+    assert.equal(mh.currentBitrateBps(), 200000);
+    env.close();
+  });
+  test("the same video's playurl again (player reload) keeps the user's stop", () => {
+    const { env, mh } = bootRescue({});
+    mh.FALLBACK.userStopped = true;
+    mh.rewriteRoot(playurl({}, 800000), "playurl");
+    assert.equal(mh.FALLBACK.userStopped, true);
     env.close();
   });
 });
@@ -599,7 +905,7 @@ describe("stall detection", () => {
     mh.updateSpeed();
     mh.checkStall(); mh.checkStall();
     assert.notEqual(mh.stallState.stuckSince, null);
-    assert.equal(mh.stallState.limit, 20000);
+    assert.equal(mh.stallState.limit, 15000);
     env.close();
   });
   test("no media data at all (readyState 0) with only a trickle still counts as stuck", () => {
@@ -623,8 +929,153 @@ describe("stall detection", () => {
     assert.equal(mh.stallState.stuckSince, null);
     env.close();
   });
-  test("paused with an empty buffer while data comes in at a real speed is just refilling", () => {
+  test("the player paused itself on an empty buffer while data still comes in → counts, like a stall while playing (#41)", () => {
     const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, readyState: 1, currentTime: 10 });
+    mh.addSample(2 * 1024 * 1024, 1000, true);
+    mh.updateSpeed();
+    mh.checkStall(); mh.checkStall();
+    assert.notEqual(mh.stallState.stuckSince, null);
+    assert.equal(mh.stallState.limit, 15000);
+    env.close();
+  });
+  // 先走針一次（記下 movedAt），之後的 checkStall 就是「停住」
+  function frozeNow(mh) { mh.checkStall(); }
+  test("playing but frozen: 5 seconds is a stall even while data still comes in, counted from the last time it moved", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, readyState: 2, currentTime: 10 });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    mh.addSample(2 * 1024 * 1024, 1000, true); // 還有資料在進來
+    mh.updateSpeed();
+    frozeNow(mh); // 走針（第一次看到）
+    mh.stallState.movedAt -= 900; // 最後一次走針在 0.9 秒前（每秒才檢查一次）
+    const movedAt = mh.stallState.movedAt;
+    mh.checkStall(); // 這次才發現停住
+    assert.equal(mh.stallState.limit, 5000);
+    assert.equal(mh.stallState.stuckSince, movedAt, "counted from the last tick it was still moving, not from now");
+    assert.ok(mh.stallState.stuckSince <= Date.now() - 800);
+    mh.stallState.stuckSince = Date.now() - 4900;
+    mh.checkStall();
+    assert.equal(mh.isFailed(HOST), false, "4.9 s is not yet");
+    mh.stallState.stuckSince = Date.now() - 5100;
+    mh.checkStall();
+    assert.equal(mh.isFailed(HOST), true, "5.1 s → rescue");
+    env.close();
+  });
+  test("the player paused itself and no data comes in → stall after 8 seconds", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: true, readyState: 1, currentTime: 10 });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    frozeNow(mh); mh.checkStall();
+    assert.equal(mh.stallState.limit, 8000);
+    mh.stallState.stuckSince = Date.now() - 7900; mh.checkStall();
+    assert.equal(mh.isFailed(HOST), false);
+    mh.stallState.stuckSince = Date.now() - 8100; mh.checkStall();
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+  });
+  test("the player paused itself while data still comes in → stall after 15 seconds, not at 9", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: true, readyState: 1, currentTime: 10 });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    mh.addSample(2 * 1024 * 1024, 1000, true); mh.updateSpeed();
+    frozeNow(mh); mh.checkStall();
+    mh.stallState.stuckSince = Date.now() - 9000; mh.checkStall();
+    assert.equal(mh.isFailed(HOST), false, "9 s with data still arriving");
+    mh.addSample(2 * 1024 * 1024, 1000, true);
+    mh.stallState.stuckSince = Date.now() - 15100; mh.checkStall();
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+  });
+  test("a user pause (buffer ahead) never counts, however long", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: true, readyState: 4, currentTime: 10, buffered: [0, 30] });
+    mh.FALLBACK.holdUntil = 0;
+    for (let i = 0; i < 3; i++) mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    assert.equal(mh.isFailed(HOST), false);
+    env.close();
+  });
+  test("clicking the progress bar while stuck (no buffer, no new data) does not reset the stall timer", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, readyState: 2, currentTime: 10, buffered: [0, 10.2] });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    mh.checkStall(); mh.checkStall();
+    mh.stallState.stuckSince = Date.now() - 4000;
+    setVideo(v, { currentTime: 9 }); mh.checkStall(); // 使用者往回點了一下
+    assert.notEqual(mh.stallState.stuckSince, null, "kept, not reset");
+    assert.ok(mh.stallState.stuckSince <= Date.now() - 4000, "still counting from before the click");
+    mh.stallState.stuckSince = Date.now() - 5100;
+    mh.checkStall();
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+    // 對照：有新資料進來的走針 = 真的恢復了
+    const env2 = boot({});
+    const m2 = env2.internals("main-hook");
+    const v2 = addVideo(env2, { paused: false, readyState: 2, currentTime: 10, buffered: [0, 10.2] });
+    m2.checkStall(); m2.checkStall();
+    m2.stallState.stuckSince = Date.now() - 4000;
+    m2.addSample(500000, 500, true);
+    setVideo(v2, { currentTime: 11, buffered: [0, 14] }); m2.checkStall();
+    assert.equal(m2.stallState.stuckSince, null);
+    env2.close();
+  });
+  test("within 1 s of the end (not yet 'ended'): not a stall", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, readyState: 4, currentTime: 599.7, duration: 600, buffered: [0, 600] });
+    for (let i = 0; i < 3; i++) mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    env.close();
+  });
+  test("a stall hit blocked by the grace period fires again right when the grace ends", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, readyState: 2, currentTime: 10, buffered: [0, 10.2] });
+    speedFetch(env, {});
+    mh.checkStall(); mh.checkStall();
+    const holdUntil = Date.now() + 3000;
+    mh.FALLBACK.holdUntil = holdUntil;
+    mh.stallState.stuckSince = Date.now() - 5100;
+    mh.checkStall(); // 命中，但寬限中
+    assert.equal(mh.isFailed(HOST), false);
+    assert.equal(mh.stallState.stuckSince, holdUntil - 5000, "re-armed to fire as soon as the grace ends");
+    env.close();
+  });
+  test("an ended video is not a stall", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, ended: true, readyState: 4, currentTime: 600 });
+    for (let i = 0; i < 3; i++) mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    env.close();
+  });
+  test("paused before it ever played (autoplay blocked, resuming from history) is not a stall", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, readyState: 1, currentTime: 120, played: false });
+    mh.checkStall(); mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    env.close();
+  });
+  test("live: paused while refilling at a real speed is still not a stall (unchanged)", () => {
+    const env = boot({ liveRoute: "cn" }, "https://live.bilibili.com/12345");
     const mh = env.internals("main-hook");
     addVideo(env, { paused: true, readyState: 1, currentTime: 10 });
     mh.addSample(2 * 1024 * 1024, 1000, true);
@@ -633,24 +1084,449 @@ describe("stall detection", () => {
     assert.equal(mh.stallState.stuckSince, null);
     env.close();
   });
+  test("live: playing but frozen while data comes in → 20 s (not the 5 s of video pages); paused with only a trickle still counts", () => {
+    const env = boot({ liveRoute: "cn" }, "https://live.bilibili.com/12345");
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: false, readyState: 2, currentTime: 10 });
+    mh.addSample(2 * 1024 * 1024, 1000, true); mh.updateSpeed();
+    mh.checkStall(); mh.checkStall();
+    assert.equal(mh.stallState.limit, 20000);
+    env.close();
+    // 另開一個：速度是 10 秒窗口的平均，前面那筆快的樣本還在窗口裡就不算細水長流
+    const env2 = boot({ liveRoute: "cn" }, "https://live.bilibili.com/12345");
+    const m2 = env2.internals("main-hook");
+    addVideo(env2, { paused: true, readyState: 1, currentTime: 10 });
+    m2.addSample(2048, 1000, true); m2.updateSpeed(); // 2 kB/s
+    m2.checkStall(); m2.checkStall();
+    assert.notEqual(m2.stallState.stuckSince, null, "paused with only a trickle still counts");
+    env2.close();
+  });
+  test("live / first load: segment requests keep going out but no data ever arrives → 8 s", () => {
+    const env = boot({ liveRoute: "cn" }, "https://live.bilibili.com/12345");
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: false, readyState: 0, currentTime: 0, played: false });
+    mh.setLastSegReqAt(Date.now());
+    mh.checkStall(); mh.checkStall();
+    assert.notEqual(mh.stallState.stuckSince, null);
+    assert.equal(mh.stallState.limit, 8000);
+    env.close();
+  });
+  test("30 s of smooth playback resets the 'all failed' question", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    const v = addVideo(env, { paused: false, readyState: 4, currentTime: 10, buffered: [0, 60] });
+    mh.FALLBACK.asked = true;
+    mh.checkStall();
+    setVideo(v, { currentTime: 11 }); mh.checkStall(); // 開始順播
+    mh.setProgressSince(Date.now() - 31000);
+    setVideo(v, { currentTime: 12 }); mh.checkStall();
+    assert.equal(mh.FALLBACK.asked, false);
+    env.close();
+  });
 });
 
 describe("node change in other tabs", () => {
+  // 假的 player.reload：記錄有沒有被呼叫（有 player API 時換節點走播放器內重載）
+  function spyPlayer(env) {
+    const calls = [];
+    env.window.player = { reload: () => calls.push("reload"), getCurrentTime: () => 0, seek() {} };
+    return calls;
+  }
   test("a paused tab picks the new node up without reloading the player", () => {
     const env = boot({});
     const mh = env.internals("main-hook");
-    addVideo(env, { paused: true });
+    const calls = spyPlayer(env);
+    addVideo(env, { paused: true, buffered: [0, 30] }); // 使用者自己按的暫停：前方還有緩衝
     assert.equal(mh.mainVideoIdle(), true);
     env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
     assert.equal(mh.effHost(), COS, "later segment requests go to the new node");
-    assert.equal(env.window.sessionStorage.getItem("__CDN_SWITCHER_SWITCH_TOAST__"), null, "no reload was queued");
+    assert.deepEqual(calls, [], "no reload");
     env.close();
   });
-  test("a non-watch page with a preview video is not reloaded", () => {
+  test("a non-watch page with a preview video is not reloaded; a playing watch page is", () => {
     const env = boot({}, "https://www.bilibili.com/");
+    const calls = spyPlayer(env);
     addVideo(env, { paused: false });
     env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
     assert.equal(env.internals("main-hook").effHost(), COS);
+    assert.deepEqual(calls, [], "home page preview: no reload");
+    env.close();
+    const env2 = boot({});
+    const calls2 = spyPlayer(env2);
+    addVideo(env2, { paused: false, buffered: [0, 30] });
+    env2.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.deepEqual(calls2, ["reload"], "watch page, playing: reload");
+    env2.close();
+  });
+  test("an ended tab is idle (no reload)", () => {
+    const env = boot({});
+    const calls = spyPlayer(env);
+    addVideo(env, { paused: true, ended: true, currentTime: 600 });
+    assert.equal(env.internals("main-hook").mainVideoIdle(), true);
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.deepEqual(calls, []);
+    env.close();
+  });
+});
+
+describe("node change on a stalled tab (#41)", () => {
+  test("the player paused itself on an empty buffer → not idle: the new node is applied with a reload", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, currentTime: 168 }); // 播過、前方沒有緩衝
+    assert.equal(mh.mainVideoIdle(), false);
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.ok(env.window.sessionStorage.getItem("__CDN_SWITCHER_SWITCH_TOAST__").includes(COS), "a reload was queued");
+    env.close();
+  });
+  test("never played yet → still idle (no reload that would start playback, #33)", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, currentTime: 120, played: false });
+    assert.equal(mh.mainVideoIdle(), true);
+    env.close();
+  });
+  test("the player reset its video after failing segments (ct 0, played empty) → not idle: a node change reloads", () => {
+    const env = boot({ autoFallback: false });
+    const mh = env.internals("main-hook");
+    const calls = [];
+    env.window.player = { reload: () => calls.push("reload"), getCurrentTime: () => 0, seek() {} };
+    addVideo(env, { paused: true, currentTime: 0, played: false });
+    mh.setLastSegFailAt(Date.now() - 5000);
+    assert.equal(mh.mainVideoIdle(), false);
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.deepEqual(calls, ["reload"]);
+    mh.setLastSegFailAt(Date.now() - 61000);
+    assert.equal(mh.mainVideoIdle(), true, "an old failure no longer counts");
+    env.close();
+  });
+  test("a node change clears the old node's stall timer, rebuffer count and deferred failure, and gives the new node a grace period", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 30] });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    mh.setLastSegReqAt(Date.now()); // 已經在抓分段（換掉的是正在用的節點）
+    mh.stallState.stuckSince = Date.now() - 7000;
+    mh.health.rebuf.push(Date.now());
+    mh.onSegFailure("network-error"); // 緩衝夠 → 暫緩
+    assert.equal(mh.segFail.reason, "network-error");
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.equal(mh.stallState.stuckSince, null);
+    assert.equal(mh.health.rebuf.length, 0);
+    assert.equal(mh.segFail.reason, null, "the deferred failure belonged to the old node");
+    assert.equal(mh.maybeFallback("stalled"), false, "within the grace period");
+    mh.FALLBACK.holdUntil -= 9000; // 9 秒：還在寬限內
+    assert.equal(mh.maybeFallback("stalled"), false);
+    mh.FALLBACK.holdUntil -= 1100; // 過了 10 秒
+    assert.equal(mh.maybeFallback("stalled"), true);
+    env.close();
+  });
+  test("the first config push on page load (nothing fetched yet) gives no grace: a dead first node is rescued right away", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    speedFetch(env, {});
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } }); // bridge 第一次推設定
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, currentTime: 0, readyState: 0, played: false });
+    assert.ok(mh.FALLBACK.holdUntil <= Date.now(), "no grace");
+    mh.onSegFailure("network-error");
+    assert.equal(mh.isFailed(COS), true, "rescued on the first failure");
+    env.close();
+  });
+  test("a node picked by the rescue reloads this tab even if it never started playing", async () => {
+    const HW = "upos-sz-mirrorhw.bilivideo.com";
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    const calls = [];
+    env.window.player = { reload: () => calls.push("reload"), getCurrentTime: () => 0, seek() {} };
+    speedFetch(env, { [HW]: "fast" });
+    const posted = capturePosts(env);
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: true, currentTime: 0, readyState: 0, played: false }); // 開頭就卡住、播放器自己暫停
+    mh.FALLBACK.holdUntil = 0;
+    mh.maybeFallback("network-error");
+    for (let i = 0; i < 300 && !posted.some((m) => m.dir === "autotest-done"); i++) await env.settle(10);
+    const done = posted.find((m) => m.dir === "autotest-done");
+    assert.ok(done, "the rescue picked HW");
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: HW } }); // bridge 寫完設定推回來
+    assert.deepEqual(calls, ["reload"], "reloaded although the tab looks idle (never played)");
+    env.close();
+  });
+});
+
+describe("rebuffer counting and stall prediction", () => {
+  // 一個播放中的影片頁；health 的安靜期清掉、上一秒的播放時間設好，checkHealth 就從「下一秒」開始看
+  function bootHealth(video, cfg = {}) {
+    const env = boot({ autoSpeedHosts: [], ...cfg });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 30], ...video });
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
+    mh.checkHealth(); // 記下畫質
+    mh.health.quietUntil = 0;
+    return { env, mh, v };
+  }
+  // 畫面停住一次（停住超過 REBUF_MIN_MS），再走針
+  function freezeOnce(mh, v, ct, props = {}) {
+    setVideo(v, { currentTime: ct, ...props });
+    mh.health.lastT = ct;
+    mh.checkHealth(); // 第一次看到停住
+    mh.health.freezeAt -= 2000;
+    mh.checkHealth(); // 停超過 1.5 秒 → 算一次
+    setVideo(v, { currentTime: ct + 1, paused: false, buffered: [0, ct + 5] });
+    mh.checkHealth(); // 恢復走針
+  }
+  test("the second rebuffer within two minutes triggers the fallback", () => {
+    const { env, mh, v } = bootHealth({});
+    freezeOnce(mh, v, 20, { buffered: [0, 20.2] });
+    assert.equal(mh.health.rebuf.length, 1);
+    assert.equal(mh.isFailed(HOST), false, "one short stall is not enough");
+    freezeOnce(mh, v, 40, { paused: true, buffered: [0, 40.2] }); // 第二次：播放器自己暫停的那種
+    assert.equal(mh.isFailed(HOST), true, "rescue started");
+    env.close();
+  });
+  test("not a rebuffer: frozen with buffer ahead, a user pause (even with < 1 s ahead), a seek, never played", () => {
+    const { env, mh, v } = bootHealth({});
+    freezeOnce(mh, v, 20, { buffered: [0, 25] });
+    freezeOnce(mh, v, 40, { paused: true, buffered: [0, 40.7] }); // 使用者暫停，前方只剩 0.7 秒（< 1 秒門檻，但還算「有前方緩衝」）
+    freezeOnce(mh, v, 70, { seeking: true, buffered: [70, 70] });
+    freezeOnce(mh, v, 90, { played: false, buffered: [0, 90.2] });
+    assert.equal(mh.health.rebuf.length, 0);
+    env.close();
+  });
+  test("one freeze counts once however long it lasts; 1.4 s is not a rebuffer", () => {
+    const { env, mh, v } = bootHealth({});
+    setVideo(v, { currentTime: 20, buffered: [0, 20.2] });
+    mh.health.lastT = 20;
+    mh.checkHealth(); mh.health.freezeAt -= 1400; mh.checkHealth();
+    assert.equal(mh.health.rebuf.length, 0, "1.4 s");
+    mh.health.freezeAt -= 200; mh.checkHealth();
+    assert.equal(mh.health.rebuf.length, 1, "1.6 s");
+    for (let i = 0; i < 5; i++) { mh.health.freezeAt -= 1000; mh.checkHealth(); }
+    assert.equal(mh.health.rebuf.length, 1, "still the same freeze");
+    env.close();
+  });
+  test("the 2-minute window: an older rebuffer does not count", () => {
+    const { env, mh, v } = bootHealth({});
+    mh.health.rebuf.push(Date.now() - 121000);
+    freezeOnce(mh, v, 20, { buffered: [0, 20.2] });
+    assert.equal(mh.health.rebuf.length, 1);
+    assert.equal(mh.isFailed(HOST), false);
+    env.close();
+  });
+  test("a blocked trigger keeps the count; a successful one clears it", () => {
+    const { env, mh, v } = bootHealth({});
+    mh.FALLBACK.holdUntil = Date.now() + 60000; // 寬限中
+    freezeOnce(mh, v, 20, { buffered: [0, 20.2] });
+    freezeOnce(mh, v, 40, { buffered: [0, 40.2] });
+    assert.equal(mh.health.rebuf.length, 2, "blocked → kept");
+    assert.equal(mh.isFailed(HOST), false);
+    mh.FALLBACK.holdUntil = 0;
+    freezeOnce(mh, v, 60, { buffered: [0, 60.2] });
+    assert.equal(mh.isFailed(HOST), true);
+    assert.equal(mh.health.rebuf.length, 0, "triggered → cleared");
+    env.close();
+  });
+  test("quiet periods: seeking / emptied / loadstart events, a new video element, a quality change, a speed test", async () => {
+    const { env, mh, v } = bootHealth({});
+    mh.trackVideoEvents();
+    for (const ev of ["seeking", "emptied", "loadstart"]) {
+      mh.health.quietUntil = 0;
+      v.dispatchEvent(new env.window.Event(ev));
+      assert.ok(mh.health.quietUntil > Date.now() + 5000, ev);
+      freezeOnce(mh, v, 20, { buffered: [0, 20.2] }); // 安靜期內停住
+      assert.equal(mh.health.rebuf.length, 0, ev + ": not counted during the quiet period");
+    }
+    mh.health.quietUntil = 0;
+    const v2 = addVideo(env, { paused: false, currentTime: 0, buffered: [0, 5] });
+    v.remove();
+    mh.trackVideoEvents();
+    assert.ok(mh.health.quietUntil > Date.now(), "new video element");
+    mh.health.quietUntil = 0;
+    mh.debug.lastQn = 64; // 切畫質
+    mh.checkHealth();
+    assert.ok(mh.health.quietUntil > Date.now(), "quality change");
+    mh.health.quietUntil = 0;
+    speedFetch(env, { [HOST]: 1000 });
+    mh.runSpeedTest([HOST], {});
+    mh.checkHealth(); // 測速中
+    assert.ok(mh.health.quietUntil > Date.now(), "during a speed test");
+    mh.health.quietUntil = 0;
+    for (let i = 0; i < 100 && mh.health.quietUntil === 0; i++) await env.settle(10);
+    assert.ok(mh.health.quietUntil > Date.now(), "after the speed test");
+    void v2;
+    env.close();
+  });
+  test("bufSlope uses the regression, not the two end points (sawtooth of segments arriving in batches)", () => {
+    const { env, mh, v } = bootHealth({});
+    const now = Date.now();
+    const h = [9, 8, 10, 9, 8, 7, 9, 8, 7, 6].map((buf, i) => ({ at: now - (9 - i) * 1000, buf }));
+    const slope = mh.bufSlope(h);
+    assert.ok(slope > -0.3 && slope < -0.25, `regression ≈ -0.273 (end points would give -0.333): ${slope}`);
+    assert.equal(mh.bufSlope([{ at: 0, buf: 1 }]), 0);
+    mh.health.hist = h;
+    setVideo(v, { currentTime: 100, duration: 600 });
+    assert.equal(mh.predictStall(v, 6, now), null, "the end-point slope would have triggered");
+    env.close();
+  });
+  // 播放「一頓一頓」：每秒只前進 adv 秒、前方緩衝 buf 秒，跑 n 個 tick
+  function stutter(mh, v, n, { adv = 0.7, buf = 0.5, paused = false } = {}) {
+    let ct = 100;
+    mh.health.lastT = ct;
+    for (let i = 0; i < n; i++) {
+      mh.health.lastAt = Date.now() - 1000;
+      ct += adv;
+      setVideo(v, { currentTime: ct, paused, buffered: [0, ct + buf] });
+      mh.checkHealth();
+    }
+  }
+  test("stutter: micro-stalls that never last 1.5 s (0.7× speed, buffer stuck below 1 s) trigger once 5 s of lag piles up within 30 s", () => {
+    const { env, mh, v } = bootHealth({});
+    stutter(mh, v, 15); // 落後 15 × 0.3 = 4.5 秒
+    assert.equal(mh.isFailed(HOST), false);
+    assert.equal(mh.health.rebuf.length, 0, "no single freeze long enough to be a rebuffer");
+    stutter(mh, v, 3); // 再 0.9 秒 → 超過 5 秒
+    assert.equal(mh.isFailed(HOST), true, "rescue started");
+    env.close();
+  });
+  test("stutter: no false alarm for timer jitter, healthy low-buffer playback, or lag with plenty of buffer", () => {
+    const { env, mh, v } = bootHealth({});
+    stutter(mh, v, 60, { adv: 0.95, buf: 0.5 }); // 每秒 0.05 秒的誤差（低於 0.08 秒雜訊門檻）
+    stutter(mh, v, 60, { adv: 1, buf: 8 }); // 4K 小緩衝、正常播放
+    stutter(mh, v, 60, { adv: 0.5, buf: 5 }); // 落後但緩衝還有 5 秒（不是線路問題）
+    assert.equal(mh.isFailed(HOST), false);
+    env.close();
+  });
+  test("stutter: a long, mild lag (~12%) triggers through the 60-second window", () => {
+    const { env, mh, v } = bootHealth({});
+    const now = Date.now();
+    mh.health.lag = Array.from({ length: 40 }, (_, i) => ({ at: now - i * 1500, s: 0.18 })); // 60 秒內 7.2 秒，最近 30 秒只有 3.6 秒
+    stutter(mh, v, 1, { adv: 1 });
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+  });
+  test("a user pause right when the buffer ran low, then the buffer refills: not a stall", () => {
+    const { env, mh, v } = bootHealth({ currentTime: 10, buffered: [0, 10.2] });
+    mh.trackVideoEvents();
+    setVideo(v, { paused: true });
+    v.dispatchEvent(new env.window.Event("pause")); // 緩衝只剩 0.2 秒時按暫停
+    stutter(mh, v, 3, { adv: 0, buf: 1.5, paused: true }); // 緩衝慢慢回來
+    stutter(mh, v, 20, { adv: 0, buf: 4, paused: true }); // 回到 4 秒還停著：是使用者的暫停
+    for (let i = 0; i < 3; i++) mh.checkStall();
+    assert.equal(mh.health.bufPause, false);
+    assert.equal(mh.isFailed(HOST), false, "no rescue, no reload over the user's pause");
+    env.close();
+  });
+  test("stutter: lag older than 30 s drops out", () => {
+    const { env, mh, v } = bootHealth({});
+    stutter(mh, v, 15);
+    for (const x of mh.health.lag) x.at -= 31000;
+    stutter(mh, v, 3);
+    assert.equal(mh.isFailed(HOST), false);
+    env.close();
+  });
+  test("a pause that happens with < 0.5 s ahead is the player's own buffering pause: not a user pause even after the buffer grows back", () => {
+    const { env, mh, v } = bootHealth({ currentTime: 10, buffered: [0, 10.2] });
+    mh.trackVideoEvents();
+    setVideo(v, { paused: true });
+    v.dispatchEvent(new env.window.Event("pause")); // 緩衝只剩 0.2 秒時暫停
+    assert.equal(mh.health.bufPause, true);
+    setVideo(v, { buffered: [0, 12] }); // 攢回 2 秒（播放器還在攢）
+    assert.equal(mh.mainVideoIdle(), false, "a node change would reload it");
+    mh.checkStall(); mh.checkStall();
+    assert.notEqual(mh.stallState.stuckSince, null, "counts as stuck");
+    setVideo(v, { buffered: [0, 13.5] }); // 攢回 3.5 秒還停著 → 是使用者按的暫停（播放器自己的會繼續）
+    assert.equal(mh.mainVideoIdle(), true, "a user pause after all");
+    assert.equal(mh.health.bufPause, false);
+    setVideo(v, { buffered: [0, 10.2] }); // 回到剛暫停的狀態，重做一次給下面的對照用
+    v.dispatchEvent(new env.window.Event("pause"));
+    setVideo(v, { buffered: [0, 12] });
+    v.dispatchEvent(new env.window.Event("play"));
+    assert.equal(mh.health.bufPause, false);
+    // 對照：使用者在有緩衝時按暫停
+    setVideo(v, { paused: true, buffered: [0, 40] });
+    v.dispatchEvent(new env.window.Event("pause"));
+    assert.equal(mh.health.bufPause, false);
+    assert.equal(mh.mainVideoIdle(), true);
+    env.close();
+  });
+  test("buffering pauses (pause to collect a few seconds, then play) pile up as lag and trigger", () => {
+    const { env, mh, v } = bootHealth({});
+    mh.health.bufPause = true;
+    stutter(mh, v, 6, { adv: 0, buf: 1.5, paused: true }); // 停著攢緩衝 6 秒（緩衝暫停，前方還不到 2 秒）
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+  });
+  test("rescue speed test gives up early: no headers within the TTFB limit, or far below the needed speed", async () => {
+    const env = boot({ autoSpeedHosts: [HOST] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    env.fetchHandler = () => new Promise(() => {}); // 連 header 都不回
+    let t = Date.now();
+    let r = await mh.measureHost(COS, { ttfbMs: 80 });
+    assert.equal(r.error, "slow-ttfb");
+    assert.ok(Date.now() - t < 1000);
+    // 細水長流：每 20 ms 給 100 bytes
+    env.fetchHandler = () => ({ ok: true, status: 200, body: { getReader: () => ({ cancel() {},
+      read: () => new Promise((res) => setTimeout(() => res({ done: false, value: { length: 100 } }), 20)) }) } });
+    t = Date.now();
+    r = await mh.measureHost(COS, { minBps: 1e6, checkMs: 150 });
+    assert.equal(r.error, "too-slow");
+    assert.ok(Date.now() - t < 1000);
+    env.close();
+  });
+  test("prediction thresholds: span ≥ 6 s, ≥ 4 samples, slope ≤ -0.3, empty within 20 s, buffer < 10 s", () => {
+    const { env, mh, v } = bootHealth({});
+    setVideo(v, { currentTime: 100, duration: 600 });
+    const now = Date.now();
+    // n 筆、每 step 毫秒一筆、緩衝從 from 等速掉到 to
+    const hist = (n, step, from, to) => Array.from({ length: n }, (_, i) => ({ at: now - (n - 1 - i) * step, buf: from + (to - from) * i / (n - 1) }));
+    const p = (h, buf) => { mh.health.hist = h; return mh.predictStall(v, buf, now); };
+    assert.ok(p(hist(8, 1000, 9, 4), 4), "baseline triggers");
+    assert.equal(p(hist(6, 1000, 9, 6), 6), null, "span 5 s < 6 s");
+    assert.equal(p(hist(3, 3500, 9, 4), 4), null, "only 3 samples");
+    assert.equal(p(hist(8, 1000, 6, 6 - 0.29 * 7), 4), null, "slope -0.29");
+    assert.equal(p(hist(8, 1000, 9.9, 9.9 - 0.4 * 7), 9.5), null, "9.5 s at -0.4/s = 23.75 s left > 20 s");
+    assert.equal(p(hist(8, 1000, 15, 10), 10), null, "buffer exactly 10 s");
+    env.close();
+  });
+  // 播放器一直在抓分段，前方緩衝從 from 一路變到 to（每秒一筆），最後這一秒播到 ct
+  function drain(mh, v, from, to, { busy = true, ct = 100, duration = 600 } = {}) {
+    const now = Date.now(), n = 8;
+    mh.health.hist = [];
+    for (let i = 0; i < n; i++) mh.health.hist.push({ at: now - (n - i) * 1000, buf: from + (to - from) * i / (n - 1) });
+    if (busy) mh.segReqStart();
+    setVideo(v, { currentTime: ct, buffered: [0, ct + to], duration });
+    mh.health.lastT = ct - 1;
+    mh.checkHealth();
+    if (busy) mh.segReqEnd();
+  }
+  test("buffer keeps falling while the player is fetching → rescue before the stall", () => {
+    const { env, mh, v } = bootHealth({});
+    drain(mh, v, 9, 4);
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+  });
+  test("no false alarms: refilling, idle drain, plenty of buffer, end of video", () => {
+    const { env, mh, v } = bootHealth({});
+    drain(mh, v, 9, 4, { busy: false }); // 沒在抓：緩衝自然下降（抓滿後停抓）。放第一個：剛結束的請求在 2 秒內還算「在抓」
+    drain(mh, v, 3, 8); // 抓得到：緩衝回升
+    drain(mh, v, 30, 12); // 緩衝還很多
+    drain(mh, v, 9, 4, { ct: 595, duration: 600 }); // 已經緩衝到片尾
+    assert.equal(mh.isFailed(HOST), false);
+    env.close();
+  });
+  test("a prediction never pops the 'all failed' question; a real stall still does", () => {
+    const { env, mh, v } = bootHealth({});
+    mh.markFailed(COS); mh.markFailed(ALI); // 候選都試過了
+    drain(mh, v, 9, 4);
+    assert.equal(mh.isFailed(HOST), true, "the prediction still marks the current node");
+    assert.equal(mh.FALLBACK.asked, false, "but does not ask");
+    assert.equal(mh.maybeFallback("rebuffer"), true);
+    assert.equal(mh.FALLBACK.asked, true);
     env.close();
   });
 });

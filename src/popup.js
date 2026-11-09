@@ -1491,7 +1491,7 @@ function renderOptimizing(st) {
   optEl.classList.toggle("show", on);
 }
 var optStopRow = document.getElementById("optStopRow");
-// 中斷：這一輪作廢、節點維持原樣（這支影片不會再優化；之後還卡會退回 B 站原始節點）
+// 中斷：這一輪作廢、節點維持原樣（這支影片不會再自動測速；之後還卡會直接問要不要切到 B 站原始網址）
 document.getElementById("optStop").addEventListener("click", function () {
   renderOptimizing(null);
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
@@ -1503,7 +1503,8 @@ document.getElementById("optStop").addEventListener("click", function () {
 // -------- 手动测速：切到独立页面，逐节点显示等待中/测试中/结果；离开页面就中止 --------
 var SPEEDTEST_ERR_KEYS = {
   "no-data": "errNoData", "no-stream": "errNoStream", "timeout": "errTimeout",
-  "network-error": "errNetworkError", "read-error": "errReadError", "no-sample": "errNoSample"
+  "network-error": "errNetworkError", "read-error": "errReadError", "no-sample": "errNoSample",
+  "no-url": "errNoSample" // akamai 節點要用 B 站給這個檔案的專屬網址才測得了，沒有就跟「沒有樣本」一樣
 };
 function speedtestErrText(err) { var k = SPEEDTEST_ERR_KEYS[err]; return k ? t(k) : err; }
 
