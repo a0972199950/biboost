@@ -50,9 +50,8 @@ promotions/
 # /growth-report 的成長報告與各商店後台匯出的原始數據（含評論者名稱），只留本機
 /growth-report/
 
-# 自己用的 Claude Code skill（發版、測速分析、論壇經營、成長報告…）與本機設定，只進私人 repo
-.claude/skills/
-.claude/settings.local.json
+# 自己用的 Claude Code skill（發版、測速分析、論壇經營、成長報告…）、本機設定與其他 Claude Code 檔案，只進私人 repo
+/.claude/
 
 # 商店上架文案、截圖與宣傳圖，只進私人 repo
 /store/

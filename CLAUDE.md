@@ -48,7 +48,7 @@ GitHub：`a0972199950/biboost`（舊名 bilibili-cdn-switcher；`package.json` �
 - `admin/`：後台畫面（Vite＋React，本機 `npm run admin`、雲端 `biboost.app/admin`），私人 repo。
 - `scripts/`：打包、發版、節點清單（`cdn-list.mjs`）、changelog 驗證、贊助／抽獎／邀請碼管理、私人 repo 同步。
 - `test/`：`npm test`（Node 內建 test runner）。`npm run e2e:cloud`：雲端備份端對端（Chrome for Testing，打 staging）。
-- 私人（`.git-private`）內容：`.claude/skills`、`spec/`、`store/`、`promotions/`、`research/`、`growth-report/`、`cdn-speedtest-results/`、`admin/`、`src/private/`、`.env.local`。細節與指令見 `agent.md` 與 `scripts/private-repo.mjs`；用 `git priv <指令>` 操作（改 spec 要用 `git priv mv`，不是 `git mv`）。**不要跑 `git priv clean`。**
+- 私人（`.git-private`）內容：`.claude/`（skill 與本機設定）、`spec/`、`store/`、`promotions/`、`research/`、`growth-report/`、`cdn-speedtest-results/`、`admin/`、`src/private/`、`.env.local`。細節與指令見 `agent.md` 與 `scripts/private-repo.mjs`；用 `git priv <指令>` 操作（改 spec 要用 `git priv mv`，不是 `git mv`）。**不要跑 `git priv clean`。**
 
 ## 後端與資料
 

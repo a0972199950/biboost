@@ -20,8 +20,7 @@ const GIT_DIR = path.join(ROOT, ".git-private");
 const BRANCH = "main";
 // 只進私人 repo 的路徑（公開 repo 的 .gitignore 要擋掉同一批）
 const PRIVATE_PATHS = [
-  ".claude/skills",
-  ".claude/settings.local.json",
+  ".claude", // skill、本機設定與其他 Claude Code 檔案
   "promotions",
   "research",
   "spec",
