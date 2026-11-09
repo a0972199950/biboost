@@ -155,6 +155,7 @@
   // 不再打 playurl —— 所以不能只信 d.quality（那是预设画质，切了不会变）。
   // 改成：记下每个 video representation 的路径→画质代码，再看「实际正在下载的分段」是哪一档，得出当前画质。
   var videoQnByPath = {}; // pathname -> qn（每次解析 playurl 重建）
+  var videoBwByPath = {}; // pathname -> 码率 bits/s（dash 的 bandwidth；救援时判断节点撑不撑得住目前画质）
   var lastVideoQn = null; // 最近实际下载过的 video 分段所属画质，比 d.quality 准
 
   var NATIVE_FETCH = window.fetch; // 存原生 fetch，供手动测速用，绕开下面装的 fetch hook
@@ -304,24 +305,27 @@
     }
   }
 
-  // ---------------- 自动回退：目前 CDN 播不动时，先在节点清单里优化，还不行再切到 B 站给的备援节点 ----------------
-  // 第一步（每支影片一次）：在背景测速节点清单，换到够快的那个（runAutoSpeedTest 的 "stall"）。
-  // 备援 host 取自 playurl 里的 baseUrl/backupUrl（B 站原生备援），解析 playurl 时顺手记下。
-  // 优化之后还卡：第一次回退切「具名备援 host」：分段层即时差替 + player.reload()，不整页刷新，闪 toast 告知；
-  // 备援 host 也播不动（或没记到可用 host）时不再自动整页重载，改弹一个不会自动消失的提示，
-  // 让用户自己按「重載並切換至備用URL」或「關閉」决定。可由 popup 的「速度不佳时自动优化节点」开关关闭
-  // （cfg.autoFallback，预设开启）：关闭后不做任何自动切换，也不弹提示。
+  // ---------------- 自动救援：目前节点播不动时，测速换到够快的节点 ----------------
+  // 每次触发（卡顿、预测、累计卡顿、分段失败）：
+  //  1) 目前的节点记为「失败」（FAILED_TTL_MS 内不再选它）；
+  //  2) 候选 = 节点清单 + playurl 里 B 站给的备援 host（baseUrl/backupUrl），扣掉失败的与目前的；
+  //     B 站备援也要先测，不再盲换（#41 盲换到的 akamai 只有 61 kB/s）；
+  //  3) 依序测速（runAutoSpeedTest 的 "stall"），第一个够快的就换过去；都不够快就换最快、而且撑得住目前画质的；
+  //     测过但没选上的也记为失败，所以候选只会越来越少，不会无限循环；
+  //  4) 候选用完（或都不够快）还卡，才弹一个不会自动消失的提示，让用户自己按「重載並切換至備用URL」或「關閉」决定。
+  // 换过去后新节点有 SWITCH_GRACE_MS 宽限；还卡就回到 1)。
+  // 失败标记跟着网路走、不跟影片走：换下一支影片不清掉（不然每支影片都要先在坏节点上卡一次），FAILED_TTL_MS 后自然失效。
+  // 可由 popup 的「速度不佳时自动优化节点」开关关闭（cfg.autoFallback，预设开启）：关闭后不做任何自动切换，也不弹提示。
   // 安装后第一支影片的优化还没开始（installTestPending，而且有清单可测）时，影片先不做失败自动切换：
   // 不然卡顿时会先切到备援、优化完又换一次节点（播放器重载两次）。优化一开始旗标就清掉，之后照开关；直播不受影响
   function vodFallbackOn() { return !!cfg.autoFallback && !(cfg.installTestPending && (cfg.autoSpeedHosts || []).length); }
-  var FALLBACK = { attempts: 0, lastSwitchAt: 0, tried: {}, optimized: false }; // optimized：这支影片已经做过「清单内优化」
-  var FALLBACK_MAX_ATTEMPTS = 2;
-  // 冷却要盖过「换节点后播放器重建缓冲」的空窗：实测 4K 在 player.reload() 后
-  // 可能超过 20 秒才恢复走针，冷却太短会在恢复前就误弹「皆无法播放」
-  var FALLBACK_COOLDOWN_MS = 30000;
-  // 换节点（手动、测速、自动优化写进设定）后给新节点的宽限：这段时间内卡顿／预测都不触发回退（分段失败也一样，同冷却）。
-  // 比冷却短：手动选到死节点时不必干等 30 秒
+  // holdUntil：这个时间之前不救援（换节点后的宽限）；failed：host → 记为失败的时间；
+  // asked：已经弹过「皆无法播放」（顺播 30 秒后重置）；userStopped：使用者在 popup 按了中断（这支影片不再自动测速）
+  var FALLBACK = { holdUntil: 0, failed: {}, asked: false, userStopped: false };
+  // 换节点（手动、测速、自动救援）后给新节点的宽限：这段时间内卡顿、预测、分段失败都不触发救援
   var SWITCH_GRACE_MS = 10000;
+  var FAILED_TTL_MS = 10 * 60 * 1000; // 失败标记的有效期：网路状况会变（尖峰前后），过了就重新给机会
+  var RESCUE_HEADROOM = 1.5; // 没有节点达到 4K 标准时，最快的那个至少要有目前画质码率的这么多倍才换
   var stallState = { lastTime: -1, stuckSince: null, movedAt: 0 }; // movedAt：最后一次看到走针的时间
   // 点播播放中画面停住：不管线路上有没有资料在进来，停这么久就算卡。
   // 速度够的节点，卡一下之后几秒内就会补回来；会停超过 5 秒的就是速度不够，对使用者来说当下都是在卡，不必再等
@@ -367,12 +371,12 @@
 
   // 测试用开关（无任何 UI 入口，不影响一般用户）：在 DevTools console（页面 context）执行
   //   __cdnSwitcherSimulateStall()       → 接下来 60 秒把影片当成卡住（连播放器状态检查都略过，
-  //                                     时序确定），走真实回退流程：约 9 秒切备援节点＋toast、
-  //                                     约 47 秒（8 秒判定＋30 秒冷却）弹「切备用URL」提示（不会自动消失）
+  //                                     时序确定），走真实救援流程：约 9 秒开始测速换节点、
+  //                                     换过去后 10 秒宽限，还「卡」就记失败再测下一批，候选用完弹「切备用URL」提示（不会自动消失）
   //   __cdnSwitcherSimulateStall(90000)  → 自订模拟时长（毫秒）；传 0 取消
   //   __cdnSwitcherSimulateStall("ask")  → 不等计时，立刻弹出询问 toast（按钮为真实行为，
   //                                     按下会真的切备用URL＋整页重载）
-  // 每支影片 attempts 只有一轮，要重测完整流程请重新整理或换影片。
+  // 失败标记 10 分钟内有效：要重测完整流程请重新整理页面。
   var simulateStallUntil = 0;
   window.__cdnSwitcherSimulateStall = function (arg) {
     if (arg === "ask") { askBackupSwitch("simulated"); return "ask toast shown"; }
@@ -408,9 +412,9 @@
   var mediaKey = null, pendingMediaKey = null;
   function mediaKeyOf(url) { return pathOf(url).replace(/[^/]*$/, ""); }
 
+  // 新影片：询问与「使用者中断」重置；失败标记保留（跟着网路走，见上方说明）
   function resetFallbackState() {
-    if (FALLBACK.attempts) jlog("fb.reset", { reason: "newMedia" });
-    FALLBACK.attempts = 0; FALLBACK.tried = {}; FALLBACK.optimized = false;
+    FALLBACK.asked = false; FALLBACK.userStopped = false;
     stallState.lastTime = -1; stallState.stuckSince = null;
     healthReset();
   }
@@ -420,7 +424,21 @@
     stallState.lastTime = -1; stallState.stuckSince = null;
     segFail.reason = null;
     healthReset();
-    FALLBACK.lastSwitchAt = Math.max(FALLBACK.lastSwitchAt, Date.now() - FALLBACK_COOLDOWN_MS + SWITCH_GRACE_MS);
+    FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS);
+  }
+
+  function isFailed(h, now) { var at = FALLBACK.failed[h]; return !!at && (now || Date.now()) - at < FAILED_TTL_MS; }
+  function markFailed(h) { if (h && h !== "backup") FALLBACK.failed[h] = Date.now(); }
+  function failedHosts() { var now = Date.now(); return Object.keys(FALLBACK.failed).filter(function (h) { return isFailed(h, now); }); }
+
+  // 救援候选：节点清单 + B 站备援，扣掉目前的、失败的、测不了的（akamai 没有这个档案的专属网址）
+  function rescueCandidates() {
+    var now = Date.now(), cur = effHost(), out = [];
+    (cfg.autoSpeedHosts || []).concat(backupHosts).forEach(function (h) {
+      if (!h || h === "backup" || h === cur || out.indexOf(h) >= 0 || isFailed(h, now) || !testUrlFor(h)) return;
+      out.push(h);
+    });
+    return out;
   }
 
   // 记下 playurl 给的候选 host：滤掉 PCDN（mcdn，品质不稳）；带端口的 host 过不了
@@ -433,17 +451,19 @@
     if (pendingBackupHosts.indexOf(h) < 0) pendingBackupHosts.push(h);
   }
 
+  // 没有样本可测时（还没解析到 playurl 也没抓过分段）才会用到：盲换到第一个还没失败的 B 站备援
   function pickFallbackHost() {
+    var now = Date.now();
     for (var i = 0; i < backupHosts.length; i++) {
       var h = backupHosts[i];
-      if (h !== effHost() && !FALLBACK.tried[h]) return h;
+      if (h !== effHost() && !isFailed(h, now)) return h;
     }
     return null;
   }
 
-  // 静默套用自动回退：只动 autoHost，不碰 cfg 与 chrome.storage（用户设定不变）
+  // 静默套用自动回退：只动 autoHost，不碰 cfg 与 chrome.storage（用户设定不变）。next 为 null = 取消覆写、回到用户设定的节点
   function applyAutoHost(next) {
-    autoHost = next;
+    autoHost = next || null;
     onNodeSwitched(); // 换了节点，前一个节点的失败不算到新节点头上
     renderOverlay(); postDebug();
     if (next === "backup") {
@@ -452,53 +472,73 @@
       fullReload();
     } else if (!playerReload()) {
       // 具名备援本走播放器内重载；player.reload 不可用时退整页重载，同样一次性带覆写
-      try { window.sessionStorage.setItem(AUTO_KEY, JSON.stringify({ host: next })); } catch (e) {}
+      if (next) { try { window.sessionStorage.setItem(AUTO_KEY, JSON.stringify({ host: next })); } catch (e) {} }
       fullReload();
     }
   }
 
-  // 回传 true = 这次有动作（开始优化、切备援或弹询问），呼叫端可以据此清掉自己的累计
+  // 救援测速选出的节点：清单里的写进设定（同用户自己换节点，所有分页共用；config 回来时 reload 并弹 toast）；
+  // B 站备援只在这个分页覆写；选到的正是用户设定的节点（目前在用 B 站备援覆写）就取消覆写
+  function applyRescuePick(pick, reason) {
+    var from = effHost();
+    FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS); // 写设定要绕 bridge 一圈，先挡住这段空窗
+    debug.lastError = "auto-fallback(" + reason + "): " + from + " -> " + pick;
+    var fv = getMainVideo();
+    jlog("fb.switch", { reason: reason, from: shortHost(from), to: shortHost(pick), buf: fv ? forwardBufferSec(fv).toFixed(1) : "-" });
+    if ((cfg.autoSpeedHosts || []).indexOf(pick) >= 0 && pick !== cfg.cdnHost) {
+      postAutoTest("autotest-done", { host: pick, from: cfg.cdnHost, reason: "stall" });
+      return;
+    }
+    showToast(MSGS.mhToastAutoSwitched.replace("{host}", pick));
+    applyAutoHost(pick === cfg.cdnHost ? null : pick);
+  }
+
+  // 目前画质的码率（bytes/s）：playurl 的 dash 有给 bandwidth 就用，没有回传 0
+  function currentBitrateBps() {
+    var bw = videoBwByPath[pathOf(sampleUrl() || "")];
+    return typeof bw === "number" && bw > 0 ? bw / 8 : 0;
+  }
+
+  // 回传 true = 这次有动作（开始测速、换节点或弹询问），呼叫端可以据此清掉自己的累计
   function maybeFallback(reason) {
     if (!ACTIVE || !vodFallbackOn()) return false;
     if (!WATCH_RE.test(location.pathname)) return false; // 非观看页（如首页 hover 预览）不回退
     if (autoTestRunning || speedTestRunning) return false; // 正在测速：等它的结果，不另外切
-    if (effHost() === "backup" || FALLBACK.attempts >= FALLBACK_MAX_ATTEMPTS) return false;
+    if (effHost() === "backup" || FALLBACK.asked) return false;
     var now = Date.now();
-    if (now - FALLBACK.lastSwitchAt < FALLBACK_COOLDOWN_MS) return false;
-    // 第一步：在节点清单里优化（规则见 runAutoSpeedTest），每支影片一次；已经在用 B 站备援（autoHost）就跳过。
-    // 测完（不论换没换）重新起算冷却，给新节点时间缓冲；之后还卡才走下面的 B 站备援。
-    // 使用者在 popup 按「中断」：这支影片不再优化（popup 的说明就是这样写的）；被手动测速取代：额度还回去，
-    // 手动测速的结果套用后若还是卡，可以再优化一次
-    if (!FALLBACK.optimized && !autoHost && (cfg.autoSpeedHosts || []).length) {
-      FALLBACK.optimized = true;
-      jlog("fb.optimize", { reason: reason, from: shortHost(effHost()) });
-      if (runAutoSpeedTest(cfg.autoSpeedHosts, "stall", function (how) {
-        FALLBACK.lastSwitchAt = Date.now();
-        if (how === "replaced") FALLBACK.optimized = false;
-      })) {
-        FALLBACK.lastSwitchAt = now;
-        return true;
-      }
+    if (now < FALLBACK.holdUntil) return false;
+    var cur = effHost();
+    if (!isFailed(cur, now)) { markFailed(cur); jlog("fb.fail", { host: shortHost(cur), reason: reason }); }
+    // 使用者在 popup 按了「中断」：这支影片不再自动测速（popup 的说明就是这样写的）
+    if (!FALLBACK.userStopped) {
+      var cands = rescueCandidates();
+      if (cands.length && startRescue(cands, reason)) return true;
+      // 没有样本可测（很少见）：盲换到还没失败的 B 站备援
+      var next = !sampleUrl() ? pickFallbackHost() : null;
+      if (next) { applyRescuePick(next, reason); return true; }
     }
-    var next = FALLBACK.attempts === 0 ? pickFallbackHost() : null;
-    // 预测（还没卡）只做到切 B 站备援；要弹「皆无法播放」询问，等真的卡了再说
-    if (!next && reason === "predicted") return false;
-    FALLBACK.attempts++;
-    FALLBACK.lastSwitchAt = now;
-    FALLBACK.tried[effHost()] = true;
-    if (next) {
-      debug.lastError = "auto-fallback(" + reason + "): " + effHost() + " -> " + next;
-      var fv = getMainVideo();
-      jlog("fb.switch", { n: FALLBACK.attempts, reason: reason, from: shortHost(effHost()), to: shortHost(next), buf: fv ? forwardBufferSec(fv).toFixed(1) : "-" });
-      showToast(MSGS.mhToastAutoSwitched.replace("{host}", next));
-      applyAutoHost(next);
-      return true;
-    }
-    // 具名备援也播不动（或没记到可用 host）：整页重载感知太大，不自动做，
-    // 弹提示让用户自己决定；本支影片只问这一次（attempts 直接封顶）
-    FALLBACK.attempts = FALLBACK_MAX_ATTEMPTS;
+    // 预测（还没卡）不打扰使用者：要弹「皆无法播放」询问，等真的卡了再说
+    if (reason === "predicted") return false;
+    // 候选都试过了还是卡：整页重载感知太大，不自动做，弹提示让用户自己决定；顺播 30 秒前只问这一次
+    FALLBACK.asked = true;
     askBackupSwitch(reason);
     return true;
+  }
+
+  // 救援测速。测过但没选上的记为失败：下一次救援从还没测过的候选接着找，候选用完才会问使用者
+  function startRescue(cands, reason) {
+    var floor = currentBitrateBps() * RESCUE_HEADROOM;
+    var from = effHost();
+    var started = runAutoSpeedTest(cands, "stall", function (how, res) {
+      if (how === "stopped") { FALLBACK.userStopped = true; return; }
+      if (how !== "done" || !res) return; // 被手动测速取代：手动测速的结果会自己套用
+      res.tested.forEach(function (h) { if (h !== res.pick) markFailed(h); });
+      if (!res.pick) { jlog("fb.noPick", { reason: reason, tested: res.tested.length }); return; } // 下一次触发会接着找，或问使用者
+      if (effHost() !== from) return; // 测的期间节点被换掉了（使用者自己换的）：以使用者为准
+      applyRescuePick(res.pick, reason);
+    }, { good: Math.max(UHD_BPS, floor), floor: floor });
+    if (started) jlog("fb.optimize", { reason: reason, from: shortHost(from), n: cands.length, needKbps: floor ? Math.round(floor / 1024) : "" });
+    return started;
   }
 
   // 分段请求失败（HTTP 错误／网路错误）：只看前方缓冲决定切不切 ——
@@ -530,7 +570,7 @@
 
   function askBackupSwitch(reason) {
     debug.lastError = "auto-fallback(" + reason + "): " + effHost() + " -> ask-user";
-    jlog("fb.switch", { n: FALLBACK.attempts, reason: reason, from: shortHost(effHost()), to: "ask-user", backups: backupHosts.length });
+    jlog("fb.switch", { reason: reason, from: shortHost(effHost()), to: "ask-user", failed: failedHosts().length });
     askToastOn = true;
     showToast(MSGS.mhToastAllFailed, {
       persistent: true, // 不自动消失，让用户自己按「重載」或「關閉」
@@ -602,7 +642,7 @@
             // 连续顺播 30 秒代表线路已恢复，重置回退额度，之后再卡还能再自动回退
             if (askToastOn) { askToastOn = false; hideToast(); jlog("ui.askToast", { choice: "resumed" }); }
             if (progressSince == null) progressSince = Date.now();
-            else if (now - progressSince > 30000 && FALLBACK.attempts) { FALLBACK.attempts = 0; FALLBACK.tried = {}; jlog("fb.reset", { reason: "progress30s" }); }
+            else if (now - progressSince > 30000 && FALLBACK.asked) { FALLBACK.asked = false; jlog("fb.reset", { reason: "progress30s" }); }
           }
           return;
         }
@@ -1042,10 +1082,11 @@
     var changed = false, vHost = null, aHost = null;
     var dash = d.dash;
     if (dash && typeof dash === "object") {
-      videoQnByPath = {}; // 这份 dash 的所有画质档，重建路径→画质对照
+      videoQnByPath = {}; videoBwByPath = {}; // 这份 dash 的所有画质档，重建路径→画质／码率对照
       eachTrack(dash.video, function (top, track) {
         changed = true; var h = hostOf(top);
         if (track && typeof track.id === "number") videoQnByPath[pathOf(top)] = track.id; // dash 的 id 即画质代码 qn
+        if (track && typeof track.bandwidth === "number") videoBwByPath[pathOf(top)] = track.bandwidth;
         if (!vHost) { vHost = h; noteEarlySample(top); }
       });
       eachTrack(dash.audio, function (top) { changed = true; if (!aHost) aHost = hostOf(top); });
@@ -1324,8 +1365,23 @@
   var speedTestAbort = null; // 目前这一个节点的 AbortController，供外部中止用
 
   var stTestUrls = {}; // 测速发出的网址：PerformanceObserver 看到时略过（见 noteSegment 那段）
+  // 拿来测某个 host 的网址：bilivideo 节点共用签名，换 host 就能测；akamai 要用 B 站给这个档案的那条 URL（自带 token），
+  // 没有就测不了（回传 null）。样本本身是 akamai 的 URL 时，先换回 B 站给的 bilivideo URL 再换 host
+  function testUrlFor(host) {
+    var s = sampleUrl();
+    if (!s || !host) return null;
+    if (needsOwnSig(host)) return knownUrlOn(s, host);
+    if (needsOwnSig(hostOf(s))) {
+      var base = null;
+      for (var i = 0; i < backupHosts.length && !base; i++) if (!needsOwnSig(backupHosts[i])) base = knownUrlOn(s, backupHosts[i]);
+      if (!base) return null;
+      s = base;
+    }
+    return replaceHost(s, host);
+  }
   function measureHost(host) {
-    var testUrl = replaceHost(sampleUrl(), host);
+    var testUrl = testUrlFor(host);
+    if (!testUrl) return Promise.resolve({ host: host, bytes: 0, ms: 0, bps: 0, error: "no-url" });
     stTestUrls[testUrl] = 1;
     return new Promise(function (resolve) {
       var t0 = Date.now();
@@ -1440,8 +1496,12 @@
       }, AUTO_TEST_DELAY_MS);
     }
   }
-  // 以开始时的节点当 from：中途使用者自己换了节点，bridge 比对不符就不覆盖。onEnd：这一轮结束（含中断）时呼叫
-  function runAutoSpeedTest(hosts, reason, onEnd) {
+  // 以开始时的节点当 from：中途使用者自己换了节点，bridge 比对不符就不覆盖。onEnd(how, res)：这一轮结束（含中断）时呼叫。
+  // rescue（救援，maybeFallback 传进来）：{ good, floor }。跟安装那次不同：
+  //  - 不先测目前的节点（它刚在实际播放时失败，单次测速过关也不代表播得动），只测传进来的候选；
+  //  - 第一个达到 good 的就停；都没达到就选最快、而且至少 floor 的；
+  //  - 不自己写设定，结果 res = { pick, tested } 交给 onEnd 决定怎么套用（B 站备援只在这个分页覆写）
+  function runAutoSpeedTest(hosts, reason, onEnd, rescue) {
     if (speedTestRunning || autoTestRunning || !hosts.length || !sampleUrl()) return false;
     var install = reason === "install";
     if (install) {
@@ -1451,7 +1511,9 @@
     var from = cfg.cdnHost;
     stMaxBytes = clampNum(cfg.stVideoMb, 1, 100, ST_DEFAULT_MB) * 1024 * 1024;
     stMaxMs = clampNum(cfg.stVideoSec, 1, 60, ST_DEFAULT_SEC) * 1000;
-    hosts = [from].concat(hosts.filter(function (h) { return h !== from; })); // 先测目前的节点
+    if (!rescue) hosts = [from].concat(hosts.filter(function (h) { return h !== from; })); // 先测目前的节点
+    var goodBps = rescue ? rescue.good : UHD_BPS;
+    var tested = [];
     var maxMs = hosts.length * stMaxMs + AUTO_TEST_SLACK_MS;
     postAutoTest("autotest-start", { reason: reason, total: hosts.length, maxMs: maxMs });
     var myGen = ++speedTestGen;
@@ -1459,7 +1521,7 @@
     var best = null, i = 0, over = false, watchdog = null;
     jlog("ui.speedtest", { phase: "start", kind: "auto-" + reason, hosts: hosts.length });
     // how：done（测完，含逾时）／stopped（使用者在 popup 按中断）／replaced（被手动测速取代）
-    function end(clearAbort, how) {
+    function end(clearAbort, how, res) {
       if (over) return;
       over = true;
       clearTimeout(watchdog);
@@ -1467,16 +1529,17 @@
       if (clearAbort) speedTestAbort = null; // 被手动测速取代时 speedTestAbort 已是对方的，不能动
       healthQuiet();
       postAutoTest("autotest-end", { reason: reason });
-      if (onEnd) onEnd(how);
+      if (onEnd) onEnd(how, res || null);
     }
     function interrupted() { end(false, autoTestStopGen === speedTestGen ? "stopped" : "replaced"); }
-    // pick：提早停下来选的节点；没给就用测到最快的
+    // pick：提早停下来选的节点；没给就用测到最快的（救援还要至少 floor）
     function finish(pick) {
       if (over) return;
-      pick = pick || (best && best.host) || "";
+      if (!pick && best && (!rescue || best.bps >= rescue.floor)) pick = best.host;
+      pick = pick || "";
       jlog("ui.speedtest", { phase: "done", kind: "auto-" + reason, tested: i, best: shortHost(pick), kbps: best ? Math.round(best.bps / 1024) : "" });
-      if (pick && pick !== from) postAutoTest("autotest-done", { host: pick, from: from, reason: reason });
-      end(true, "done");
+      if (!rescue && pick && pick !== from) postAutoTest("autotest-done", { host: pick, from: from, reason: reason });
+      end(true, "done", { pick: pick, tested: tested.slice() });
     }
     watchdog = setTimeout(function () {
       if (over) return;
@@ -1490,10 +1553,11 @@
       if (i >= hosts.length) { finish(); return; }
       measureHost(hosts[i++]).then(function (r) {
         if (myGen !== speedTestGen) { interrupted(); return; }
+        tested.push(r.host);
         var ok = !r.error && r.bps > 0;
         if (ok && (!best || r.bps > best.bps)) best = r;
         postAutoTest("autotest-progress", { done: i, total: hosts.length });
-        if (ok && r.bps >= UHD_BPS) { finish(r.host); return; }
+        if (ok && r.bps >= goodBps) { finish(r.host); return; }
         next();
       });
     })();
@@ -1949,9 +2013,9 @@
   function appendCommonDebugLines(lines) {
     var v = getMainVideo(), now = Date.now();
     var st = stallState.stuckSince != null ? Math.round((now - stallState.stuckSince) / 1000) + "s/" + Math.round((stallState.limit || 8000) / 1000) + "s" : "-";
-    var cd = Math.max(0, FALLBACK_COOLDOWN_MS - (now - FALLBACK.lastSwitchAt));
+    var hold = Math.max(0, FALLBACK.holdUntil - now);
     lines.push("buf=" + (v ? forwardBufferSec(v).toFixed(1) + "s" : "-") + "  rs=" + (v ? v.readyState : "-") + (v && v.paused ? " paused" : "") +
-      "  stall=" + st + "  fb=" + FALLBACK.attempts + "/" + FALLBACK_MAX_ATTEMPTS + (FALLBACK.lastSwitchAt && cd > 0 ? " cd=" + Math.round(cd / 1000) + "s" : "") +
+      "  stall=" + st + "  rebuf=" + health.rebuf.length + "  failed=" + failedHosts().length + (FALLBACK.asked ? " asked" : "") + (hold > 0 ? " hold=" + Math.round(hold / 1000) + "s" : "") +
       "  lat=" + (debug.lastSegMs ? debug.lastSegMs + "ms" : "-"));
     if (debug.lastError) lines.push("err=" + debug.lastError + (debug.lastErrorAt ? " (" + Math.round((now - debug.lastErrorAt) / 1000) + "s ago)" : ""));
     for (var i = 0; i < recentEvents.length; i++) lines.push("-" + Math.round((now - recentEvents[i].t) / 1000) + "s  " + recentEvents[i].s);
@@ -1998,7 +2062,7 @@
       effective: effHost(), playurlGiven: debug.playurlGiven, backups: backupHosts.slice(0, 8),
       buf: v ? Math.round(forwardBufferSec(v) * 10) / 10 : null, rs: v ? v.readyState : null, paused: v ? v.paused : null, ct: v ? Math.round(v.currentTime) : null,
       stallSince: stallState.stuckSince, stallLimit: stallState.limit || null, rebuf: health.rebuf.length, segBusy: segBusy(now) ? 1 : 0,
-      fb: { attempts: FALLBACK.attempts, max: FALLBACK_MAX_ATTEMPTS, cooldownLeft: Math.max(0, FALLBACK_COOLDOWN_MS - (now - FALLBACK.lastSwitchAt)), tried: Object.keys(FALLBACK.tried) },
+      fb: { holdLeft: Math.max(0, FALLBACK.holdUntil - now), failed: failedHosts(), asked: FALLBACK.asked, userStopped: FALLBACK.userStopped },
       lastErrorAt: debug.lastErrorAt || null, lastSegMs: debug.lastSegMs || null, lastSegReqAgo: lastSegReqAt ? now - lastSegReqAt : null, lastSampleAgo: lastSampleAt ? now - lastSampleAt : null,
       hookAt: debug.hookAt, playurlBeforeHook: debug.playurlBeforeHook, autoFallback: cfg.autoFallback, active: ACTIVE, dash: Object.keys(videoQnByPath).length > 0
     };
@@ -2065,7 +2129,9 @@
       autoHost: function () { return autoHost; }, mainVideoIdle: mainVideoIdle, noteEarlySample: noteEarlySample, runAutoSpeedTest: runAutoSpeedTest,
       stopAutoTest: stopAutoTest, runSpeedTest: runSpeedTest, maybeFallback: maybeFallback,
       checkHealth: checkHealth, health: health, healthReset: healthReset, bufSlope: bufSlope, predictStall: predictStall,
-      segReqStart: segReqStart, segReqEnd: segReqEnd
+      segReqStart: segReqStart, segReqEnd: segReqEnd,
+      rescueCandidates: rescueCandidates, isFailed: isFailed, markFailed: markFailed, failedHosts: failedHosts, testUrlFor: testUrlFor,
+      currentBitrateBps: currentBitrateBps, resetFallbackState: resetFallbackState
     });
   }
 })();

@@ -22,7 +22,7 @@ function playurl(extra) {
     code: 0, data: {
       quality: 80,
       dash: {
-        video: [{ id: 80, baseUrl: `https://${COS}/upgcxcode/1/2/3/v80.m4s?deadline=${FUTURE}&x=1`, backupUrl: [`https://${ALI}/upgcxcode/1/2/3/v80.m4s`, `https://${MCDN}:4483/upgcxcode/1/2/3/v80.m4s`] },
+        video: [{ id: 80, bandwidth: 4000000, baseUrl: `https://${COS}/upgcxcode/1/2/3/v80.m4s?deadline=${FUTURE}&x=1`, backupUrl: [`https://${ALI}/upgcxcode/1/2/3/v80.m4s`, `https://${MCDN}:4483/upgcxcode/1/2/3/v80.m4s`] },
           { id: 64, baseUrl: `https://${COS}/upgcxcode/1/2/3/v64.m4s`, backupUrl: [] }],
         audio: [{ id: 30280, baseUrl: `https://${COS}/upgcxcode/1/2/3/a.m4s`, backupUrl: [] }]
       }, ...extra
@@ -208,14 +208,17 @@ describe("playurl rewriting", () => {
     assert.equal(mh.debug.pickAudioHost, HOST);
     assert.deepEqual(plain(mh.videoQnByPath()), { "/upgcxcode/1/2/3/v80.m4s": 80, "/upgcxcode/1/2/3/v64.m4s": 64 });
   });
-  test("pickFallbackHost skips the current host and already-tried hosts", () => {
-    mh.FALLBACK.tried = {};
+  test("pickFallbackHost (blind switch, only when there is nothing to test with) skips the current host and failed hosts", () => {
+    mh.FALLBACK.failed = {};
     assert.equal(mh.pickFallbackHost(), COS);
-    mh.FALLBACK.tried[COS] = true;
+    mh.markFailed(COS);
     assert.equal(mh.pickFallbackHost(), ALI);
-    mh.FALLBACK.tried[ALI] = true;
+    mh.markFailed(ALI);
     assert.equal(mh.pickFallbackHost(), null);
-    mh.FALLBACK.tried = {};
+    mh.FALLBACK.failed = {};
+  });
+  test("the current quality's bitrate comes from the dash bandwidth", () => {
+    assert.equal(mh.currentBitrateBps(), 4000000 / 8);
   });
   test("durl (flv) and snake_case keys", () => {
     const root = { data: { quality: 64, durl: [{ url: `https://${COS}/upgcxcode/1/c.flv`, backup_url: [`https://${ALI}/upgcxcode/1/c.flv`] }] } };
@@ -425,6 +428,31 @@ function addVideo(env, { paused = true, ended = false, currentTime = 10, buffere
   env.window.document.body.appendChild(v);
   return v;
 }
+// 測速用的假 fetch：speeds[host] = "fast"（一次給 9 MB）｜數字（約 30 ms 給這麼多 bytes）｜"403"｜沒列 = 一直等（測速掛著）。
+// 回傳被問到的 host（依序）
+function speedFetch(env, speeds) {
+  const asked = [];
+  env.fetchHandler = (url) => {
+    const host = new URL(url).host;
+    asked.push(host);
+    const sp = speeds[host];
+    if (sp === undefined) return new Promise(() => {});
+    if (sp === "403") return { ok: false, status: 403 };
+    let sent = false;
+    return { ok: true, status: 206, body: { getReader: () => ({ cancel() {},
+      read: () => sent ? Promise.resolve({ done: true })
+        // 「fast」也要過幾毫秒：同一毫秒內讀完的話 measureHost 算出的 ms = 0、速度會記成 0
+        : new Promise((r) => setTimeout(() => { sent = true; r({ done: false, value: { length: sp === "fast" ? 9e6 : sp } }); }, sp === "fast" ? 5 : 30))
+    }) } };
+  };
+  return asked;
+}
+// main-hook 送出去的 window.postMessage（給 bridge 的）收下來看
+function capturePosts(env) {
+  const posted = [];
+  env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m); };
+  return posted;
+}
 function setVideo(v, props) {
   for (const [k, val0] of Object.entries(props)) {
     let val = val0;
@@ -469,18 +497,20 @@ describe("akamai needs its own signed URL", () => {
   });
 });
 
-describe("fallback budget is per video, not per playurl", () => {
-  test("a second playurl for the same video keeps attempts and tried hosts; a new video resets them", () => {
+describe("rescue state across playurls and videos", () => {
+  test("a new video resets the question and the user's stop; failed marks stay (they follow the network) and expire after 10 minutes", () => {
     const env = boot({});
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
-    mh.FALLBACK.attempts = 1; mh.FALLBACK.tried[COS] = true;
+    mh.FALLBACK.asked = true; mh.FALLBACK.userStopped = true; mh.markFailed(COS);
     mh.rewriteRoot(playurl(), "playurl"); // what player.reload() triggers now
-    assert.equal(mh.FALLBACK.attempts, 1);
-    assert.equal(mh.FALLBACK.tried[COS], true);
+    assert.equal(mh.FALLBACK.asked, true, "same video");
     mh.rewriteRoot(akamPlayurl("4/5/6"), "playurl");
-    assert.equal(mh.FALLBACK.attempts, 0);
-    assert.deepEqual(plain(mh.FALLBACK.tried), {});
+    assert.equal(mh.FALLBACK.asked, false);
+    assert.equal(mh.FALLBACK.userStopped, false);
+    assert.equal(mh.isFailed(COS), true);
+    mh.FALLBACK.failed[COS] = Date.now() - 11 * 60 * 1000;
+    assert.equal(mh.isFailed(COS), false);
     env.close();
   });
 });
@@ -489,17 +519,16 @@ describe("segment failures", () => {
   test("failures with plenty of buffer are deferred, however many; the switch comes once the buffer runs low", () => {
     const env = boot({});
     const mh = env.internals("main-hook");
+    speedFetch(env, {});
     mh.rewriteRoot(playurl(), "playurl");
     const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 32] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    mh.FALLBACK.holdUntil = 0;
     for (let i = 0; i < 5; i++) mh.onSegFailure("network-error");
     mh.checkSegFailure();
-    assert.equal(mh.FALLBACK.attempts, 0, "switching would throw the 22s of buffer away");
-    assert.equal(mh.autoHost(), null);
+    assert.equal(mh.isFailed(HOST), false, "switching would throw the 22s of buffer away");
     Object.defineProperty(v, "buffered", { configurable: true, get: () => ({ length: 1, start: () => 0, end: () => 13 }) });
     mh.checkSegFailure();
-    assert.equal(mh.FALLBACK.attempts, 1, "buffer below 5s after a recent failure");
-    assert.equal(mh.autoHost(), COS);
+    assert.equal(mh.isFailed(HOST), true, "buffer below 5s after a recent failure → rescue");
     env.close();
   });
   test("a deferred failure that is not repeated expires (the player's own retry worked)", () => {
@@ -507,13 +536,13 @@ describe("segment failures", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 32] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("network-error");
     mh.segFail.at = Date.now() - 21000;
     Object.defineProperty(v, "buffered", { configurable: true, get: () => ({ length: 1, start: () => 0, end: () => 12 }) });
     mh.checkSegFailure();
     assert.equal(mh.segFail.reason, null);
-    assert.equal(mh.FALLBACK.attempts, 0);
+    assert.equal(mh.isFailed(HOST), false);
     env.close();
   });
   test("with the buffer nearly gone a single failure switches right away", () => {
@@ -521,9 +550,10 @@ describe("segment failures", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1);
+    assert.equal(mh.isFailed(HOST), true);
     env.close();
   });
 });
@@ -534,12 +564,13 @@ describe("fallback waits for the install optimization", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 0, "the optimization will pick a node anyway");
+    assert.equal(mh.isFailed(HOST), false, "the optimization will pick a node anyway");
     env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { installTestPending: false } });
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.optimized, true, "flag cleared → the stall path runs (its first step is the list optimization)");
+    assert.equal(mh.isFailed(HOST), true, "flag cleared → the rescue runs");
     env.close();
   });
   test("pending but no list to test (nothing will run) → the switch still works", () => {
@@ -547,52 +578,128 @@ describe("fallback waits for the install optimization", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1);
+    assert.equal(mh.isFailed(HOST), true);
     env.close();
   });
 });
 
-describe("stall: optimize within the list first, then bilibili's backup", () => {
-  function bootStall(speed) {
-    const env = boot({ autoSpeedHosts: [HOST, COS] });
-    env.fetchHandler = () => {
-      let sent = false;
-      return { ok: true, status: 206, body: { getReader: () => ({ cancel() {},
-        read: () => sent ? Promise.resolve({ done: true }) : new Promise((r) => setTimeout(() => { sent = true; r({ done: false, value: { length: speed } }); }, 5)) }) } };
-    };
+describe("rescue: test the candidates, switch to a fast one, skip failures, ask when they run out", () => {
+  const HW = "upos-sz-mirrorhw.bilivideo.com";
+  // 目前節點 HOST、清單 [HOST, HW]、B 站備援 [COS, ALI]（mcdn 不算）→ 候選依序 HW、COS、ALI
+  function bootRescue(speeds, cfg = {}) {
+    const env = boot({ autoSpeedHosts: [HOST, HW], ...cfg });
+    const asked = speedFetch(env, speeds);
+    const posted = capturePosts(env);
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
-    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
-    return { env, mh };
+    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    return { env, mh, asked, posted };
   }
-  test("first failure runs the optimization instead of switching; the next one (after the cooldown) goes to the backup", async () => {
-    const { env, mh } = bootStall(9e6); // current node is fast → optimization keeps it
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.optimized, true);
-    assert.equal(mh.FALLBACK.attempts, 0);
-    assert.equal(mh.autoHost(), null);
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 0, "no switch while it is measuring / cooling down");
-    for (let i = 0; i < 100 && mh.FALLBACK.lastSwitchAt < Date.now() - 1000; i++) await env.settle(10);
-    await env.settle(30);
-    mh.FALLBACK.lastSwitchAt = 0; // cooldown over
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1, "still failing after the optimization → bilibili's backup");
-    assert.equal(mh.autoHost(), COS);
+  const of = (posted, dir) => posted.filter((m) => m.dir === dir).map((m) => m.payload);
+  async function ended(env, posted, n = 1) {
+    for (let i = 0; i < 200 && of(posted, "autotest-end").length < n; i++) await env.settle(10);
+  }
+
+  test("candidates: the list plus bilibili's backups, minus the current node and failed ones", () => {
+    const { env, mh } = bootRescue({});
+    assert.deepEqual(plain(mh.rescueCandidates()), [HW, COS, ALI]);
+    mh.markFailed(HW);
+    assert.deepEqual(plain(mh.rescueCandidates()), [COS, ALI]);
     env.close();
   });
-  test("node list 'All' (no hosts to test) → straight to the backup, as before", () => {
-    const env = boot({ autoSpeedHosts: [] });
-    const mh = env.internals("main-hook");
-    mh.rewriteRoot(playurl(), "playurl");
-    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] });
-    mh.FALLBACK.lastSwitchAt = 0;
-    mh.onSegFailure("http-403");
-    assert.equal(mh.FALLBACK.attempts, 1);
+  test("the current node is not tested again (it just failed in real playback); the first fast list node is written to the settings", async () => {
+    const { env, mh, asked, posted } = bootRescue({ [HOST]: "fast", [HW]: "fast", [COS]: "fast" });
+    assert.equal(mh.maybeFallback("stalled"), true);
+    assert.equal(mh.isFailed(HOST), true);
+    await ended(env, posted);
+    assert.deepEqual(asked, [HW], "stops at the first node that is fast enough");
+    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
+    assert.ok(mh.FALLBACK.holdUntil > Date.now(), "grace starts right away, before the settings round-trip");
     env.close();
+  });
+  test("bilibili's backups are measured too, never switched to blindly; slower ones tested on the way are marked failed", async () => {
+    const { env, mh, asked, posted } = bootRescue({ [HW]: 1000, [COS]: "fast" });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.deepEqual(asked, [HW, COS]);
+    assert.equal(mh.autoHost(), COS, "a backup is applied in this tab only");
+    assert.deepEqual(of(posted, "autotest-done"), [], "not written to the settings");
+    assert.equal(mh.isFailed(HW), true);
+    env.close();
+  });
+  test("still stuck on the new node after the grace → only the untested candidates are tried", async () => {
+    const { env, mh, asked, posted } = bootRescue({ [HW]: 1000, [COS]: "fast", [ALI]: "fast" });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.equal(mh.autoHost(), COS);
+    assert.equal(mh.maybeFallback("stalled"), false, "within the grace period");
+    mh.FALLBACK.holdUntil = 0;
+    asked.length = 0;
+    assert.equal(mh.maybeFallback("stalled"), true);
+    await ended(env, posted, 2);
+    assert.deepEqual(asked, [ALI], "HOST, HW and COS all failed already");
+    assert.equal(mh.autoHost(), ALI);
+    env.close();
+  });
+  test("nothing reaches 4K: the fastest wins only if it can carry the current quality (1.5× its bitrate)", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 60000, [COS]: 10000, [ALI]: "403" }); // HW ≈ 1.3 MB/s ≥ 0.75 MB/s
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
+    env.close();
+  });
+  test("nothing can carry the quality → no switch, all marked failed; the next stall asks the user", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 1000, [COS]: 1000, [ALI]: 1000 });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.equal(mh.autoHost(), null);
+    assert.deepEqual(of(posted, "autotest-done"), []);
+    assert.deepEqual(plain(mh.rescueCandidates()), []);
+    assert.equal(mh.maybeFallback("predicted"), false, "a prediction never pops the question");
+    assert.equal(mh.FALLBACK.asked, false);
+    assert.equal(mh.maybeFallback("stalled"), true);
+    assert.equal(mh.FALLBACK.asked, true);
+    assert.equal(mh.maybeFallback("stalled"), false, "asked once");
+    env.close();
+  });
+  test("on a backup, the user's own node can come back once its failure expired (the override is dropped)", async () => {
+    const { env, mh, posted } = bootRescue({ [HW]: 1000, [COS]: "fast" });
+    mh.maybeFallback("stalled");
+    await ended(env, posted);
+    assert.equal(mh.autoHost(), COS);
+    mh.FALLBACK.failed[HOST] = Date.now() - 11 * 60 * 1000; // 10 分鐘過了
+    const asked = speedFetch(env, { [HOST]: "fast" });
+    mh.FALLBACK.holdUntil = 0;
+    mh.maybeFallback("stalled");
+    await ended(env, posted, 2);
+    assert.deepEqual(asked, [HOST], "HW failed, COS is the current one");
+    assert.equal(mh.autoHost(), null, "back on the user's node");
+    assert.deepEqual(of(posted, "autotest-done"), [], "the settings already say HOST");
+    env.close();
+  });
+  test("the user pressed stop → this video only asks from now on; a manual test taking over changes nothing", async () => {
+    // 假 fetch 不理會中止訊號：讓每個節點都會慢慢回資料，這一輪才收得了尾（真的 fetch 被中止會直接結束）
+    const a = bootRescue({ [HW]: 1000, [COS]: 1000, [ALI]: 1000 });
+    a.mh.maybeFallback("stalled");
+    a.mh.stopAutoTest();
+    await ended(a.env, a.posted);
+    assert.equal(a.mh.FALLBACK.userStopped, true);
+    a.mh.FALLBACK.holdUntil = 0;
+    a.mh.maybeFallback("stalled");
+    assert.equal(a.mh.FALLBACK.asked, true, "no more automatic tests, straight to the question");
+    a.env.close();
+
+    const b = bootRescue({ [HW]: 1000 });
+    b.mh.maybeFallback("stalled");
+    b.mh.runSpeedTest([HW], {});
+    await ended(b.env, b.posted);
+    assert.equal(b.mh.FALLBACK.userStopped, false);
+    assert.equal(b.mh.isFailed(HW), false, "the interrupted round marks nothing");
+    b.env.close();
   });
 });
 
@@ -645,7 +752,8 @@ describe("stall detection", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     const v = addVideo(env, { paused: false, readyState: 2, currentTime: 10 });
-    mh.FALLBACK.lastSwitchAt = 0;
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.addSample(2 * 1024 * 1024, 1000, true); // 還有資料在進來
     mh.updateSpeed();
     mh.checkStall(); // 走針（第一次看到）
@@ -656,7 +764,7 @@ describe("stall detection", () => {
     assert.equal(mh.stallState.stuckSince, movedAt, "counted from the last tick it was still moving");
     mh.stallState.stuckSince -= 5100;
     mh.checkStall();
-    assert.equal(mh.FALLBACK.attempts, 1, "stall → fallback");
+    assert.equal(mh.isFailed(HOST), true, "stall → rescue");
     env.close();
   });
   test("the player paused itself and no data comes in → 8 seconds", () => {
@@ -729,49 +837,18 @@ describe("node change on a stalled tab (#41)", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
-    mh.FALLBACK.lastSwitchAt = 0;
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.stallState.stuckSince = Date.now() - 7000;
     mh.health.rebuf.push(Date.now());
     env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
     assert.equal(mh.stallState.stuckSince, null);
     assert.equal(mh.health.rebuf.length, 0);
     assert.equal(mh.maybeFallback("stalled"), false, "within the grace period");
-    mh.FALLBACK.lastSwitchAt -= 9000; // 9 秒：還在寬限內
+    mh.FALLBACK.holdUntil -= 9000; // 9 秒：還在寬限內
     assert.equal(mh.maybeFallback("stalled"), false);
-    mh.FALLBACK.lastSwitchAt -= 1100; // 過了 10 秒
+    mh.FALLBACK.holdUntil -= 1100; // 過了 10 秒
     assert.equal(mh.maybeFallback("stalled"), true);
-    env.close();
-  });
-});
-
-describe("stall optimization: interrupted by the user vs replaced by a manual test", () => {
-  function bootOpt() {
-    const env = boot({ autoSpeedHosts: [HOST, COS] });
-    env.fetchHandler = () => {
-      let sent = false;
-      return { ok: true, status: 206, body: { getReader: () => ({ cancel() {},
-        read: () => sent ? Promise.resolve({ done: true }) : new Promise((r) => setTimeout(() => { sent = true; r({ done: false, value: { length: 1000 } }); }, 20)) }) } };
-    };
-    const mh = env.internals("main-hook");
-    mh.rewriteRoot(playurl(), "playurl");
-    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
-    mh.FALLBACK.lastSwitchAt = 0;
-    assert.equal(mh.maybeFallback("stalled"), true);
-    assert.equal(mh.FALLBACK.optimized, true);
-    return { env, mh };
-  }
-  test("the user pressed stop → no more optimization for this video", async () => {
-    const { env, mh } = bootOpt();
-    mh.stopAutoTest();
-    await env.settle(60);
-    assert.equal(mh.FALLBACK.optimized, true);
-    env.close();
-  });
-  test("a manual speed test took over → the optimization budget comes back", async () => {
-    const { env, mh } = bootOpt();
-    mh.runSpeedTest([HOST], {});
-    await env.settle(60);
-    assert.equal(mh.FALLBACK.optimized, false);
     env.close();
   });
 });
@@ -783,7 +860,8 @@ describe("rebuffer counting and stall prediction", () => {
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
     const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 30], ...video });
-    mh.FALLBACK.lastSwitchAt = 0;
+    speedFetch(env, {});
+    mh.FALLBACK.holdUntil = 0;
     mh.checkHealth(); // 記下畫質
     mh.health.quietUntil = 0;
     return { env, mh, v };
@@ -802,10 +880,9 @@ describe("rebuffer counting and stall prediction", () => {
     const { env, mh, v } = bootHealth({});
     freezeOnce(mh, v, 20, { buffered: [0, 20.2] });
     assert.equal(mh.health.rebuf.length, 1);
-    assert.equal(mh.FALLBACK.attempts, 0, "one short stall is not enough");
+    assert.equal(mh.isFailed(HOST), false, "one short stall is not enough");
     freezeOnce(mh, v, 40, { paused: true, buffered: [0, 40.2] }); // 第二次：播放器自己暫停的那種
-    assert.equal(mh.FALLBACK.attempts, 1);
-    assert.equal(mh.autoHost(), COS, "bilibili's backup (no list to optimize in)");
+    assert.equal(mh.isFailed(HOST), true, "rescue started");
     env.close();
   });
   test("a freeze with buffer ahead, a user pause, or a seek is not a rebuffer", () => {
@@ -834,19 +911,10 @@ describe("rebuffer counting and stall prediction", () => {
     mh.checkHealth();
     if (busy) mh.segReqEnd();
   }
-  test("buffer keeps falling while the player is fetching → fallback before the stall", () => {
+  test("buffer keeps falling while the player is fetching → rescue before the stall", () => {
     const { env, mh, v } = bootHealth({});
     drain(mh, v, 9, 4);
-    assert.equal(mh.FALLBACK.attempts, 1);
-    assert.equal(mh.autoHost(), COS);
-    env.close();
-  });
-  test("with a node list the prediction starts the optimization first", () => {
-    const { env, mh, v } = bootHealth({}, { autoSpeedHosts: [HOST, COS] });
-    env.fetchHandler = () => new Promise(() => {}); // 測速掛著就好
-    drain(mh, v, 9, 4);
-    assert.equal(mh.FALLBACK.optimized, true);
-    assert.equal(mh.FALLBACK.attempts, 0);
+    assert.equal(mh.isFailed(HOST), true);
     env.close();
   });
   test("no false alarms: refilling, idle drain, plenty of buffer, end of video", () => {
@@ -855,17 +923,17 @@ describe("rebuffer counting and stall prediction", () => {
     drain(mh, v, 3, 8); // 抓得到：緩衝回升
     drain(mh, v, 30, 12); // 緩衝還很多
     drain(mh, v, 9, 4, { ct: 595, duration: 600 }); // 已經緩衝到片尾
-    assert.equal(mh.FALLBACK.attempts, 0);
-    assert.equal(mh.FALLBACK.optimized, false);
+    assert.equal(mh.isFailed(HOST), false);
     env.close();
   });
   test("a prediction never pops the 'all failed' question; a real stall still does", () => {
     const { env, mh, v } = bootHealth({});
-    mh.FALLBACK.attempts = 1; // 已經切過 B 站備援
+    mh.markFailed(COS); mh.markFailed(ALI); // 候選都試過了
     drain(mh, v, 9, 4);
-    assert.equal(mh.FALLBACK.attempts, 1);
+    assert.equal(mh.isFailed(HOST), true, "the prediction still marks the current node");
+    assert.equal(mh.FALLBACK.asked, false, "but does not ask");
     assert.equal(mh.maybeFallback("rebuffer"), true);
-    assert.equal(mh.FALLBACK.attempts, 2);
+    assert.equal(mh.FALLBACK.asked, true);
     env.close();
   });
 });
