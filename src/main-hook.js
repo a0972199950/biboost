@@ -322,9 +322,14 @@
   // 换节点（手动、测速、自动优化写进设定）后给新节点的宽限：这段时间内卡顿／预测都不触发回退（分段失败也一样，同冷却）。
   // 比冷却短：手动选到死节点时不必干等 30 秒
   var SWITCH_GRACE_MS = 15000;
-  var stallState = { lastTime: -1, stuckSince: null };
-  var STALL_LIMIT_MS = 8000; // 画面停住、线路上也没资料：连续这么久算卡
-  var STALL_SLOW_LIMIT_MS = 15000; // 画面停住、但还有资料在进来（在补缓冲，或细水长流）：放宽到这么久
+  var stallState = { lastTime: -1, stuckSince: null, movedAt: 0 }; // movedAt：最后一次看到走针的时间
+  // 点播播放中画面停住：不管线路上有没有资料在进来，停这么久就算卡。
+  // 速度够的节点，卡一下之后几秒内就会补回来；会停超过 5 秒的就是速度不够，对使用者来说当下都是在卡，不必再等
+  var STALL_PLAYING_LIMIT_MS = 5000;
+  // 例外：缓冲用光后播放器自己设成暂停（不会自己恢复走针），看线路：没资料进来 STALL_LIMIT_MS、还有资料进来 STALL_SLOW_LIMIT_MS。
+  // STALL_LIMIT_MS 也用在直播、初载（readyState 0）抓不到资料
+  var STALL_LIMIT_MS = 8000;
+  var STALL_SLOW_LIMIT_MS = 15000;
   var TRICKLE_BPS = 50 * 1024; // 缓冲耗尽时，低于这个速度的「还有资料在动」不算在补缓冲（连 360P 都撑不住）
 
   // ---- 卡顿预测与累计（点播）----
@@ -551,7 +556,8 @@
     return false;
   }
 
-  // 持续侦测「真的播不动」：currentTime 不前进、且线路上也没有资料在动。
+  // 持续侦测「真的播不动」：currentTime 不前进。点播播放中停住只看停了多久（STALL_PLAYING_LIMIT_MS）；
+  // 播放器自己暂停、直播、初载还要看线路上有没有资料在动。
   // 不能拿「一段时间没流量」当依据：播放器缓冲抓满本来就会停抓分段，idle 是正常状态，
   // 之前把 idle 当卡住会在缓冲抓满约 18 秒后误判、把好好播放中的页面整页重载。
   // paused 不能无条件放行：实测（番剧页）卡死一阵子后播放器会自己把 video 设回 paused，
@@ -590,7 +596,7 @@
       } else {
         var t = v.currentTime;
         if (t !== stallState.lastTime) {
-          stallState.lastTime = t; stallState.stuckSince = null;
+          stallState.lastTime = t; stallState.stuckSince = null; stallState.movedAt = now;
           if (!v.paused) {
             // 播放恢复走针：收掉「皆无法播放」的询问弹窗（它是 persistent 的，不会自己消失）；
             // 连续顺播 30 秒代表线路已恢复，重置回退额度，之后再卡还能再自动回退
@@ -601,16 +607,21 @@
           return;
         }
         progressSince = null;
-        if (now - lastSampleAt < 5000) {
-          // 线路还有资料在动：只是缓冲慢，宽限 STALL_SLOW_LIMIT_MS 再判定，
-          // 免得音轨还活着、视轨已死的情况永远判不到。
-          // 点播：走到这里的暂停一定是「缓冲用光后播放器自己设的暂停」（使用者主动的暂停前面已经放行），
-          // 跟播放中卡住一样计时。以前这里会把计时归零，结果节点只有一两百 kB/s、播不动 1080P 时，
-          // 每秒都有零星资料进来，永远判不到卡住（#41）。
-          // 直播维持原样：暂停中还在补的不算卡；只有几 kB/s 的细水长流照样计时
-          if (IS_LIVE_PAGE && v.paused && !trickling) { stallState.stuckSince = null; return; }
-          limit = IS_LIVE_PAGE ? 20000 : STALL_SLOW_LIMIT_MS;
+        if (IS_LIVE_PAGE) {
+          // 直播维持原样：线路还有资料在动只是缓冲慢，宽限 20 秒；暂停中还在补的不算卡，只有几 kB/s 的细水长流照样计时
+          if (now - lastSampleAt < 5000) {
+            if (v.paused && !trickling) { stallState.stuckSince = null; return; }
+            limit = 20000;
+          }
+        } else if (v.paused) {
+          // 点播：走到这里的暂停一定是「缓冲用光后播放器自己设的暂停」（使用者主动的暂停前面已经放行）。
+          // 还有资料进来时以前会把计时归零，结果节点只有一两百 kB/s、播不动 1080P 时永远判不到卡住（#41）；现在照样计时
+          if (now - lastSampleAt < 5000) limit = STALL_SLOW_LIMIT_MS;
+        } else {
+          limit = STALL_PLAYING_LIMIT_MS; // 点播播放中画面停住：只看停了多久
         }
+        // 从最后一次看到走针起算（每秒才检查一次，从「这次才发现停住」起算会多等将近 1 秒）
+        if (stallState.stuckSince == null && !IS_LIVE_PAGE && stallState.movedAt && now - stallState.movedAt < 2000) stallState.stuckSince = stallState.movedAt;
       }
     }
     stallState.limit = limit;
