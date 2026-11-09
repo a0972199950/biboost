@@ -419,13 +419,14 @@
     healthReset();
   }
 
-  // 换了节点：前一个节点的卡顿计时、累计次数、暂缓的失败都不算到新节点头上，并给新节点一段宽限
-  function onNodeSwitched() {
+  // 换了节点：前一个节点的卡顿计时、累计次数、暂缓的失败都不算到新节点头上，并给新节点一段宽限（grace 为 false 时不给）
+  function onNodeSwitched(grace) {
     stallState.lastTime = -1; stallState.stuckSince = null;
     segFail.reason = null;
     healthReset();
-    FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS);
+    if (grace !== false) FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS);
   }
+  var rescueReloadHost = null; // 救援选了清单节点、写进设定后等 config 回来：回来时这个分页一律 reload
 
   function isFailed(h, now) { var at = FALLBACK.failed[h]; return !!at && (now || Date.now()) - at < FAILED_TTL_MS; }
   function markFailed(h) { if (h && h !== "backup") FALLBACK.failed[h] = Date.now(); }
@@ -486,6 +487,7 @@
     var fv = getMainVideo();
     jlog("fb.switch", { reason: reason, from: shortHost(from), to: shortHost(pick), buf: fv ? forwardBufferSec(fv).toFixed(1) : "-" });
     if ((cfg.autoSpeedHosts || []).indexOf(pick) >= 0 && pick !== cfg.cdnHost) {
+      rescueReloadHost = pick;
       postAutoTest("autotest-done", { host: pick, from: cfg.cdnHost, reason: "stall" });
       return;
     }
@@ -660,7 +662,8 @@
         } else {
           limit = STALL_PLAYING_LIMIT_MS; // 点播播放中画面停住：只看停了多久
         }
-        // 从最后一次看到走针起算（每秒才检查一次，从「这次才发现停住」起算会多等将近 1 秒）
+        // 从最后一次看到走针起算（每秒才检查一次，从「这次才发现停住」起算会多等将近 1 秒）。
+        // 只回溯 2 秒内的：背景分页的计时器会被浏览器节流到一分钟一次，回溯更久的话，分页一回到前景就会立刻误判卡顿
         if (stallState.stuckSince == null && !IS_LIVE_PAGE && stallState.movedAt && now - stallState.movedAt < 2000) stallState.stuckSince = stallState.movedAt;
       }
     }
@@ -1931,7 +1934,12 @@
     }
     if (beforeSig === effSig(cfg)) return; // 只改了 showDebug / autoFallback 之类 → 不动（保留 autoHost）
     autoHost = null; // 用户手动改了节点/开关：自动回退的静默覆写作废，以用户选择为准
-    onNodeSwitched();
+    // 这个分页还没抓过任何分段（例如页面刚载入、bridge 第一次推设定）：不是「换掉正在用的节点」，不给宽限，
+    // 不然一开页面就遇到死节点时，前 10 秒的失败全被忽略（冒烟测试实测）
+    onNodeSwitched(lastSegReqAt > 0);
+    // 救援自己选的节点：这个分页一定卡着（可能从没播起来过、played 是空的），一律 reload，不套用下面「闲着就不 reload」的规则
+    var rescueSwitch = !!rescueReloadHost && cfg.cdnHost === rescueReloadHost;
+    rescueReloadHost = null;
     var afterActive = isActive(cfg);
     // 换节点（手动或自动测速）会闪一下黑画面：跟失败自动切换一样弹 toast 告知换到哪个节点；
     // 只开/关重排不算换节点，不弹
@@ -1942,7 +1950,7 @@
     } else if (cfg.cdnHost === "backup" || beforeEffHost === "backup") {
       toastAfterReload(switchedText);
       fullReload(); // 「备用」走 playurl 层，需重打 playurl 才生效 → 整页重载
-    } else if (!WATCH_RE.test(location.pathname) || mainVideoIdle()) {
+    } else if (!WATCH_RE.test(location.pathname) || (mainVideoIdle() && !rescueSwitch)) {
       // 具名节点只靠分段层改导，之后的分段请求自然会走新节点，不重载也生效。节点存在 storage、所有分页共用，
       // 一个分页测速换节点，其他分页也会收到这次变更：暂停／播完的分页若跟着 player.reload()，
       // 影片会自己播起来（回报 #33）；非观看页（首页预览）也不必整页重载
@@ -2110,7 +2118,7 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", renderOverlay);
   else renderOverlay();
-  setInterval(function () { updateSpeed(); checkStall(); checkHealth(); checkSegFailure(); diagTick(); renderOverlay(); postDebug(); }, 1000);
+  var tickTimer = setInterval(function () { updateSpeed(); checkStall(); checkHealth(); checkSegFailure(); diagTick(); renderOverlay(); postDebug(); }, 1000);
 
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
@@ -2131,7 +2139,11 @@
       checkHealth: checkHealth, health: health, healthReset: healthReset, bufSlope: bufSlope, predictStall: predictStall,
       segReqStart: segReqStart, segReqEnd: segReqEnd,
       rescueCandidates: rescueCandidates, isFailed: isFailed, markFailed: markFailed, failedHosts: failedHosts, testUrlFor: testUrlFor,
-      currentBitrateBps: currentBitrateBps, resetFallbackState: resetFallbackState
+      currentBitrateBps: currentBitrateBps, resetFallbackState: resetFallbackState,
+      measureHost: measureHost, trackVideoEvents: trackVideoEvents, noteSegment: noteSegment, segBusy: segBusy,
+      lastSegReqAt: function () { return lastSegReqAt; }, setLastSegReqAt: function (t) { lastSegReqAt = t; },
+      setProgressSince: function (t) { progressSince = t; },
+      stopTick: function () { clearInterval(tickTimer); } // 測試自己呼叫 checkStall／checkHealth，不要每秒的 interval 在背後亂跑
     });
   }
 })();
