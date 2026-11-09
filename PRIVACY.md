@@ -2,7 +2,7 @@
 
 **B 站 CDN 線路重排（Bilibili CDN Switcher）**
 
-最後更新 / Last updated：2026-11-01
+最後更新 / Last updated：2026-11-10
 
 ---
 
@@ -18,7 +18,7 @@
 
 - 不會讀取、記錄或上傳你的帳號資訊或 Cookie 內容。唯一的例外是你自己使用進階設定的「切換新舊版頁面」時：擴充會在你的瀏覽器裡讀取並寫入 B 站的兩個站點偏好 Cookie（`user_site`、`default_sites`，只記錄你要看新版還是舊版首頁），這兩個值不會離開你的電腦，也不會讀取其他 Cookie
 - 不使用任何分析、追蹤或廣告 SDK（沒有 Google Analytics），不追蹤個別使用者
-- 除了你主動送出的問題回報之外，不會將任何資料傳送到作者或任何第三方的伺服器（擴充會從作者的伺服器**下載**公告，請求本身不附帶任何資料，見下方「公告」）
+- 除了你主動送出的問題回報之外，不會將任何資料傳送到作者或任何第三方的伺服器（擴充會從作者的伺服器**下載**公告、節點清單與功能設定，請求本身不附帶任何資料，見下方「公告」「節點清單與功能設定」）
 - 你在彈出視窗（popup）裡的設定（例如選擇的 CDN 節點、開關狀態）只會透過瀏覽器內建的 `chrome.storage.local` 存在**你自己的裝置上**，不會同步到雲端、不會離開你的電腦
 - 為了讓問題回報能附上「問題發生前發生了什麼」，擴充會在**你自己的瀏覽器裡**保留最近 10 分鐘的運作紀錄（切換節點、自動切換、分段請求失敗、下載速度等），存在 `chrome.storage.session`，關閉瀏覽器即清空；沒有送出回報就不會離開你的電腦
 
@@ -28,6 +28,7 @@
 |---|---|
 | `storage` | 把你在彈出視窗裡的設定存在本機，重開瀏覽器後還記得你的選擇 |
 | `cookies` | 只在你使用進階設定的「切換新舊版頁面」時，讀取並寫入 bilibili.com 的兩個站點偏好 Cookie（`user_site`、`default_sites`）；程式碼不會讀取其他 Cookie（例如登入憑證） |
+| `alarms` | 節點清單下載失敗時（例如剛開機還沒連上網），在背景定時重試，直到拿到清單為止 |
 | `*://*.bilibili.com/*`（host permission）| 讀取並改寫送往 bilibili.com 的影片 CDN 網路請求 host，這是本擴充功能唯一的核心功能所需 |
 
 沒有要求任何其他權限（不要求分頁內容、瀏覽紀錄、其他網站存取等）。
@@ -48,6 +49,15 @@
 - 有些公告只給特定國家：顯示哪些由擴充依本機已存的國家（上述「依 IP 自動選擇國家」的結果）**自己判斷**，擴充不會把本機存的國家送出去。
 - 下載的只是資料，不會執行任何下載來的程式：抽獎公告的文字由擴充自己組成；一般公告的內容只保留標題、段落、清單、表格、連結等排版標籤，不載入圖片或其他外部資源。
 - 下載的清單與關閉紀錄存在本機 `chrome.storage.local`。
+
+### 節點清單與功能設定
+
+各國的建議節點清單，以及「哪些功能目前開放」的設定，都由作者的伺服器提供，不必發新版就能更新：
+
+- 節點清單從 `https://static.biboost.app/`（備援：Amazon CloudFront）下載，最多每 6 小時檢查一次；下載失敗時用 `alarms` 每分鐘重試，直到拿到為止。功能設定在打開彈出視窗或歡迎頁時從 `https://api.biboost.app/v1/features` 下載。
+- 兩者都是單純的下載（GET），**不帶 Cookie、不附任何資料**。
+- 下載的都是經過作者簽章的資料，擴充用內建的公鑰驗章，驗不過就不採用；節點清單也只接受 B 站影片使用的 CDN 網域。不會下載或執行任何程式碼。
+- 下載的內容存在本機 `chrome.storage.local`。
 
 ### 問題回報
 
@@ -89,7 +99,7 @@ This extension intercepts and rewrites the video-CDN network requests your brows
 
 - We do not read, log, or upload your account information or cookie contents. The only exception is when you use the "Old / new homepage" switch in Advanced settings: the extension then reads and writes two site-preference cookies of bilibili (`user_site` and `default_sites`, which only record whether you want the old or the new homepage) inside your browser. These two values never leave your computer, and no other cookie is read
 - No analytics, tracking, or advertising SDKs are used (no Google Analytics), and individual users are never tracked
-- Apart from problem reports you choose to send, no data is ever sent to the extension author or any third party (the extension **downloads** announcements from the author's server and the request itself carries no data — see "Announcements" below)
+- Apart from problem reports you choose to send, no data is ever sent to the extension author or any third party (the extension **downloads** announcements, the node list and feature settings from the author's server, and the requests themselves carry no data — see "Announcements" and "Node list and feature settings" below)
 - Your settings in the popup (e.g., selected CDN node, toggle states) are stored only via the browser's built-in `chrome.storage.local`, on **your own device**. They are never synced to any cloud service and never leave your computer
 - So that a problem report can show what happened before the problem, the extension keeps the last 10 minutes of its own activity (node switches, auto-switches, failed segment requests, download speed, etc.) **inside your browser** in `chrome.storage.session`, which is cleared when the browser closes. It never leaves your computer unless you send a report
 
@@ -99,6 +109,7 @@ This extension intercepts and rewrites the video-CDN network requests your brows
 |---|---|
 | `storage` | Save your popup settings locally so they persist across browser restarts |
 | `cookies` | Only when you use the "Old / new homepage" switch in Advanced settings: reads and writes two site-preference cookies of bilibili.com (`user_site`, `default_sites`). The code reads no other cookie (such as login credentials) |
+| `alarms` | When downloading the node list fails (for example right after boot, before the network is up), retry periodically in the background until the list is obtained |
 | `*://*.bilibili.com/*` (host permission) | Read and rewrite the host of video-CDN network requests to bilibili.com — the extension's sole core function |
 
 No other permissions are requested (no tab content, no full browsing history, no access to other sites).
@@ -119,6 +130,15 @@ The announcement bar on the popup's main screen, and the announcement window it 
 - Some announcements are limited to certain countries. Which ones to show is decided **by the extension itself** from the country already stored on your device (the result of "Automatic country selection by IP" above); the extension never sends that stored country.
 - Only data is downloaded and no downloaded code is ever run: prize-draw text is composed by the extension itself; general announcements keep only layout tags such as headings, paragraphs, lists, tables and links, and never load images or other external resources.
 - The downloaded list and your close record are stored locally in `chrome.storage.local`.
+
+### Node list and feature settings
+
+The recommended node list for each country, and the setting for which features are currently available, are served by the author's server so they can be updated without a new release:
+
+- The node list is downloaded from `https://static.biboost.app/` (fallback: Amazon CloudFront), checked at most once every 6 hours; if the download fails, `alarms` retries every minute until it succeeds. Feature settings are downloaded from `https://api.biboost.app/v1/features` when you open the popup or the welcome page.
+- Both are plain downloads (GET) **with no cookies and no data attached**.
+- Everything downloaded is signed by the author; the extension verifies it with a built-in public key and ignores anything that fails, and the node list only accepts the CDN domains bilibili videos use. No code is ever downloaded or run.
+- The downloaded content is stored locally in `chrome.storage.local`.
 
 ### Problem reports
 
