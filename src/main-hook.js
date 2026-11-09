@@ -321,10 +321,14 @@
   function vodFallbackOn() { return !!cfg.autoFallback && !(cfg.installTestPending && (cfg.autoSpeedHosts || []).length); }
   // holdUntil：这个时间之前不救援（换节点后的宽限）；failed：host → 记为失败的时间；
   // asked：已经弹过「皆无法播放」（顺播 30 秒后重置）；userStopped：使用者在 popup 按了中断（这支影片不再自动测速）
-  var FALLBACK = { holdUntil: 0, failed: {}, asked: false, userStopped: false };
+  var FALLBACK = { holdUntil: 0, failed: {}, asked: false, userStopped: false, offlineRounds: 0 };
   // 换节点（手动、测速、自动救援）后给新节点的宽限：这段时间内卡顿、预测、分段失败都不触发救援
   var SWITCH_GRACE_MS = 10000;
-  var FAILED_TTL_MS = 10 * 60 * 1000; // 失败标记的有效期：网路状况会变（尖峰前后），过了就重新给机会
+  var FAILED_TTL_MS = 10 * 60 * 1000; // 实际播放时失败的节点：这么久不再选（网路状况会变，过了就重新给机会）
+  // 只是测速没选上（没真的播过）的节点：短一点。一时测慢不代表一直慢；而且整体网路时好时坏时，
+  // 记 10 分钟会让一轮测速就把所有候选锁死、之后真的卡了也救不了（红队测试）
+  var TESTED_FAIL_TTL_MS = 60 * 1000;
+  var OFFLINE_RETRY_MAX = 3; // 一轮测速所有候选都连不上（多半是整体断网）：不记失败、稍后重试；连续这么多轮还是这样才当成真的都坏了
   var RESCUE_HEADROOM = 1.5; // 没有节点达到 4K 标准时，最快的那个至少要有目前画质码率的这么多倍才换
   // 救援测速提早放弃（画面正停着）：连 header 都要等超过这么久的节点不测了；测了这么久平均还不到门槛一半的也不测了。
   // 实测台湾节点的 TTFB 多在 0.3～1.3 秒
@@ -363,7 +367,13 @@
   //    补上 1)、2) 都抓不到的「每次只停零点几秒、一直顿」：节点只有码率的七、八成时，播放器抓到一点播一点，
   //    每次停顿都不到 1.5 秒、缓冲一直贴在 0～1 秒没有下降趋势（冒烟测试：0.8 倍速顿了 75 秒都没有反应）。
   //    每秒的落后低于 LAG_NOISE_SEC 当成计时误差；缓冲 ≥ LAG_BUF_SEC 时的落后不算（不是线路问题）。
-  var LAG_WINDOW_MS = 30000, LAG_TRIGGER_SEC = 5, LAG_NOISE_SEC = 0.15, LAG_BUF_SEC = 2;
+  //    另外 LAG_LONG_WINDOW_MS 内累计超过 LAG_LONG_TRIGGER_SEC 也算：抓长期小幅落后（约 12% 以上，红队测试：0.87 倍速播了 2 分钟都没反应）
+  var LAG_WINDOW_MS = 30000, LAG_TRIGGER_SEC = 5, LAG_LONG_WINDOW_MS = 60000, LAG_LONG_TRIGGER_SEC = 7;
+  // 每秒落后低于 LAG_NOISE_SEC 当成计时误差（影片时钟与 Date.now 同时读，误差远小于这个值；
+  // 0.15 太高会把 0.87 倍速这种每秒落后 0.13 秒的长期卡顿整个滤掉）
+  var LAG_NOISE_SEC = 0.08, LAG_BUF_SEC = 2;
+  // 缓冲暂停期间缓冲长回这么多还没继续播 = 是使用者自己按的暂停（播放器自己的缓冲暂停攒够就会继续）
+  var BUFPAUSE_CLEAR_SEC = 3;
   // bufPause：最近一次暂停发生时前方缓冲 < 0.5 秒 → 是缓冲不够时播放器自己按的暂停（有的播放器会暂停攒到几秒缓冲再继续），
   // 之后缓冲长回来也不能当成「使用者主动暂停」。播放、换来源时清掉
   var health = { hist: [], lastT: -1, lastAt: 0, freezeAt: 0, freezeCounted: false, rebuf: [], lag: [], quietUntil: 0, lastQn: null, bufPause: false };
@@ -438,8 +448,9 @@
   }
   var rescueReloadHost = null; // 救援选了清单节点、写进设定后等 config 回来：回来时这个分页一律 reload
 
-  function isFailed(h, now) { var at = FALLBACK.failed[h]; return !!at && (now || Date.now()) - at < FAILED_TTL_MS; }
-  function markFailed(h) { if (h && h !== "backup") FALLBACK.failed[h] = Date.now(); }
+  // FALLBACK.failed[host] = 失败标记到期的时间
+  function isFailed(h, now) { var until = FALLBACK.failed[h]; return !!until && (now || Date.now()) < until; }
+  function markFailed(h, ttl) { if (h && h !== "backup") FALLBACK.failed[h] = Math.max(FALLBACK.failed[h] || 0, Date.now() + (ttl || FAILED_TTL_MS)); }
   function failedHosts() { var now = Date.now(); return Object.keys(FALLBACK.failed).filter(function (h) { return isFailed(h, now); }); }
 
   // 救援候选：节点清单 + B 站备援，扣掉目前的、失败的、测不了的（akamai 没有这个档案的专属网址）
@@ -505,10 +516,12 @@
     applyAutoHost(pick === cfg.cdnHost ? null : pick);
   }
 
-  // 目前画质的码率（bytes/s）：playurl 的 dash 有给 bandwidth 就用，没有回传 0
+  // 目前画质「实际要的」速度（bytes/s）：playurl 的 dash 码率 × 播放速度（2 倍速要两倍的量）；没有码率回传 0
   function currentBitrateBps() {
     var bw = videoBwByPath[pathOf(sampleUrl() || "")];
-    return typeof bw === "number" && bw > 0 ? bw / 8 : 0;
+    if (!(typeof bw === "number" && bw > 0)) return 0;
+    var v = getMainVideo(), rate = v && v.playbackRate > 1 ? v.playbackRate : 1;
+    return bw / 8 * rate;
   }
 
   // 回传 true = 这次有动作（开始测速、换节点或弹询问），呼叫端可以据此清掉自己的累计
@@ -537,19 +550,39 @@
     return true;
   }
 
-  // 救援测速。测过但没选上的记为失败：下一次救援从还没测过的候选接着找，候选用完才会问使用者
+  // 救援测速。门槛：
+  //  - floor（撑得住目前画质）= 码率 × 播放速度 × 1.5，不到这个的不选；
+  //  - good（够快就不必再测下去）= 4 倍码率，最多要求到 4K 标准 25 Mbps。以前一律要 25 Mbps，看 1080P 时
+  //    明明第一个候选就够快，还是测完全部才选最快的（红队测试：画面停 25～31 秒）。没有码率时维持 25 Mbps。
+  // 测过但撑不住画质的记为失败（TESTED_FAIL_TTL_MS）；撑得住、只是不是最快的不记，之后还能选
   function startRescue(cands, reason) {
-    var floor = currentBitrateBps() * RESCUE_HEADROOM;
+    var need = currentBitrateBps(), floor = need * RESCUE_HEADROOM;
+    var good = need ? Math.max(floor, Math.min(UHD_BPS, need * 4)) : UHD_BPS;
     var from = effHost();
     var started = runAutoSpeedTest(cands, "stall", function (how, res) {
       if (how === "stopped") { FALLBACK.userStopped = true; return; }
       if (how !== "done" || !res) return; // 被手动测速取代：手动测速的结果会自己套用
-      res.tested.forEach(function (h) { if (h !== res.pick) markFailed(h); });
+      // 一个都连不上（都没收到资料）：多半是整体断网，不是这些节点坏。不记失败，目前节点也撤销，过一下再试
+      // 只算连线层的失败（连不上、逾时）；HTTP 403 之类代表节点有回应，不是断网
+      var allDead = res.results.length > 0 && res.results.every(function (r) { return r.error && !r.bytes && !/^http-/.test(r.error); });
+      if (allDead && FALLBACK.offlineRounds < OFFLINE_RETRY_MAX) {
+        FALLBACK.offlineRounds++;
+        delete FALLBACK.failed[from];
+        FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS);
+        jlog("fb.offline", { tested: res.results.length, round: FALLBACK.offlineRounds });
+        return;
+      }
+      FALLBACK.offlineRounds = 0;
+      res.results.forEach(function (r) {
+        if (r.host === res.pick) return;
+        if (!r.error && r.bps > 0 && r.bps >= floor) return; // 撑得住，只是不是最快的
+        markFailed(r.host, TESTED_FAIL_TTL_MS);
+      });
       if (!res.pick) { jlog("fb.noPick", { reason: reason, tested: res.tested.length }); return; } // 下一次触发会接着找，或问使用者
       if (effHost() !== from) return; // 测的期间节点被换掉了（使用者自己换的）：以使用者为准
       applyRescuePick(res.pick, reason);
-    }, { good: Math.max(UHD_BPS, floor), floor: floor });
-    if (started) jlog("fb.optimize", { reason: reason, from: shortHost(from), n: cands.length, needKbps: floor ? Math.round(floor / 1024) : "" });
+    }, { good: good, floor: floor });
+    if (started) jlog("fb.optimize", { reason: reason, from: shortHost(from), n: cands.length, needKbps: floor ? Math.round(floor / 1024) : "", goodKbps: Math.round(good / 1024) });
     return started;
   }
 
@@ -559,22 +592,33 @@
   // 先记下来，播放器自己会重试：之后 SEG_FAIL_RECENT_MS 内又失败、且缓冲掉到门槛以下才回退（checkSegFailure 每秒看一次），
   // 一直没再失败就当作重试成功、作废。真的播不动还有 checkStall 兜底
   var SEG_FAIL_RECENT_MS = 20000, SEG_FAIL_BUFFER_SEC = 5; // 门槛压低：尽量给播放器自己恢复的机会，没事不积极介入
-  var segFail = { at: 0, reason: null }; // 最近一次被暂缓的失败
+  // 缓冲不到 5 秒、但还有 SEG_FAIL_SECOND_BUF_SEC 以上：单一次失败也先给播放器重试一次，SEG_FAIL_SECOND_MS 内再失败才救援
+  //（红队测试：节点偶尔一次 403，缓冲 4 秒时就被换走、播放器重载）。缓冲快没了（< 1 秒）就不等
+  var SEG_FAIL_SECOND_BUF_SEC = 1, SEG_FAIL_SECOND_MS = 10000;
+  var segFail = { at: 0, reason: null, needSecond: false }; // 最近一次被暂缓的失败
   function onSegFailure(reason) {
-    var v = getMainVideo(), buf = v ? forwardBufferSec(v) : 0;
+    var v = getMainVideo(), buf = v ? forwardBufferSec(v) : 0, now = Date.now();
     if (buf >= SEG_FAIL_BUFFER_SEC) {
       if (!segFail.reason) jlog("fb.defer", { reason: reason, buf: buf.toFixed(1) });
-      segFail.at = Date.now(); segFail.reason = reason;
+      segFail.at = now; segFail.reason = reason; segFail.needSecond = false;
       return;
     }
-    segFail.reason = null;
+    if (buf >= SEG_FAIL_SECOND_BUF_SEC && !(segFail.reason && now - segFail.at < SEG_FAIL_SECOND_MS)) {
+      jlog("fb.defer", { reason: reason, buf: buf.toFixed(1), wait: "second" });
+      segFail.at = now; segFail.reason = reason; segFail.needSecond = true;
+      return;
+    }
+    segFail.reason = null; segFail.needSecond = false;
     maybeFallback(reason);
   }
   function checkSegFailure() {
     if (!segFail.reason) return;
-    if (Date.now() - segFail.at > SEG_FAIL_RECENT_MS) { jlog("fb.defer", { phase: "expired" }); segFail.reason = null; return; }
+    var lim = segFail.needSecond ? SEG_FAIL_SECOND_MS : SEG_FAIL_RECENT_MS;
+    if (Date.now() - segFail.at > lim) { jlog("fb.defer", { phase: "expired" }); segFail.reason = null; segFail.needSecond = false; return; }
     var v = getMainVideo();
-    if (v && forwardBufferSec(v) >= SEG_FAIL_BUFFER_SEC) return;
+    var fb = v ? forwardBufferSec(v) : 0;
+    if (fb >= SEG_FAIL_BUFFER_SEC || (segFail.needSecond && fb >= SEG_FAIL_SECOND_BUF_SEC)) return;
+    segFail.needSecond = false;
     var reason = segFail.reason;
     segFail.reason = null;
     maybeFallback(reason);
@@ -629,7 +673,7 @@
       var starving = (now - lastSegReqAt < 10000 && now - lastSampleAt > 5000 && lastSegReqAt > 0) || liveNoData(v, now);
       // 有资料在动、但只有几 kB/s 的「细水长流」：不算在补缓冲（见下方 lastSampleAt 那段）
       var trickling = now - lastSampleAt < 5000 && debug.speedBps < TRICKLE_BPS;
-      if (v && v.ended) { stallState.lastTime = -1; stallState.stuckSince = null; return; }
+      if (v && (v.ended || (!IS_LIVE_PAGE && nearEnd(v)))) { stallState.lastTime = -1; stallState.stuckSince = null; return; }
       // 手机版（m.bilibili.com）与 iPhone 的嵌入播放器（player.bilibili.com 会转到 /blackboard/webplayer/mbplayer.html）
       // 的 video 是 preload=metadata：只抓了 metadata、使用者还没按播放（readyState 1、paused、没有前向缓冲），
       // 照下面的规则会被当成卡住，实测一开页面就误跳「皆无法播放」。还没播放过（played 是空的）的暂停不算卡
@@ -648,7 +692,13 @@
       } else {
         var t = v.currentTime;
         if (t !== stallState.lastTime) {
-          stallState.lastTime = t; stallState.stuckSince = null; stallState.movedAt = now;
+          // 卡住期间的走针、但前方缓冲很少（< 3 秒）、线路上也没有新资料：是使用者一直点进度条（跳回已缓冲的地方播一下又卡），
+          // 不是恢复了 → 卡顿计时继续（红队测试：每 3 秒点一次进度条，救援永远不会触发）。
+          // 往回跳 1 秒前方就会多出约 1 秒旧缓冲，门槛不能设太低；真的恢复一定有新资料进来
+          var noData = !IS_LIVE_PAGE && stallState.stuckSince != null && forwardBufferSec(v) < 3 && now - lastSampleAt > 5000;
+          stallState.lastTime = t; stallState.movedAt = now;
+          if (noData) return;
+          stallState.stuckSince = null;
           if (!v.paused) {
             // 播放恢复走针：收掉「皆无法播放」的询问弹窗（它是 persistent 的，不会自己消失）；
             // 连续顺播 30 秒代表线路已恢复，重置回退额度，之后再卡还能再自动回退
@@ -684,7 +734,9 @@
       stallState.hit = true;
       var sv = getMainVideo();
       jlog("fb.stall", { phase: "hit", limit: limit / 1000, rs: sv ? sv.readyState : -1, paused: sv ? sv.paused : "", buf: sv ? forwardBufferSec(sv).toFixed(1) : "" });
-      triggerFallback(simulating ? "simulated" : "stalled");
+      var acted = triggerFallback(simulating ? "simulated" : "stalled");
+      // 被换节点后的宽限挡掉：宽限一结束就再判一次，不从零重新计时（红队测试：救援中改选了坏节点，要 31 秒才恢复）
+      if (!acted && !IS_LIVE_PAGE && FALLBACK.holdUntil > Date.now()) stallState.stuckSince = FALLBACK.holdUntil - limit;
     }
   }
 
@@ -694,7 +746,14 @@
     health.quietUntil = Date.now() + HEALTH_QUIET_MS;
   }
   // 使用者主动暂停：暂停、前方还有缓冲，而且不是缓冲不够时播放器自己按的（点播才分；直播维持原样）
-  function userPaused(v) { return v.paused && hasForwardBuffer(v) && (IS_LIVE_PAGE || !health.bufPause); }
+  // 缓冲暂停期间缓冲已经长回 BUFPAUSE_CLEAR_SEC 却还停着：播放器自己的缓冲暂停攒够就会继续，所以这是使用者按的暂停
+  //（红队测试：卡住时使用者刚好按暂停，5 秒后被当成卡顿换节点、重载，把使用者的暂停推翻）
+  function userPaused(v) {
+    if (!IS_LIVE_PAGE && health.bufPause && v.paused && forwardBufferSec(v) >= BUFPAUSE_CLEAR_SEC) health.bufPause = false;
+    return v.paused && hasForwardBuffer(v) && (IS_LIVE_PAGE || !health.bufPause);
+  }
+  // 播到片尾 1 秒内（还没 ended）：停住是正常的，不算卡（红队测试：片尾前 0.3 秒按暂停，8 秒后被判卡住重载、从头播）
+  function nearEnd(v) { var d = v.duration; return !!d && isFinite(d) && v.currentTime >= d - 1; }
   function healthReset() { healthQuiet(); health.rebuf = []; }
   // 缓冲对时间的回归斜率（秒/秒）：分段一批一批进来，缓冲是锯齿状，只看头尾两点会被锯齿骗
   function bufSlope(h) {
@@ -719,7 +778,7 @@
   }
   function checkHealth() {
     var now = Date.now(), v = getMainVideo();
-    if (IS_LIVE_PAGE || !ACTIVE || !vodFallbackOn() || !WATCH_RE.test(location.pathname) || !v || v.ended || v.readyState === 0) {
+    if (IS_LIVE_PAGE || !ACTIVE || !vodFallbackOn() || !WATCH_RE.test(location.pathname) || !v || v.ended || nearEnd(v) || v.readyState === 0) {
       health.hist = []; health.freezeAt = 0; health.freezeCounted = false; health.lastT = -1; return;
     }
     if (autoTestRunning || speedTestRunning) { healthQuiet(); return; } // 测速抢频宽：测的期间与刚测完的缓冲变化不算
@@ -736,14 +795,15 @@
     // 播放进度落后：这一秒墙上时间过了多少、影片只播了多少。缓冲不够（或缓冲暂停）时的落后才算，
     // 抓得到「每次只停零点几秒、一直顿」与「暂停攒缓冲再播」这种每次停顿都短于门槛的卡法
     var dtWall = (now - prevAt) / 1000, dtMedia = t - prevT;
-    if (dtWall > 0 && dtWall < 3 && dtMedia >= 0 && (buf < LAG_BUF_SEC || bufPaused)) {
+    if (dtWall > 0 && dtWall < 3 && dtMedia >= 0 && buf < LAG_BUF_SEC) {
       var lag = Math.min(dtWall, dtWall - dtMedia / (v.playbackRate || 1));
       if (lag >= LAG_NOISE_SEC) health.lag.push({ at: now, s: lag });
     }
-    health.lag = health.lag.filter(function (x) { return now - x.at < LAG_WINDOW_MS; });
-    var lagSum = health.lag.reduce(function (a, x) { return a + x.s; }, 0);
-    if (lagSum >= LAG_TRIGGER_SEC && maybeFallback("stutter")) {
-      jlog("fb.stutter", { lag: lagSum.toFixed(1), windowSec: LAG_WINDOW_MS / 1000 });
+    health.lag = health.lag.filter(function (x) { return now - x.at < LAG_LONG_WINDOW_MS; });
+    var lagSum = 0, lagLong = 0;
+    health.lag.forEach(function (x) { lagLong += x.s; if (now - x.at < LAG_WINDOW_MS) lagSum += x.s; });
+    if ((lagSum >= LAG_TRIGGER_SEC || lagLong >= LAG_LONG_TRIGGER_SEC) && maybeFallback("stutter")) {
+      jlog("fb.stutter", { lag30: lagSum.toFixed(1), lag60: lagLong.toFixed(1) });
       health.lag = []; health.rebuf = []; health.hist = [];
       return;
     }
@@ -937,7 +997,7 @@
   }
 
   // 统一入口：直播页走直播回退，其他页走一般影片回退
-  function triggerFallback(reason) { if (IS_LIVE_PAGE) maybeLiveFallback(reason); else maybeFallback(reason); }
+  function triggerFallback(reason) { if (IS_LIVE_PAGE) { maybeLiveFallback(reason); return true; } return maybeFallback(reason); }
 
   // 直播 fetch：记录页面原始请求；需要时改 host；改过的请求若失败（线路不存在 → DNS 失败，或 403 等）
   // 且开着「失败自动切换」，就地改回页面原本的 host 重试，并让之后的请求都改走 ov。
@@ -1581,7 +1641,7 @@
       pick = pick || "";
       jlog("ui.speedtest", { phase: "done", kind: "auto-" + reason, tested: i, best: shortHost(pick), kbps: best ? Math.round(best.bps / 1024) : "" });
       if (!rescue && pick && pick !== from) postAutoTest("autotest-done", { host: pick, from: from, reason: reason });
-      end(true, "done", { pick: pick, tested: tested.slice() });
+      end(true, "done", { pick: pick, tested: tested.map(function (r) { return r.host; }), results: tested.slice() });
     }
     watchdog = setTimeout(function () {
       if (over) return;
@@ -1595,7 +1655,7 @@
       if (i >= hosts.length) { finish(); return; }
       measureHost(hosts[i++], rescue ? { ttfbMs: RESCUE_TTFB_MS, minBps: rescue.floor / 2, checkMs: RESCUE_SLOW_CHECK_MS } : null).then(function (r) {
         if (myGen !== speedTestGen) { interrupted(); return; }
-        tested.push(r.host);
+        tested.push(r);
         var ok = !r.error && r.bps > 0;
         if (ok && (!best || r.bps > best.bps)) best = r;
         postAutoTest("autotest-progress", { done: i, total: hosts.length });
