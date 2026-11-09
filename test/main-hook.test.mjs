@@ -1186,6 +1186,20 @@ describe("node change on a stalled tab (#41)", () => {
     assert.equal(mh.mainVideoIdle(), true);
     env.close();
   });
+  test("the player reset its video after failing segments (ct 0, played empty) → not idle: a node change reloads", () => {
+    const env = boot({ autoFallback: false });
+    const mh = env.internals("main-hook");
+    const calls = [];
+    env.window.player = { reload: () => calls.push("reload"), getCurrentTime: () => 0, seek() {} };
+    addVideo(env, { paused: true, currentTime: 0, played: false });
+    mh.setLastSegFailAt(Date.now() - 5000);
+    assert.equal(mh.mainVideoIdle(), false);
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.deepEqual(calls, ["reload"]);
+    mh.setLastSegFailAt(Date.now() - 61000);
+    assert.equal(mh.mainVideoIdle(), true, "an old failure no longer counts");
+    env.close();
+  });
   test("a node change clears the old node's stall timer, rebuffer count and deferred failure, and gives the new node a grace period", () => {
     const env = boot({ autoSpeedHosts: [] });
     const mh = env.internals("main-hook");
