@@ -51,8 +51,7 @@ promotions/
 /growth-report/
 
 # 本機設定，只進私人 repo
-.claude/skills/
-.claude/settings.local.json
+/.claude/
 
 # 私人資料，只進私人 repo
 /store/
