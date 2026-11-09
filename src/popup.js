@@ -1583,6 +1583,10 @@ document.getElementById("sortBySpeed").addEventListener("change", function () {
 // 左「舊」右「新」，兩邊平等：勾選（右）= 新版。真正改的是 B 站的站點偏好 cookie，由 background.js 處理（HV_*）；
 // 顯示的是使用者上次選的，沒選過就看目前 cookie 對應哪一版，都看不出來就當新版（海外 IP 沒有 cookie 時 B 站給的就是新版）。
 // 瀏覽器沒有 cookies API（supported = false）時整張卡片不顯示。
+// 切換成功就把目前分頁（只限 bilibili.com／www.bilibili.com）導回首頁 /：海外版的網址（/zh-Hant、/en…，語言代碼列不完）本身就是新版，
+// 光改 cookie 再重新整理停在那種網址沒有用；從 / 進去，由伺服器依 cookie 回舊版或導向新版。其他網站的分頁不動。
+var HV_HOME_URL = "https://www.bilibili.com/";
+var HV_TAB_RE = /^https?:\/\/(www\.)?bilibili\.com(\/|$)/i;
 var hvBox = document.getElementById("homeVersion");
 function renderHomeVersion(version) {
   hvBox.checked = version === "new";
@@ -1608,11 +1612,23 @@ hvBox.addEventListener("change", function () {
   showHomeVersionNote(null);
   chrome.runtime.sendMessage({ type: "CDN_SWITCHER_HOME_VERSION_SET", version: version }, function (r) {
     void chrome.runtime.lastError;
-    if (r && r.ok) { showHomeVersionNote("hvNoteDone"); return; }
+    if (r && r.ok) { goHomeIfOnBilibili(); return; }
     renderHomeVersion(version === "new" ? "old" : "new"); // 沒改成功：開關回到原本那邊
     showHomeVersionNote("hvNoteFail");
   });
 });
+// 目前分頁在 B 站就導回首頁（提示「已回到首頁」），不在就只說下次打開首頁才會生效
+function goHomeIfOnBilibili() {
+  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    void chrome.runtime.lastError;
+    var tab = tabs && tabs[0];
+    if (!tab || tab.id == null || !HV_TAB_RE.test(tab.url || "")) { showHomeVersionNote("hvNoteLater"); return; }
+    chrome.tabs.update(tab.id, { url: HV_HOME_URL }, function () {
+      void chrome.runtime.lastError;
+      showHomeVersionNote("hvNoteDone");
+    });
+  });
+}
 
 // -------- 測速門檻（進階設定）--------
 // 四個數字各自即時存檔；輸入超出範圍時存成邊界值，離開輸入框時把顯示值也修正回去

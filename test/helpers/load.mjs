@@ -154,6 +154,7 @@ export function createEnv(opts = {}) {
   const onAlarmListeners = [];
   const alarms = {};
   const createdTabs = [];
+  const updatedTabs = []; // every chrome.tabs.update call: { tabId, props }
 
   const local = makeStorageArea(opts.cdnList === false ? opts.storage : { ...cdnListStorage(), ...(opts.storage || {}) }, "local", onChangedListeners);
   const session = makeStorageArea(opts.session, "session", onChangedListeners);
@@ -216,6 +217,7 @@ export function createEnv(opts = {}) {
         if (fn) fn(opts.tabResponder ? opts.tabResponder(msg) : undefined);
       },
       create: (o) => createdTabs.push(o),
+      update(tabId, props, cb) { updatedTabs.push({ tabId, props }); if (cb) cb({ id: tabId, ...props }); },
       reload: () => {},
       connect: () => ({ disconnect() {}, onDisconnect: { addListener() {} } })
     },
@@ -254,6 +256,7 @@ export function createEnv(opts = {}) {
     runtimeMessages,
     tabMessages,
     createdTabs,
+    updatedTabs,
     fetchCalls,
     fetchHandler: opts.fetch || null,
     nativeFetch,
