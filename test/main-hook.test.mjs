@@ -640,6 +640,33 @@ describe("stall detection", () => {
     assert.equal(mh.stallState.limit, 15000);
     env.close();
   });
+  test("playing but frozen: 5 seconds is a stall even while data still comes in, counted from the last time it moved", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, readyState: 2, currentTime: 10 });
+    mh.FALLBACK.lastSwitchAt = 0;
+    mh.addSample(2 * 1024 * 1024, 1000, true); // 還有資料在進來
+    mh.updateSpeed();
+    mh.checkStall(); // 走針（第一次看到）
+    const movedAt = mh.stallState.movedAt;
+    assert.ok(movedAt > 0);
+    mh.checkStall(); // 停住
+    assert.equal(mh.stallState.limit, 5000);
+    assert.equal(mh.stallState.stuckSince, movedAt, "counted from the last tick it was still moving");
+    mh.stallState.stuckSince -= 5100;
+    mh.checkStall();
+    assert.equal(mh.FALLBACK.attempts, 1, "stall → fallback");
+    env.close();
+  });
+  test("the player paused itself and no data comes in → 8 seconds", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, readyState: 1, currentTime: 10 });
+    mh.checkStall(); mh.checkStall();
+    assert.equal(mh.stallState.limit, 8000);
+    env.close();
+  });
   test("live: paused while refilling at a real speed is still not a stall (unchanged)", () => {
     const env = boot({ liveRoute: "cn" }, "https://live.bilibili.com/12345");
     const mh = env.internals("main-hook");
