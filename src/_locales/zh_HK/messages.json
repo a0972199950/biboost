@@ -320,6 +320,33 @@
   "sortBySpeedHint": {
     "message": "開咗之後，測速時節點會按速度由快到慢自動排序，並記住次序直到下次測速。影片同直播都適用，閂咗就變返預設次序。"
   },
+  "hvLabel": {
+    "message": "新舊版頁面（實驗性）"
+  },
+  "hvOld": {
+    "message": "舊"
+  },
+  "hvNew": {
+    "message": "新"
+  },
+  "hvHintChange": {
+    "message": "B 站今次改版：新版首頁冇咗上面嘅分區入口（番劇、遊戲、音樂…）同輪播大圖，淨返一大片推薦影片，海外用戶會陸續轉做新版。"
+  },
+  "hvHintUse": {
+    "message": "用呢個開關自己揀睇舊版定新版，切換後目前嘅 B 站頁面會自動返去首頁。"
+  },
+  "hvHintWarn": {
+    "message": "實驗性功能：B 站隨時可能再改版，到時呢個開關可能會失效。"
+  },
+  "hvNoteDone": {
+    "message": "已切換，已帶你返去 B 站首頁。"
+  },
+  "hvNoteLater": {
+    "message": "已切換，下次打開 B 站首頁就會生效。"
+  },
+  "hvNoteFail": {
+    "message": "切換失敗，請稍後再試。"
+  },
   "stVideoLimitTitle": {
     "message": "影片測速門檻"
   },

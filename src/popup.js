@@ -98,6 +98,7 @@ document.documentElement.lang = uiLanguage();
   ["stHeaderTitle", "stHeaderTitle"], ["stRetestBtn", "stRetestBtn"], ["stStopBtn", "stStopBtn"], ["stHintLeave", "stHintLeave"],
   ["liveRouteRowLabel", "liveRouteRowLabel"],
   ["sortBySpeedLabel", "sortBySpeedLabel"], ["sortBySpeedHint", "sortBySpeedHint"],
+  ["hvLabel", "hvLabel"], ["hvOldLabel", "hvOld"], ["hvNewLabel", "hvNew"], ["hvHintChange", "hvHintChange"], ["hvHintUse", "hvHintUse"], ["hvHintWarn", "hvHintWarn"],
   ["optTitle", "optimizingTitle"], ["optStop", "optimizingStop"],
   ["stVideoLimitTitle", "stVideoLimitTitle"], ["stVideoLimitHint", "stVideoLimitHint"], ["stVideoMbLabel", "stVideoMbLabel"],
   ["stVideoSecLabel", "stVideoSecLabel"], ["stVideoSecUnit", "unitSec"], ["stVideoReset", "resetDefault"], ["stVideoPresetLabel", "stPresetLabel"],
@@ -1193,6 +1194,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
 function showAdvancedView() {
   els.mainView.style.display = "none";
   els.advancedView.style.display = "block";
+  // 折疊說明區要在畫面顯示後才量得到高度。切換語言重載後會在載入階段就呼叫這裡，那時 hvDescCtl 還沒建立；卡片出現時（見下方 GET 回應）會再 sync 一次
+  if (typeof hvDescCtl !== "undefined" && hvDescCtl) hvDescCtl.sync();
 }
 function hideAdvancedView() {
   els.advancedView.style.display = "none";
@@ -1578,6 +1581,60 @@ document.getElementById("sortBySpeed").addEventListener("change", function () {
   if (lastSpeedtestState) renderSpeedtest(lastSpeedtestState);
 });
 
+// -------- 切換新舊版頁面（實驗性，進階設定）--------
+// 左「舊」右「新」，兩邊平等：勾選（右）= 新版。真正改的是 B 站的站點偏好 cookie，由 background.js 處理（HV_*）；
+// 顯示的是使用者上次選的，沒選過就看目前 cookie 對應哪一版，都看不出來就當新版（海外 IP 沒有 cookie 時 B 站給的就是新版）。
+// 瀏覽器沒有 cookies API（supported = false）時整張卡片不顯示。
+// 切換成功就把目前分頁（只限 bilibili.com／www.bilibili.com）導回首頁 /：海外版的網址（/zh-Hant、/en…，語言代碼列不完）本身就是新版，
+// 光改 cookie 再重新整理停在那種網址沒有用；從 / 進去，由伺服器依 cookie 回舊版或導向新版。其他網站的分頁不動。
+var HV_HOME_URL = "https://www.bilibili.com/";
+var HV_TAB_RE = /^https?:\/\/(www\.)?bilibili\.com(\/|$)/i;
+var hvBox = document.getElementById("homeVersion");
+// 三段說明很長，用跟測速頁一樣的折疊說明區（bindCollapsibleDesc）；狀態提示 #hvNote 留在外面，永遠看得到
+var hvDescCtl = bindCollapsibleDesc(document.getElementById("hvDesc"), document.getElementById("hvDescInner"), document.getElementById("hvDescToggle"), { collapseOnScroll: true });
+function renderHomeVersion(version) {
+  hvBox.checked = version === "new";
+  document.getElementById("hvOldLabel").classList.toggle("on", version !== "new");
+  document.getElementById("hvNewLabel").classList.toggle("on", version === "new");
+}
+function showHomeVersionNote(key) {
+  var note = document.getElementById("hvNote");
+  note.textContent = key ? t(key) : "";
+  note.style.display = key ? "" : "none";
+}
+try {
+  chrome.runtime.sendMessage({ type: "CDN_SWITCHER_HOME_VERSION_GET" }, function (r) {
+    void chrome.runtime.lastError;
+    if (!r || !r.ok || !r.supported) return;
+    document.getElementById("hvItem").style.display = "";
+    renderHomeVersion(r.pref || r.state || "new");
+    if (els.advancedView.style.display === "block") hvDescCtl.sync(); // 進階設定已經開著，卡片這時才出現
+  });
+} catch (e) {}
+hvBox.addEventListener("change", function () {
+  var version = hvBox.checked ? "new" : "old";
+  renderHomeVersion(version);
+  showHomeVersionNote(null);
+  chrome.runtime.sendMessage({ type: "CDN_SWITCHER_HOME_VERSION_SET", version: version }, function (r) {
+    void chrome.runtime.lastError;
+    if (r && r.ok) { goHomeIfOnBilibili(); return; }
+    renderHomeVersion(version === "new" ? "old" : "new"); // 沒改成功：開關回到原本那邊
+    showHomeVersionNote("hvNoteFail");
+  });
+});
+// 目前分頁在 B 站就導回首頁（提示「已回到首頁」），不在就只說下次打開首頁才會生效
+function goHomeIfOnBilibili() {
+  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    void chrome.runtime.lastError;
+    var tab = tabs && tabs[0];
+    if (!tab || tab.id == null || !HV_TAB_RE.test(tab.url || "")) { showHomeVersionNote("hvNoteLater"); return; }
+    chrome.tabs.update(tab.id, { url: HV_HOME_URL }, function () {
+      void chrome.runtime.lastError;
+      showHomeVersionNote("hvNoteDone");
+    });
+  });
+}
+
 // -------- 測速門檻（進階設定）--------
 // 四個數字各自即時存檔；輸入超出範圍時存成邊界值，離開輸入框時把顯示值也修正回去
 var LIMIT_FIELDS = [
@@ -1784,36 +1841,46 @@ function showWarnDialog(o) {
   cancelBtn.focus();
 }
 
-// -------- 測速頁說明區：固定三行高，超出時顯示箭頭；展開時改成 fixed 浮在原位，不影響整頁高度 --------
-var stDesc = document.getElementById("stDesc");
-var stDescInner = document.getElementById("stDescInner");
-var stDescToggle = document.getElementById("stDescToggle");
-function setDescExpanded(on) {
-  stDesc.classList.toggle("expanded", on);
-  if (on) {
-    var r = stDesc.getBoundingClientRect();
-    stDescInner.style.top = r.top + "px";
-    stDescInner.style.left = r.left + "px";
-    stDescInner.style.width = r.width + "px";
-    stDescInner.style.maxHeight = (window.innerHeight - r.top - 8) + "px";
-  } else {
-    stDescInner.style.top = stDescInner.style.left = stDescInner.style.width = stDescInner.style.maxHeight = "";
+// -------- 折疊說明區（測速頁、進階設定共用）：固定三行高，超出時顯示箭頭；展開時改成 fixed 浮在原位，不影響整頁高度 --------
+// box = .collDesc、inner = .collDescInner、toggle = .collDescToggle（樣式見 popup.html）。
+// 回傳 { setExpanded(on), sync() }：sync() 在說明文字換了（影片／直播、語系）或剛顯示出來時呼叫，重新判斷要不要顯示箭頭。
+// collapseOnScroll：展開後頁面被捲動時直接收起來（fixed 的浮層不會跟著捲；進階設定是會捲動的清單）
+function bindCollapsibleDesc(box, inner, toggle, opts) {
+  function setExpanded(on) {
+    box.classList.toggle("expanded", on);
+    if (on) {
+      var r = box.getBoundingClientRect();
+      inner.style.top = r.top + "px";
+      inner.style.left = r.left + "px";
+      inner.style.width = r.width + "px";
+      inner.style.maxHeight = (window.innerHeight - r.top - 8) + "px";
+    } else {
+      inner.style.top = inner.style.left = inner.style.width = inner.style.maxHeight = "";
+    }
+    toggle.textContent = on ? "▴" : "▾";
+    toggle.setAttribute("aria-label", t(on ? "stDescCollapse" : "stDescExpand"));
+    toggle.title = t(on ? "stDescCollapse" : "stDescExpand");
+    toggle.setAttribute("aria-expanded", String(on));
   }
-  stDescToggle.textContent = on ? "▴" : "▾";
-  stDescToggle.setAttribute("aria-label", t(on ? "stDescCollapse" : "stDescExpand"));
-  stDescToggle.title = t(on ? "stDescCollapse" : "stDescExpand");
-  stDescToggle.setAttribute("aria-expanded", String(on));
+  function sync() {
+    setExpanded(false);
+    box.classList.toggle("overflowing", inner.scrollHeight > inner.clientHeight + 1);
+  }
+  // 點說明區任何地方都能展開／收合（平板上只點箭頭太小）；箭頭在說明區裡，點它也會走到這裡
+  box.addEventListener("click", function () {
+    if (!box.classList.contains("overflowing")) return;
+    setExpanded(!box.classList.contains("expanded"));
+  });
+  if (opts && opts.collapseOnScroll) {
+    document.addEventListener("scroll", function () { if (box.classList.contains("expanded")) setExpanded(false); }, true);
+  }
+  return { setExpanded: setExpanded, sync: sync };
 }
-// 說明文字換了（影片／直播、語系）就重新判斷要不要顯示箭頭
-function syncDescOverflow() {
-  setDescExpanded(false);
-  stDesc.classList.toggle("overflowing", stDescInner.scrollHeight > stDescInner.clientHeight + 1);
-}
-// 點說明區任何地方都能展開／收合（平板上只點箭頭太小）；箭頭在說明區裡，點它也會走到這裡
-stDesc.addEventListener("click", function () {
-  if (!stDesc.classList.contains("overflowing")) return;
-  setDescExpanded(!stDesc.classList.contains("expanded"));
-});
+// 測速頁說明區
+var stDesc = document.getElementById("stDesc");
+var stDescCtl = bindCollapsibleDesc(stDesc, document.getElementById("stDescInner"), document.getElementById("stDescToggle"));
+function setDescExpanded(on) { stDescCtl.setExpanded(on); }
+function syncDescOverflow() { stDescCtl.sync(); }
 
 
 function renderSpeedtestMeta(st) {
