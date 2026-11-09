@@ -29,6 +29,16 @@
         "ja": "詳細設定に「新旧ページ切り替え」（実験的）を追加。bilibili のトップページが新しくなっても、好みの版を選べます",
         "ko": "고급 설정에 「홈 화면 신/구 버전」(실험적) 전환을 추가했어요. bilibili 홈 화면이 바뀐 뒤에도 원하는 버전을 고를 수 있어요"
       }
+    },
+    {
+      "type": "fix",
+      "text": {
+        "zh_TW": "卡頓時的自動優化更早介入：快要卡住、卡住超過 5 秒或短時間內卡第二次就會測速換節點，換了馬上生效，還是卡就繼續找下一個",
+        "zh_CN": "卡顿时的自动优化更早介入：快要卡住、卡住超过 5 秒或短时间内卡第二次就会测速换节点，换了马上生效，还是卡就继续找下一个",
+        "en": "Auto-optimize now steps in earlier: it tests and switches nodes when playback is about to stall, stays stuck for 5 seconds, or stalls twice in a short time; the new node takes effect right away, and if it still stalls the next one is tried",
+        "ja": "カクつき時の自動最適化がより早く働くように。止まりそうなとき、5秒以上止まったとき、短時間に2回止まったときに速度を測ってノードを切り替え、すぐに反映。それでも止まれば次のノードを試します",
+        "ko": "끊김 자동 최적화가 더 빨리 작동해요. 곧 멈출 것 같거나, 5초 넘게 멈추거나, 짧은 시간에 두 번 멈추면 속도를 측정해 노드를 바꾸고 바로 적용해요. 그래도 끊기면 다음 노드를 시도해요"
+      }
     }
   ],
   "releases": [
