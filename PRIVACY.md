@@ -16,7 +16,7 @@
 
 **平常不收集、不上傳任何個人資料；只有你主動按下「問題回報」的「送出」時，才會把該次回報的內容與診斷資料傳給作者**（詳見下方「問題回報」）。唯一的統計是作者的伺服器彙總每天各國的公告下載次數（只到國家層級、不記 IP，見下方「公告」）。具體來說：
 
-- 不會讀取、記錄或上傳你的帳號資訊或 Cookie 內容
+- 不會讀取、記錄或上傳你的帳號資訊或 Cookie 內容。唯一的例外是你自己使用進階設定的「切換新舊版頁面」時：擴充會在你的瀏覽器裡讀取並寫入 B 站的兩個站點偏好 Cookie（`user_site`、`default_sites`，只記錄你要看新版還是舊版首頁），這兩個值不會離開你的電腦，也不會讀取其他 Cookie
 - 不使用任何分析、追蹤或廣告 SDK（沒有 Google Analytics），不追蹤個別使用者
 - 除了你主動送出的問題回報之外，不會將任何資料傳送到作者或任何第三方的伺服器（擴充會從作者的伺服器**下載**公告，請求本身不附帶任何資料，見下方「公告」）
 - 你在彈出視窗（popup）裡的設定（例如選擇的 CDN 節點、開關狀態）只會透過瀏覽器內建的 `chrome.storage.local` 存在**你自己的裝置上**，不會同步到雲端、不會離開你的電腦
@@ -27,6 +27,7 @@
 | 權限 | 用途 |
 |---|---|
 | `storage` | 把你在彈出視窗裡的設定存在本機，重開瀏覽器後還記得你的選擇 |
+| `cookies` | 只在你使用進階設定的「切換新舊版頁面」時，讀取並寫入 bilibili.com 的兩個站點偏好 Cookie（`user_site`、`default_sites`）；程式碼不會讀取其他 Cookie（例如登入憑證） |
 | `*://*.bilibili.com/*`（host permission）| 讀取並改寫送往 bilibili.com 的影片 CDN 網路請求 host，這是本擴充功能唯一的核心功能所需 |
 
 沒有要求任何其他權限（不要求分頁內容、瀏覽紀錄、其他網站存取等）。
@@ -86,7 +87,7 @@ This extension intercepts and rewrites the video-CDN network requests your brows
 
 **No personal data is collected or uploaded in normal use. Data is sent to the author only when you explicitly press "Send" in "Report a problem"** (see "Problem reports" below). The only statistic is a daily per-country count of announcement downloads kept by the author's server (country level only, no IP — see "Announcements" below). Specifically:
 
-- We do not read, log, or upload your account information or cookie contents
+- We do not read, log, or upload your account information or cookie contents. The only exception is when you use the "Old / new homepage" switch in Advanced settings: the extension then reads and writes two site-preference cookies of bilibili (`user_site` and `default_sites`, which only record whether you want the old or the new homepage) inside your browser. These two values never leave your computer, and no other cookie is read
 - No analytics, tracking, or advertising SDKs are used (no Google Analytics), and individual users are never tracked
 - Apart from problem reports you choose to send, no data is ever sent to the extension author or any third party (the extension **downloads** announcements from the author's server and the request itself carries no data — see "Announcements" below)
 - Your settings in the popup (e.g., selected CDN node, toggle states) are stored only via the browser's built-in `chrome.storage.local`, on **your own device**. They are never synced to any cloud service and never leave your computer
@@ -97,6 +98,7 @@ This extension intercepts and rewrites the video-CDN network requests your brows
 | Permission | Purpose |
 |---|---|
 | `storage` | Save your popup settings locally so they persist across browser restarts |
+| `cookies` | Only when you use the "Old / new homepage" switch in Advanced settings: reads and writes two site-preference cookies of bilibili.com (`user_site`, `default_sites`). The code reads no other cookie (such as login credentials) |
 | `*://*.bilibili.com/*` (host permission) | Read and rewrite the host of video-CDN network requests to bilibili.com — the extension's sole core function |
 
 No other permissions are requested (no tab content, no full browsing history, no access to other sites).

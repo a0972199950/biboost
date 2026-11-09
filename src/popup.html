@@ -1030,6 +1030,42 @@
       margin-top: 4px;
     }
 
+    /* 新舊版頁面：左「舊」右「新」，兩邊平等，沒有開／關的意思——軌道不分顏色，目前選的那一邊字比較深、比較粗 */
+    /* 標題太長（英日韓）就在自己那一格裡換行；「舊 ◯ 新」固定在右邊，不被擠掉 */
+    #hvLabel {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .lrSwitch {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .lrSide {
+      color: var(--muted);
+      transition: color .15s;
+    }
+
+    .lrSide.on {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .switch.lr input:checked+.slider {
+      background: var(--slider-off);
+    }
+
+    .advItem .collDesc {
+      margin-top: 4px;
+    }
+
+    .hint.hvNote {
+      color: var(--warn);
+    }
+
     /* 測速門檻：左下角「套用：」預設組合選單、右下角「恢復預設」 */
     .advItem .linkRow.presetRow {
       justify-content: space-between;
@@ -1214,24 +1250,25 @@
       word-break: break-word;
     }
 
-    #stDesc {
+    /* 折疊說明區（測速頁、進階設定共用，邏輯在 popup.js 的 bindCollapsibleDesc） */
+    .collDesc {
       position: relative;
       height: 52px;
       margin: 0 0 4px;
     }
 
-    #stDescInner {
+    .collDescInner {
       height: 100%;
       overflow: hidden;
     }
 
-    #stDescInner .hint {
+    .collDescInner .hint {
       margin: 0 0 4px;
       line-height: 16px;
     }
 
     /* 收合且有被截掉的文字：底部淡出，不會看到被切一半的字 */
-    #stDesc.overflowing:not(.expanded)::after {
+    .collDesc.overflowing:not(.expanded)::after {
       content: "";
       position: absolute;
       left: 0;
@@ -1243,7 +1280,7 @@
     }
 
     /* 展開：改成 fixed 浮在原位上方，不推動下面的版面 */
-    #stDesc.expanded #stDescInner {
+    .collDesc.expanded .collDescInner {
       position: fixed;
       z-index: 50;
       height: auto;
@@ -1255,7 +1292,7 @@
     }
 
     /* 展開／收合箭頭：收合時壓在第三行右下角，左邊用漸層淡出文字 */
-    button#stDescToggle {
+    button.collDescToggle {
       display: none;
       position: absolute;
       right: 0;
@@ -1270,12 +1307,12 @@
       background: linear-gradient(to right, var(--bg-clear), var(--bg) 18px);
     }
 
-    #stDesc.overflowing button#stDescToggle {
+    .collDesc.overflowing button.collDescToggle {
       display: block;
     }
 
     /* 整塊說明區都能點來展開／收合 */
-    #stDesc.overflowing {
+    .collDesc.overflowing {
       cursor: pointer;
     }
 
@@ -2932,6 +2969,27 @@
       <div class="hint" id="sortBySpeedHint"></div>
     </div>
 
+    <!-- 切換新舊版頁面（實驗性）：改 B 站的站點偏好 cookie（background.js 的 HV_*）；瀏覽器沒有 cookies API 時整張卡片不顯示 -->
+    <div class="advItem" id="hvItem" style="display:none">
+      <div class="row">
+        <span id="hvLabel"></span>
+        <span class="lrSwitch">
+          <span class="lrSide" id="hvOldLabel"></span>
+          <label class="switch lr"><input type="checkbox" id="homeVersion" aria-labelledby="hvLabel" /><span class="slider"></span></label>
+          <span class="lrSide" id="hvNewLabel"></span>
+        </span>
+      </div>
+      <div class="collDesc" id="hvDesc">
+        <div class="collDescInner" id="hvDescInner">
+          <div class="hint" id="hvHintWarn"></div>
+          <div class="hint" id="hvHintChange"></div>
+          <div class="hint" id="hvHintUse"></div>
+          <button id="hvDescToggle" class="collDescToggle" type="button"></button>
+        </div>
+      </div>
+      <div class="hint hvNote" id="hvNote" style="display:none"></div>
+    </div>
+
     <div class="advItem" id="cloudAdvItem" style="display:none">
       <div class="row">
         <span id="cloudAdvLabel"></span>
@@ -2968,11 +3026,11 @@
       <b id="stHeaderTitle"></b>
     </div>
     <div id="stMeta"></div>
-    <div id="stDesc">
-      <div id="stDescInner">
+    <div id="stDesc" class="collDesc">
+      <div id="stDescInner" class="collDescInner">
         <div class="hint" id="stHintLeave"></div>
         <div class="hint" id="stHintBandwidth"></div>
-        <button id="stDescToggle" type="button"></button>
+        <button id="stDescToggle" class="collDescToggle" type="button"></button>
       </div>
     </div>
     <div class="stActions">

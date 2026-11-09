@@ -154,9 +154,27 @@ export function createEnv(opts = {}) {
   const onAlarmListeners = [];
   const alarms = {};
   const createdTabs = [];
+  const updatedTabs = []; // every chrome.tabs.update call: { tabId, props }
 
   const local = makeStorageArea(opts.cdnList === false ? opts.storage : { ...cdnListStorage(), ...(opts.storage || {}) }, "local", onChangedListeners);
   const session = makeStorageArea(opts.session, "session", onChangedListeners);
+
+  // chrome.cookies is only present when a test passes `cookies` (name → value for www.bilibili.com), like a browser without the API otherwise.
+  // cookieSets records every set() call; the cookie-change listeners fire on set() like in a real browser.
+  const cookieJar = { ...(opts.cookies || {}) };
+  const cookieSets = [];
+  const cookieChangedListeners = [];
+  const cookies = opts.cookies === undefined ? undefined : {
+    get(d, cb) { cb(d.name in cookieJar ? { name: d.name, value: cookieJar[d.name], domain: ".bilibili.com" } : null); },
+    set(d, cb) {
+      if (opts.cookieSetFails) { chrome.runtime.lastError = { message: "blocked" }; cb(null); chrome.runtime.lastError = undefined; return; }
+      cookieSets.push(d);
+      cookieJar[d.name] = d.value;
+      cb({ name: d.name, value: d.value, domain: d.domain });
+      for (const fn of cookieChangedListeners.slice()) fn({ cookie: { name: d.name, value: d.value, domain: d.domain }, removed: false, cause: "explicit" });
+    },
+    onChanged: { addListener: (fn) => cookieChangedListeners.push(fn) }
+  };
 
   const chrome = {
     runtime: {
@@ -199,9 +217,11 @@ export function createEnv(opts = {}) {
         if (fn) fn(opts.tabResponder ? opts.tabResponder(msg) : undefined);
       },
       create: (o) => createdTabs.push(o),
+      update(tabId, props, cb) { updatedTabs.push({ tabId, props }); if (cb) cb({ id: tabId, ...props }); },
       reload: () => {},
       connect: () => ({ disconnect() {}, onDisconnect: { addListener() {} } })
-    }
+    },
+    ...(cookies ? { cookies } : {})
   };
 
   // fetch: chrome-extension:// URLs read from src/, everything else goes to opts.fetch (default: network error)
@@ -230,9 +250,13 @@ export function createEnv(opts = {}) {
     chrome,
     storage: local.data,
     sessionStorage: session.data,
+    cookieJar,
+    cookieSets,
+    cookieChangedListeners,
     runtimeMessages,
     tabMessages,
     createdTabs,
+    updatedTabs,
     fetchCalls,
     fetchHandler: opts.fetch || null,
     nativeFetch,

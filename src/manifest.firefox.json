@@ -23,7 +23,8 @@
   },
   "permissions": [
     "storage",
-    "alarms"
+    "alarms",
+    "cookies"
   ],
   "host_permissions": [
     "*://*.bilibili.com/*"
