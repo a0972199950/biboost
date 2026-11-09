@@ -326,6 +326,9 @@
   var SWITCH_GRACE_MS = 10000;
   var FAILED_TTL_MS = 10 * 60 * 1000; // 失败标记的有效期：网路状况会变（尖峰前后），过了就重新给机会
   var RESCUE_HEADROOM = 1.5; // 没有节点达到 4K 标准时，最快的那个至少要有目前画质码率的这么多倍才换
+  // 救援测速提早放弃（画面正停着）：连 header 都要等超过这么久的节点不测了；测了这么久平均还不到门槛一半的也不测了。
+  // 实测台湾节点的 TTFB 多在 0.3～1.3 秒
+  var RESCUE_TTFB_MS = 2500, RESCUE_SLOW_CHECK_MS = 1500;
   var stallState = { lastTime: -1, stuckSince: null, movedAt: 0 }; // movedAt：最后一次看到走针的时间
   // 点播播放中画面停住：不管线路上有没有资料在进来，停这么久就算卡。
   // 速度够的节点，卡一下之后几秒内就会补回来；会停超过 5 秒的就是速度不够，对使用者来说当下都是在卡，不必再等
@@ -356,7 +359,14 @@
   var REBUF_TRIGGER = 2;
   var HEALTH_QUIET_MS = 6000;
   var HEALTH_HIST_MS = 15000;
-  var health = { hist: [], lastT: -1, freezeAt: 0, freezeCounted: false, rebuf: [], quietUntil: 0, lastQn: null };
+  // 3) 进度落后：最近 LAG_WINDOW_MS 内，「墙上时间 − 影片播放时间」在缓冲不够时累计超过 LAG_TRIGGER_SEC 就回退。
+  //    补上 1)、2) 都抓不到的「每次只停零点几秒、一直顿」：节点只有码率的七、八成时，播放器抓到一点播一点，
+  //    每次停顿都不到 1.5 秒、缓冲一直贴在 0～1 秒没有下降趋势（冒烟测试：0.8 倍速顿了 75 秒都没有反应）。
+  //    每秒的落后低于 LAG_NOISE_SEC 当成计时误差；缓冲 ≥ LAG_BUF_SEC 时的落后不算（不是线路问题）。
+  var LAG_WINDOW_MS = 30000, LAG_TRIGGER_SEC = 5, LAG_NOISE_SEC = 0.15, LAG_BUF_SEC = 2;
+  // bufPause：最近一次暂停发生时前方缓冲 < 0.5 秒 → 是缓冲不够时播放器自己按的暂停（有的播放器会暂停攒到几秒缓冲再继续），
+  // 之后缓冲长回来也不能当成「使用者主动暂停」。播放、换来源时清掉
+  var health = { hist: [], lastT: -1, lastAt: 0, freezeAt: 0, freezeCounted: false, rebuf: [], lag: [], quietUntil: 0, lastQn: null, bufPause: false };
   // 分段请求是否正在进行（预测只采「播放器在抓」的那段）：进行中的请求数，最后一个结束的时间
   var SEG_IDLE_GAP_MS = 2000;
   var segInflight = 0, segLastEndAt = 0;
@@ -629,8 +639,8 @@
         // 不算卡；但 starving 时代表初载就遇到死线路，照样累计；细水长流的话一直拿不到能播的资料，宽限 20 秒后照样累计
         if (!starving && !trickling) { stallState.lastTime = -1; stallState.stuckSince = null; return; }
         if (!starving) limit = 20000;
-      } else if (v.paused && hasForwardBuffer(v)) {
-        // 还有前向缓冲的暂停 = 使用者主动暂停，不算卡
+      } else if (userPaused(v)) {
+        // 还有前向缓冲的暂停 = 使用者主动暂停，不算卡（缓冲不够时播放器自己按的暂停除外，见 userPaused）
         stallState.lastTime = -1; stallState.stuckSince = null; return;
       } else if (!IS_LIVE_PAGE && v.paused && !hasPlayed(v)) {
         // 还没播放过的暂停（自动播放被挡、使用者还没按播放）不算卡，同上面手机版那条
@@ -680,9 +690,11 @@
 
   // ---- 卡顿预测与累计（规则见 PREDICT_LOW_SEC 那段说明）----
   function healthQuiet() {
-    health.hist = []; health.freezeAt = 0; health.freezeCounted = false; health.lastT = -1;
+    health.hist = []; health.freezeAt = 0; health.freezeCounted = false; health.lastT = -1; health.lag = [];
     health.quietUntil = Date.now() + HEALTH_QUIET_MS;
   }
+  // 使用者主动暂停：暂停、前方还有缓冲，而且不是缓冲不够时播放器自己按的（点播才分；直播维持原样）
+  function userPaused(v) { return v.paused && hasForwardBuffer(v) && (IS_LIVE_PAGE || !health.bufPause); }
   function healthReset() { healthQuiet(); health.rebuf = []; }
   // 缓冲对时间的回归斜率（秒/秒）：分段一批一批进来，缓冲是锯齿状，只看头尾两点会被锯齿骗
   function bufSlope(h) {
@@ -713,12 +725,27 @@
     if (autoTestRunning || speedTestRunning) { healthQuiet(); return; } // 测速抢频宽：测的期间与刚测完的缓冲变化不算
     var qn = currentQn();
     if (qn !== health.lastQn) { var firstQn = health.lastQn == null; health.lastQn = qn; if (!firstQn) healthQuiet(); }
-    if (v.seeking || now < health.quietUntil) { health.lastT = v.currentTime; return; }
-    var t = v.currentTime, buf = forwardBufferSec(v), prevT = health.lastT;
-    health.lastT = t;
+    if (v.seeking || now < health.quietUntil) { health.lastT = v.currentTime; health.lastAt = now; return; }
+    var t = v.currentTime, buf = forwardBufferSec(v), prevT = health.lastT, prevAt = health.lastAt;
+    health.lastT = t; health.lastAt = now;
+    var bufPaused = v.paused && health.bufPause; // 缓冲不够时播放器自己按的暂停（见 trackVideoEvents）
     // 使用者主动暂停（还有缓冲）、还没开始播：都不是卡
-    if ((v.paused && hasForwardBuffer(v)) || !hasPlayed(v) || prevT < 0) {
+    if (userPaused(v) || !hasPlayed(v) || prevT < 0) {
       health.hist = []; health.freezeAt = 0; health.freezeCounted = false; return;
+    }
+    // 播放进度落后：这一秒墙上时间过了多少、影片只播了多少。缓冲不够（或缓冲暂停）时的落后才算，
+    // 抓得到「每次只停零点几秒、一直顿」与「暂停攒缓冲再播」这种每次停顿都短于门槛的卡法
+    var dtWall = (now - prevAt) / 1000, dtMedia = t - prevT;
+    if (dtWall > 0 && dtWall < 3 && dtMedia >= 0 && (buf < LAG_BUF_SEC || bufPaused)) {
+      var lag = Math.min(dtWall, dtWall - dtMedia / (v.playbackRate || 1));
+      if (lag >= LAG_NOISE_SEC) health.lag.push({ at: now, s: lag });
+    }
+    health.lag = health.lag.filter(function (x) { return now - x.at < LAG_WINDOW_MS; });
+    var lagSum = health.lag.reduce(function (a, x) { return a + x.s; }, 0);
+    if (lagSum >= LAG_TRIGGER_SEC && maybeFallback("stutter")) {
+      jlog("fb.stutter", { lag: lagSum.toFixed(1), windowSec: LAG_WINDOW_MS / 1000 });
+      health.lag = []; health.rebuf = []; health.hist = [];
+      return;
     }
     if (!v.paused && t !== prevT) {
       // 正常走针
@@ -735,7 +762,7 @@
     }
     // 画面停住（播放中不走针，或缓冲用光后播放器自己暂停）
     health.hist = [];
-    if (buf >= REBUF_BUF_SEC) { health.freezeAt = 0; return; } // 有缓冲却停住：不是线路问题
+    if (buf >= REBUF_BUF_SEC && !bufPaused) { health.freezeAt = 0; return; } // 有缓冲却停住：不是线路问题（缓冲暂停除外：它在攒缓冲）
     if (!health.freezeAt) { health.freezeAt = now; return; }
     if (health.freezeCounted || now - health.freezeAt < REBUF_MIN_MS) return;
     health.freezeCounted = true;
@@ -1382,28 +1409,40 @@
     }
     return replaceHost(s, host);
   }
-  function measureHost(host) {
+  // early（救援用，画面正停着，不值得把每个慢节点测满 5 秒）：{ ttfbMs, minBps, checkMs }
+  //  - ttfbMs 内连 header 都没回来 → 放弃（"slow-ttfb"）；
+  //  - 测了 checkMs 以后平均速度还不到 minBps → 放弃（"too-slow"）
+  function measureHost(host, early) {
     var testUrl = testUrlFor(host);
     if (!testUrl) return Promise.resolve({ host: host, bytes: 0, ms: 0, bps: 0, error: "no-url" });
     stTestUrls[testUrl] = 1;
+    early = early || {};
     return new Promise(function (resolve) {
       var t0 = Date.now();
       var ctrl = (typeof AbortController === "function") ? new AbortController() : null;
       speedTestAbort = ctrl;
-      var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, stMaxMs);
-      var done = false;
+      var done = false, received = 0, gotHeaders = false, earlyErr = null;
+      // 计时到就直接结束这个节点（不等 fetch 被中止后自己 reject：卡死的连线不一定会马上 reject）
+      function stop(err) { if (done) return; earlyErr = err; if (ctrl) { try { ctrl.abort(); } catch (e) {} } finish(received, null); }
+      var timer = setTimeout(function () { stop(received > 0 ? null : "timeout"); }, stMaxMs);
+      var ttfbTimer = early.ttfbMs ? setTimeout(function () { if (!gotHeaders) stop("slow-ttfb"); }, early.ttfbMs) : null;
+      var slowTimer = early.minBps && early.checkMs ? setTimeout(function () {
+        if (received / ((Date.now() - t0) / 1000) < early.minBps) stop("too-slow");
+      }, early.checkMs) : null;
       function finish(bytes, error) {
         if (done) return; done = true;
-        clearTimeout(timer);
+        clearTimeout(timer); clearTimeout(ttfbTimer); clearTimeout(slowTimer);
+        if (earlyErr) error = earlyErr;
         var ms = Date.now() - t0;
         resolve({ host: host, bytes: bytes, ms: ms, bps: ms > 0 ? (bytes / ms) * 1000 : 0, error: error || null });
       }
       NATIVE_FETCH(testUrl, { signal: ctrl ? ctrl.signal : undefined, cache: "no-store" }).then(function (resp) {
+        gotHeaders = true;
         if (!resp.ok) { finish(0, "http-" + resp.status); return; }
         if (!resp.body || !resp.body.getReader) { finish(0, "no-stream"); return; }
         var reader = resp.body.getReader();
-        var received = 0;
         (function pump() {
+          if (done) { try { reader.cancel(); } catch (e) {} return; } // 已经结束（逾时或提早放弃）：别再读
           reader.read().then(function (r) {
             if (r.done) { finish(received, received > 0 ? null : "no-data"); return; }
             received += (r.value && r.value.length) || 0;
@@ -1554,7 +1593,7 @@
     (function next() {
       if (myGen !== speedTestGen) { interrupted(); return; } // 被手动测速取代、或使用者中断
       if (i >= hosts.length) { finish(); return; }
-      measureHost(hosts[i++]).then(function (r) {
+      measureHost(hosts[i++], rescue ? { ttfbMs: RESCUE_TTFB_MS, minBps: rescue.floor / 2, checkMs: RESCUE_SLOW_CHECK_MS } : null).then(function (r) {
         if (myGen !== speedTestGen) { interrupted(); return; }
         tested.push(r.host);
         var ok = !r.error && r.bps > 0;
@@ -1878,7 +1917,7 @@
     if (!v) return false;
     if (v.ended) return true;
     if (!v.paused) return false;
-    return hasForwardBuffer(v) || !hasPlayed(v);
+    return userPaused(v) || !hasPlayed(v);
   }
 
   // 整页重载（保留进度）：用于需要安装/移除 hook 的切换
@@ -2093,6 +2132,12 @@
     if (!v || v === trackedVideo) return;
     trackedVideo = v;
     healthQuiet(); // 换了 video 元素（player.reload 之类）：重新起算
+    health.bufPause = false;
+    // 暂停当下前方几乎没缓冲 → 缓冲暂停（播放器自己按的）；一播放、换来源就清掉
+    v.addEventListener("pause", function () { if (getMainVideo() === v) health.bufPause = !v.ended && hasPlayed(v) && forwardBufferSec(v) < 0.5; });
+    ["play", "emptied", "loadstart"].forEach(function (ev) {
+      v.addEventListener(ev, function () { if (getMainVideo() === v) health.bufPause = false; });
+    });
     ["play", "pause", "seeking", "ended", "waiting"].forEach(function (ev) {
       v.addEventListener(ev, function () { if (getMainVideo() === v) jlog("play.state", { ev: ev, ct: Math.round(v.currentTime) }); });
     });

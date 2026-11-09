@@ -1225,6 +1225,86 @@ describe("rebuffer counting and stall prediction", () => {
     assert.equal(mh.predictStall(v, 6, now), null, "the end-point slope would have triggered");
     env.close();
   });
+  // 播放「一頓一頓」：每秒只前進 adv 秒、前方緩衝 buf 秒，跑 n 個 tick
+  function stutter(mh, v, n, { adv = 0.7, buf = 0.5, paused = false } = {}) {
+    let ct = 100;
+    mh.health.lastT = ct;
+    for (let i = 0; i < n; i++) {
+      mh.health.lastAt = Date.now() - 1000;
+      ct += adv;
+      setVideo(v, { currentTime: ct, paused, buffered: [0, ct + buf] });
+      mh.checkHealth();
+    }
+  }
+  test("stutter: micro-stalls that never last 1.5 s (0.7× speed, buffer stuck below 1 s) trigger once 5 s of lag piles up within 30 s", () => {
+    const { env, mh, v } = bootHealth({});
+    stutter(mh, v, 15); // 落後 15 × 0.3 = 4.5 秒
+    assert.equal(mh.isFailed(HOST), false);
+    assert.equal(mh.health.rebuf.length, 0, "no single freeze long enough to be a rebuffer");
+    stutter(mh, v, 3); // 再 0.9 秒 → 超過 5 秒
+    assert.equal(mh.isFailed(HOST), true, "rescue started");
+    env.close();
+  });
+  test("stutter: no false alarm for timer jitter, healthy low-buffer playback, or lag with plenty of buffer", () => {
+    const { env, mh, v } = bootHealth({});
+    stutter(mh, v, 60, { adv: 0.9, buf: 0.5 }); // 每秒 0.1 秒的誤差（低於 0.15 秒雜訊門檻）
+    stutter(mh, v, 60, { adv: 1, buf: 8 }); // 4K 小緩衝、正常播放
+    stutter(mh, v, 60, { adv: 0.5, buf: 5 }); // 落後但緩衝還有 5 秒（不是線路問題）
+    assert.equal(mh.isFailed(HOST), false);
+    env.close();
+  });
+  test("stutter: lag older than 30 s drops out", () => {
+    const { env, mh, v } = bootHealth({});
+    stutter(mh, v, 15);
+    for (const x of mh.health.lag) x.at -= 31000;
+    stutter(mh, v, 3);
+    assert.equal(mh.isFailed(HOST), false);
+    env.close();
+  });
+  test("a pause that happens with < 0.5 s ahead is the player's own buffering pause: not a user pause even after the buffer grows back", () => {
+    const { env, mh, v } = bootHealth({ currentTime: 10, buffered: [0, 10.2] });
+    mh.trackVideoEvents();
+    setVideo(v, { paused: true });
+    v.dispatchEvent(new env.window.Event("pause")); // 緩衝只剩 0.2 秒時暫停
+    assert.equal(mh.health.bufPause, true);
+    setVideo(v, { buffered: [0, 14] }); // 攢回 4 秒
+    assert.equal(mh.mainVideoIdle(), false, "a node change would reload it");
+    mh.checkStall(); mh.checkStall();
+    assert.notEqual(mh.stallState.stuckSince, null, "counts as stuck");
+    v.dispatchEvent(new env.window.Event("play"));
+    assert.equal(mh.health.bufPause, false);
+    // 對照：使用者在有緩衝時按暫停
+    setVideo(v, { paused: true, buffered: [0, 40] });
+    v.dispatchEvent(new env.window.Event("pause"));
+    assert.equal(mh.health.bufPause, false);
+    assert.equal(mh.mainVideoIdle(), true);
+    env.close();
+  });
+  test("buffering pauses (pause to collect a few seconds, then play) pile up as lag and trigger", () => {
+    const { env, mh, v } = bootHealth({});
+    mh.health.bufPause = true;
+    stutter(mh, v, 6, { adv: 0, buf: 3, paused: true }); // 停著攢緩衝 6 秒（緩衝 3 秒，照理不算，但這是緩衝暫停）
+    assert.equal(mh.isFailed(HOST), true);
+    env.close();
+  });
+  test("rescue speed test gives up early: no headers within the TTFB limit, or far below the needed speed", async () => {
+    const env = boot({ autoSpeedHosts: [HOST] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    env.fetchHandler = () => new Promise(() => {}); // 連 header 都不回
+    let t = Date.now();
+    let r = await mh.measureHost(COS, { ttfbMs: 80 });
+    assert.equal(r.error, "slow-ttfb");
+    assert.ok(Date.now() - t < 1000);
+    // 細水長流：每 20 ms 給 100 bytes
+    env.fetchHandler = () => ({ ok: true, status: 200, body: { getReader: () => ({ cancel() {},
+      read: () => new Promise((res) => setTimeout(() => res({ done: false, value: { length: 100 } }), 20)) }) } });
+    t = Date.now();
+    r = await mh.measureHost(COS, { minBps: 1e6, checkMs: 150 });
+    assert.equal(r.error, "too-slow");
+    assert.ok(Date.now() - t < 1000);
+    env.close();
+  });
   test("prediction thresholds: span ≥ 6 s, ≥ 4 samples, slope ≤ -0.3, empty within 20 s, buffer < 10 s", () => {
     const { env, mh, v } = bootHealth({});
     setVideo(v, { currentTime: 100, duration: 600 });
