@@ -640,8 +640,9 @@ describe("cloud backup buttons", () => {
 // ---- 進階設定：切換新舊版頁面（實驗性）----
 describe("advanced settings: old / new homepage switch", () => {
   // `answer(msg)` plays the background: return an object to respond, or undefined for no response (like a background without the feature)
-  async function bootHv(answer) {
-    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, cdnMode: "list", cdnHost: DEFAULT_HOST } });
+  // `tabs` = what chrome.tabs.query answers (the active tab of the popup's window)
+  async function bootHv(answer, tabs) {
+    const env = createEnv({ htmlFile: "popup.html", tabs, storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, cdnMode: "list", cdnHost: DEFAULT_HOST } });
     env.fetchHandler = () => { throw new TypeError("Failed to fetch"); };
     env.sent = [];
     env.chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -703,20 +704,58 @@ describe("advanced settings: old / new homepage switch", () => {
     }
   });
 
-  test("flipping the switch asks the background to set that version and shows how to apply it", async () => {
-    const env = await bootHv((msg) => (msg.type.endsWith("_GET") ? GET_OK("new", "new") : { ok: true, pref: msg.version, state: msg.version }));
+  const HOME = "https://www.bilibili.com/";
+  const okReply = (msg) => (msg.type.endsWith("_GET") ? GET_OK("new", "new") : { ok: true, pref: msg.version, state: msg.version });
+
+  test("flipping the switch asks the background to set that version", async () => {
+    const env = await bootHv(okReply);
     const box = $(env, "homeVersion");
     assert.equal($(env, "hvNote").style.display, "none");
     box.checked = false;
     change(env, box);
     assert.deepEqual(plain(env.sent.at(-1)), { type: "CDN_SWITCHER_HOME_VERSION_SET", version: "old" });
     assert.equal($(env, "hvOldLabel").classList.contains("on"), true);
-    assert.notEqual($(env, "hvNote").style.display, "none");
-    assert.match($(env, "hvNote").textContent, /refresh/i);
     box.checked = true;
     change(env, box);
     assert.equal(env.sent.at(-1).version, "new");
     assert.equal($(env, "hvNewLabel").classList.contains("on"), true);
+    env.close();
+  });
+
+  test("on a bilibili page, flipping sends that tab to the homepage (the overseas /zh-Hant style paths are the new version themselves)", async () => {
+    for (const url of ["https://www.bilibili.com/zh-Hant", "https://www.bilibili.com/en", "https://www.bilibili.com/", "https://www.bilibili.com/video/BV1xx411c7mD", "https://bilibili.com/"]) {
+      const env = await bootHv(okReply, [{ id: 7, url, active: true }]);
+      const box = $(env, "homeVersion");
+      box.checked = false;
+      change(env, box);
+      assert.deepEqual(plain(env.updatedTabs), [{ tabId: 7, props: { url: HOME } }], url);
+      assert.match($(env, "hvNote").textContent, /back to the bilibili homepage/i);
+      box.checked = true;
+      change(env, box);
+      assert.equal(env.updatedTabs.length, 2, "going to the new version also goes through / (the server then redirects)");
+      assert.deepEqual(plain(env.updatedTabs[1]), { tabId: 7, props: { url: HOME } });
+      env.close();
+    }
+  });
+
+  test("other sites, other bilibili hosts and no tab: the tab is left alone and the note says when it applies", async () => {
+    for (const tabs of [[{ id: 3, url: "https://example.com/" }], [{ id: 4, url: "https://live.bilibili.com/123" }], [{ id: 5, url: "https://m.bilibili.com/" }], [{ id: 6, url: "https://notbilibili.com/" }], [{ id: 8 }], []]) {
+      const env = await bootHv(okReply, tabs);
+      const box = $(env, "homeVersion");
+      box.checked = false;
+      change(env, box);
+      assert.deepEqual(env.updatedTabs, [], JSON.stringify(tabs));
+      assert.match($(env, "hvNote").textContent, /next time you open/i, JSON.stringify(tabs));
+      env.close();
+    }
+  });
+
+  test("a failed switch does not move the tab", async () => {
+    const env = await bootHv((msg) => (msg.type.endsWith("_GET") ? GET_OK("new", "new") : { ok: false, err: "cookie" }), [{ id: 7, url: "https://www.bilibili.com/zh-Hant", active: true }]);
+    const box = $(env, "homeVersion");
+    box.checked = false;
+    change(env, box);
+    assert.deepEqual(env.updatedTabs, []);
     env.close();
   });
 
