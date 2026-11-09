@@ -1194,6 +1194,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
 function showAdvancedView() {
   els.mainView.style.display = "none";
   els.advancedView.style.display = "block";
+  // 折疊說明區要在畫面顯示後才量得到高度。切換語言重載後會在載入階段就呼叫這裡，那時 hvDescCtl 還沒建立；卡片出現時（見下方 GET 回應）會再 sync 一次
+  if (typeof hvDescCtl !== "undefined" && hvDescCtl) hvDescCtl.sync();
 }
 function hideAdvancedView() {
   els.advancedView.style.display = "none";
@@ -1588,6 +1590,8 @@ document.getElementById("sortBySpeed").addEventListener("change", function () {
 var HV_HOME_URL = "https://www.bilibili.com/";
 var HV_TAB_RE = /^https?:\/\/(www\.)?bilibili\.com(\/|$)/i;
 var hvBox = document.getElementById("homeVersion");
+// 三段說明很長，用跟測速頁一樣的折疊說明區（bindCollapsibleDesc）；狀態提示 #hvNote 留在外面，永遠看得到
+var hvDescCtl = bindCollapsibleDesc(document.getElementById("hvDesc"), document.getElementById("hvDescInner"), document.getElementById("hvDescToggle"), { collapseOnScroll: true });
 function renderHomeVersion(version) {
   hvBox.checked = version === "new";
   document.getElementById("hvOldLabel").classList.toggle("on", version !== "new");
@@ -1604,6 +1608,7 @@ try {
     if (!r || !r.ok || !r.supported) return;
     document.getElementById("hvItem").style.display = "";
     renderHomeVersion(r.pref || r.state || "new");
+    if (els.advancedView.style.display === "block") hvDescCtl.sync(); // 進階設定已經開著，卡片這時才出現
   });
 } catch (e) {}
 hvBox.addEventListener("change", function () {
@@ -1836,36 +1841,46 @@ function showWarnDialog(o) {
   cancelBtn.focus();
 }
 
-// -------- 測速頁說明區：固定三行高，超出時顯示箭頭；展開時改成 fixed 浮在原位，不影響整頁高度 --------
-var stDesc = document.getElementById("stDesc");
-var stDescInner = document.getElementById("stDescInner");
-var stDescToggle = document.getElementById("stDescToggle");
-function setDescExpanded(on) {
-  stDesc.classList.toggle("expanded", on);
-  if (on) {
-    var r = stDesc.getBoundingClientRect();
-    stDescInner.style.top = r.top + "px";
-    stDescInner.style.left = r.left + "px";
-    stDescInner.style.width = r.width + "px";
-    stDescInner.style.maxHeight = (window.innerHeight - r.top - 8) + "px";
-  } else {
-    stDescInner.style.top = stDescInner.style.left = stDescInner.style.width = stDescInner.style.maxHeight = "";
+// -------- 折疊說明區（測速頁、進階設定共用）：固定三行高，超出時顯示箭頭；展開時改成 fixed 浮在原位，不影響整頁高度 --------
+// box = .collDesc、inner = .collDescInner、toggle = .collDescToggle（樣式見 popup.html）。
+// 回傳 { setExpanded(on), sync() }：sync() 在說明文字換了（影片／直播、語系）或剛顯示出來時呼叫，重新判斷要不要顯示箭頭。
+// collapseOnScroll：展開後頁面被捲動時直接收起來（fixed 的浮層不會跟著捲；進階設定是會捲動的清單）
+function bindCollapsibleDesc(box, inner, toggle, opts) {
+  function setExpanded(on) {
+    box.classList.toggle("expanded", on);
+    if (on) {
+      var r = box.getBoundingClientRect();
+      inner.style.top = r.top + "px";
+      inner.style.left = r.left + "px";
+      inner.style.width = r.width + "px";
+      inner.style.maxHeight = (window.innerHeight - r.top - 8) + "px";
+    } else {
+      inner.style.top = inner.style.left = inner.style.width = inner.style.maxHeight = "";
+    }
+    toggle.textContent = on ? "▴" : "▾";
+    toggle.setAttribute("aria-label", t(on ? "stDescCollapse" : "stDescExpand"));
+    toggle.title = t(on ? "stDescCollapse" : "stDescExpand");
+    toggle.setAttribute("aria-expanded", String(on));
   }
-  stDescToggle.textContent = on ? "▴" : "▾";
-  stDescToggle.setAttribute("aria-label", t(on ? "stDescCollapse" : "stDescExpand"));
-  stDescToggle.title = t(on ? "stDescCollapse" : "stDescExpand");
-  stDescToggle.setAttribute("aria-expanded", String(on));
+  function sync() {
+    setExpanded(false);
+    box.classList.toggle("overflowing", inner.scrollHeight > inner.clientHeight + 1);
+  }
+  // 點說明區任何地方都能展開／收合（平板上只點箭頭太小）；箭頭在說明區裡，點它也會走到這裡
+  box.addEventListener("click", function () {
+    if (!box.classList.contains("overflowing")) return;
+    setExpanded(!box.classList.contains("expanded"));
+  });
+  if (opts && opts.collapseOnScroll) {
+    document.addEventListener("scroll", function () { if (box.classList.contains("expanded")) setExpanded(false); }, true);
+  }
+  return { setExpanded: setExpanded, sync: sync };
 }
-// 說明文字換了（影片／直播、語系）就重新判斷要不要顯示箭頭
-function syncDescOverflow() {
-  setDescExpanded(false);
-  stDesc.classList.toggle("overflowing", stDescInner.scrollHeight > stDescInner.clientHeight + 1);
-}
-// 點說明區任何地方都能展開／收合（平板上只點箭頭太小）；箭頭在說明區裡，點它也會走到這裡
-stDesc.addEventListener("click", function () {
-  if (!stDesc.classList.contains("overflowing")) return;
-  setDescExpanded(!stDesc.classList.contains("expanded"));
-});
+// 測速頁說明區
+var stDesc = document.getElementById("stDesc");
+var stDescCtl = bindCollapsibleDesc(stDesc, document.getElementById("stDescInner"), document.getElementById("stDescToggle"));
+function setDescExpanded(on) { stDescCtl.setExpanded(on); }
+function syncDescOverflow() { stDescCtl.sync(); }
 
 
 function renderSpeedtestMeta(st) {
