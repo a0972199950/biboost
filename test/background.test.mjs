@@ -404,3 +404,168 @@ describe("cloud backup in the background", () => {
     env.close();
   });
 });
+
+// ---- 新舊版首頁（實驗性）：改 B 站的 user_site／default_sites cookie ----
+describe("home version switch (cookies)", () => {
+  const DS_OLD = "%5B%22CN%22%2C%22OVERSEAS%22%5D";
+  const DS_NEW = "%5B%22OVERSEAS%22%5D";
+  function bootHv(storage, extra) {
+    const env = createEnv({ url: "chrome-extension://bcs-test/background.js", storage, ...extra });
+    // the harness's sendMessage only answers synchronously; keep the listener so ask() can wait for sendResponse
+    env.msgListeners = [];
+    const add = env.chrome.runtime.onMessage.addListener;
+    env.chrome.runtime.onMessage.addListener = (fn) => { env.msgListeners.push(fn); add(fn); };
+    env.load("cdn-list.js").load("features.js").load("cloud.js").load("background.js");
+    return env;
+  }
+  const ask = (env, msg) => new Promise((resolve) => {
+    for (const fn of env.msgListeners) if (fn(msg, {}, resolve) === true) return;
+    resolve(undefined);
+  });
+  const GET = { type: "CDN_SWITCHER_HOME_VERSION_GET" };
+  const SET = (version) => ({ type: "CDN_SWITCHER_HOME_VERSION_SET", version });
+
+  test("hvDerive: which cookie combination means old or new", () => {
+    const env = bootHv({});
+    const { hvDerive } = env.internals("background");
+    assert.equal(hvDerive("CN", DS_OLD), "old");
+    assert.equal(hvDerive("OVERSEAS", DS_OLD), "old", "an account that may use CN stays on the old site");
+    assert.equal(hvDerive("CN", DS_NEW), "new", "the account list wins over user_site");
+    assert.equal(hvDerive("OVERSEAS", DS_NEW), "new");
+    assert.equal(hvDerive("CN", null), "old");
+    assert.equal(hvDerive("OVERSEAS", null), "new");
+    assert.equal(hvDerive(null, null), null);
+    assert.equal(hvDerive("CN", "not json"), "old", "unreadable list falls back to user_site");
+    assert.equal(hvDerive("CN", "%5B%5D"), "old", "empty list falls back to user_site");
+    assert.equal(hvDerive("XX", null), null);
+    env.close();
+  });
+
+  test("GET with nothing chosen and no cookies: supported, no preference, state unknown", async () => {
+    const env = bootHv({}, { cookies: {} });
+    assert.deepEqual(plain(await ask(env, GET)), { ok: true, supported: true, pref: null, state: null });
+    assert.deepEqual(env.cookieSets, [], "never touches the cookies on its own");
+    env.close();
+  });
+
+  test("GET reports the state the current cookies mean", async () => {
+    const env = bootHv({}, { cookies: { user_site: "CN", default_sites: DS_OLD } });
+    const r = await ask(env, GET);
+    assert.equal(r.state, "old");
+    assert.equal(r.pref, null);
+    env.close();
+  });
+
+  test("SET old writes exactly the two cookies and remembers the choice", async () => {
+    const env = bootHv({}, { cookies: { user_site: "OVERSEAS", default_sites: DS_NEW } });
+    const before = Date.now() / 1000;
+    const r = await ask(env, SET("old"));
+    assert.deepEqual(plain(r), { ok: true, pref: "old", state: "old" });
+    assert.equal(env.cookieJar.user_site, "CN");
+    assert.equal(env.cookieJar.default_sites, DS_OLD);
+    assert.equal(env.storage.homeVersion, "old");
+    assert.equal(env.cookieSets.length, 2);
+    for (const c of env.cookieSets) {
+      assert.equal(c.url, "https://www.bilibili.com/");
+      assert.equal(c.domain, ".bilibili.com");
+      assert.equal(c.path, "/");
+      assert.equal(c.sameSite, "lax");
+    }
+    const us = env.cookieSets.find((c) => c.name === "user_site");
+    const ds = env.cookieSets.find((c) => c.name === "default_sites");
+    assert.ok(Math.abs(us.expirationDate - (before + 365 * 86400)) < 5, "user_site lives a year, like the one bilibili writes");
+    assert.ok(Math.abs(ds.expirationDate - (before + 180 * 86400)) < 5, "default_sites lives 180 days, like the one bilibili writes");
+    env.close();
+  });
+
+  test("SET new writes the overseas pair", async () => {
+    const env = bootHv({}, { cookies: { user_site: "CN", default_sites: DS_OLD } });
+    const r = await ask(env, SET("new"));
+    assert.deepEqual(plain(r), { ok: true, pref: "new", state: "new" });
+    assert.equal(env.cookieJar.user_site, "OVERSEAS");
+    assert.equal(env.cookieJar.default_sites, DS_NEW);
+    assert.equal(env.storage.homeVersion, "new");
+    env.close();
+  });
+
+  test("SET with a bad value changes nothing", async () => {
+    const env = bootHv({}, { cookies: { user_site: "CN" } });
+    for (const v of ["", "OLD", "both", null, undefined, 1]) {
+      const r = await ask(env, SET(v));
+      assert.equal(r.ok, false);
+    }
+    assert.deepEqual(env.cookieSets, []);
+    assert.equal("homeVersion" in env.storage, false);
+    env.close();
+  });
+
+  test("browser without the cookies API: GET says unsupported, SET fails cleanly", async () => {
+    const env = bootHv({});
+    assert.equal(env.chrome.cookies, undefined);
+    const g = await ask(env, GET);
+    assert.equal(g.ok, true);
+    assert.equal(g.supported, false);
+    const s = await ask(env, SET("old"));
+    assert.equal(s.ok, false);
+    assert.equal("homeVersion" in env.storage, false);
+    env.close();
+  });
+
+  test("a cookie write that fails is reported and the choice is not remembered", async () => {
+    const env = bootHv({}, { cookies: {}, cookieSetFails: true });
+    const r = await ask(env, SET("old"));
+    assert.equal(r.ok, false);
+    assert.equal("homeVersion" in env.storage, false);
+    env.close();
+  });
+
+  test("bilibili rewriting the cookies is put back once the user has chosen", async () => {
+    const env = bootHv({ homeVersion: "old" }, { cookies: { user_site: "CN", default_sites: DS_OLD } });
+    const { HV_ENFORCE_DELAY_MS } = env.internals("background");
+    env.cookieJar.default_sites = DS_NEW; // e.g. the account got moved to the overseas site
+    env.cookieChangedListeners.forEach((fn) => fn({ cookie: { name: "default_sites", domain: ".bilibili.com", value: DS_NEW }, removed: false, cause: "explicit" }));
+    await env.settle(HV_ENFORCE_DELAY_MS + 150);
+    assert.equal(env.cookieJar.default_sites, DS_OLD);
+    assert.equal(env.cookieJar.user_site, "CN");
+    env.close();
+  });
+
+  test("without a choice the cookies are never touched, whatever bilibili does", async () => {
+    const env = bootHv({}, { cookies: { user_site: "OVERSEAS", default_sites: DS_NEW } });
+    const { HV_ENFORCE_DELAY_MS } = env.internals("background");
+    env.cookieChangedListeners.forEach((fn) => fn({ cookie: { name: "user_site", domain: ".bilibili.com", value: "OVERSEAS" }, removed: false }));
+    await env.settle(HV_ENFORCE_DELAY_MS + 150);
+    assert.deepEqual(env.cookieSets, []);
+    env.close();
+  });
+
+  test("unrelated cookies, removals and other domains are ignored", async () => {
+    const env = bootHv({ homeVersion: "old" }, { cookies: { user_site: "OVERSEAS", default_sites: DS_NEW } });
+    const { HV_ENFORCE_DELAY_MS } = env.internals("background");
+    const fire = (e) => env.cookieChangedListeners.forEach((fn) => fn(e));
+    fire({ cookie: { name: "SESSDATA", domain: ".bilibili.com" }, removed: false });
+    fire({ cookie: { name: "user_site", domain: ".bilibili.com" }, removed: true });
+    fire({ cookie: { name: "user_site", domain: ".example.com" }, removed: false });
+    await env.settle(HV_ENFORCE_DELAY_MS + 150);
+    assert.deepEqual(env.cookieSets, []);
+    env.close();
+  });
+
+  test("its own writes do not trigger another round (no loop)", async () => {
+    const env = bootHv({}, { cookies: {} });
+    const { HV_ENFORCE_DELAY_MS } = env.internals("background");
+    await ask(env, SET("old"));
+    await env.settle(HV_ENFORCE_DELAY_MS + 250);
+    assert.equal(env.cookieSets.length, 2, "exactly the two writes of the switch itself");
+    env.close();
+  });
+
+  test("opening the popup (GET) repairs cookies that no longer match the choice", async () => {
+    const env = bootHv({ homeVersion: "new" }, { cookies: { user_site: "CN", default_sites: DS_OLD } });
+    const r = await ask(env, GET);
+    assert.equal(r.pref, "new");
+    assert.equal(r.state, "new");
+    assert.equal(env.cookieJar.default_sites, DS_NEW);
+    env.close();
+  });
+});

@@ -1,5 +1,6 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createEnv, readSrcJson, plain, closeAll, testKey, CDN_FIXTURE, CDN_DEFAULT_HOST } from "./helpers/load.mjs";
 import { signJws } from "../tools/report-worker/src/features.js";
 
@@ -632,6 +633,116 @@ describe("cloud backup buttons", () => {
     assert.equal(env.document.getElementById("cloudState").classList.contains("on"), true);
     assert.equal(env.document.getElementById("cloudStateText").textContent, "Auto sync");
     assert.equal(env.document.getElementById("cloudWho").textContent, "a@b.c");
+    env.close();
+  });
+});
+
+// ---- 進階設定：切換新舊版頁面（實驗性）----
+describe("advanced settings: old / new homepage switch", () => {
+  // `answer(msg)` plays the background: return an object to respond, or undefined for no response (like a background without the feature)
+  async function bootHv(answer) {
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, cdnMode: "list", cdnHost: DEFAULT_HOST } });
+    env.fetchHandler = () => { throw new TypeError("Failed to fetch"); };
+    env.sent = [];
+    env.chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (!msg || !String(msg.type).startsWith("CDN_SWITCHER_HOME_VERSION")) return;
+      env.sent.push(msg);
+      const r = answer(msg);
+      if (r !== undefined) sendResponse(r);
+    });
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "popup.js"].forEach((f) => env.load(f));
+    await env.settle(20);
+    return env;
+  }
+  const $ = (env, id) => env.document.getElementById(id);
+  const change = (env, el) => el.dispatchEvent(new env.window.Event("change"));
+  const GET_OK = (pref, state) => ({ ok: true, supported: true, pref, state });
+
+  test("the card is hidden when the browser can't do it (or nothing answers)", async () => {
+    const none = await bootHv(() => undefined);
+    assert.equal($(none, "hvItem").style.display, "none");
+    none.close();
+    const unsupported = await bootHv(() => ({ ok: true, supported: false, pref: null, state: null }));
+    assert.equal($(unsupported, "hvItem").style.display, "none");
+    unsupported.close();
+  });
+
+  test("shows the card with the old side on the left and the new side on the right", async () => {
+    const env = await bootHv(() => GET_OK(null, null));
+    assert.equal($(env, "hvItem").style.display, "");
+    const side = env.document.querySelector("#hvItem .lrSwitch");
+    const order = [...side.children].map((el) => el.id || el.querySelector("input").id);
+    assert.deepEqual(order, ["hvOldLabel", "homeVersion", "hvNewLabel"]);
+    assert.equal($(env, "hvOldLabel").textContent, "Old");
+    assert.equal($(env, "hvNewLabel").textContent, "New");
+    assert.ok($(env, "hvLabel").textContent.length > 0);
+    env.close();
+  });
+
+  test("explains what bilibili changed and warns that it may stop working", async () => {
+    const env = await bootHv(() => GET_OK(null, null));
+    for (const id of ["hvHintChange", "hvHintUse", "hvHintWarn"]) assert.ok($(env, id).textContent.length > 20, id + " has text");
+    assert.match($(env, "hvHintWarn").textContent, /any time|stop working/i);
+    env.close();
+  });
+
+  test("which side is selected: the saved choice, else what the cookies mean, else new", async () => {
+    const cases = [
+      [GET_OK("old", "new"), false],  // the saved choice wins
+      [GET_OK("new", "old"), true],
+      [GET_OK(null, "old"), false],
+      [GET_OK(null, "new"), true],
+      [GET_OK(null, null), true]
+    ];
+    for (const [reply, checked] of cases) {
+      const env = await bootHv(() => reply);
+      assert.equal($(env, "homeVersion").checked, checked, JSON.stringify(reply));
+      assert.equal($(env, "hvNewLabel").classList.contains("on"), checked);
+      assert.equal($(env, "hvOldLabel").classList.contains("on"), !checked);
+      env.close();
+    }
+  });
+
+  test("flipping the switch asks the background to set that version and shows how to apply it", async () => {
+    const env = await bootHv((msg) => (msg.type.endsWith("_GET") ? GET_OK("new", "new") : { ok: true, pref: msg.version, state: msg.version }));
+    const box = $(env, "homeVersion");
+    assert.equal($(env, "hvNote").style.display, "none");
+    box.checked = false;
+    change(env, box);
+    assert.deepEqual(plain(env.sent.at(-1)), { type: "CDN_SWITCHER_HOME_VERSION_SET", version: "old" });
+    assert.equal($(env, "hvOldLabel").classList.contains("on"), true);
+    assert.notEqual($(env, "hvNote").style.display, "none");
+    assert.match($(env, "hvNote").textContent, /refresh/i);
+    box.checked = true;
+    change(env, box);
+    assert.equal(env.sent.at(-1).version, "new");
+    assert.equal($(env, "hvNewLabel").classList.contains("on"), true);
+    env.close();
+  });
+
+  test("a failed switch puts the toggle back and says so", async () => {
+    const env = await bootHv((msg) => (msg.type.endsWith("_GET") ? GET_OK("new", "new") : { ok: false, err: "cookie" }));
+    const box = $(env, "homeVersion");
+    box.checked = false;
+    change(env, box);
+    assert.equal(box.checked, true, "still on the new side");
+    assert.equal($(env, "hvNewLabel").classList.contains("on"), true);
+    assert.notEqual($(env, "hvNote").style.display, "none");
+    assert.match($(env, "hvNote").textContent, /couldn't|try again/i);
+    env.close();
+  });
+
+  test("both sides look the same: the track has no on/off colour", () => {
+    const css = readFileSync(new URL("../src/popup.html", import.meta.url), "utf8");
+    assert.match(css, /\.switch\.lr input:checked\+\.slider\s*\{\s*background:\s*var\(--slider-off\);?\s*\}/, "checked track keeps the off colour");
+    assert.match(css, /<label class="switch lr"><input type="checkbox" id="homeVersion"/);
+  });
+
+  test("the card is not part of 'reset all settings'", async () => {
+    const env = await bootHv(() => GET_OK("old", "old"));
+    const js = readFileSync(new URL("../src/popup.js", import.meta.url), "utf8");
+    const reset = js.slice(js.indexOf("function resetAllSettings"), js.indexOf("function resetAllSettings") + 900);
+    assert.doesNotMatch(reset, /homeVersion/);
     env.close();
   });
 });

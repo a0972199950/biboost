@@ -98,6 +98,7 @@ document.documentElement.lang = uiLanguage();
   ["stHeaderTitle", "stHeaderTitle"], ["stRetestBtn", "stRetestBtn"], ["stStopBtn", "stStopBtn"], ["stHintLeave", "stHintLeave"],
   ["liveRouteRowLabel", "liveRouteRowLabel"],
   ["sortBySpeedLabel", "sortBySpeedLabel"], ["sortBySpeedHint", "sortBySpeedHint"],
+  ["hvLabel", "hvLabel"], ["hvOldLabel", "hvOld"], ["hvNewLabel", "hvNew"], ["hvHintChange", "hvHintChange"], ["hvHintUse", "hvHintUse"], ["hvHintWarn", "hvHintWarn"],
   ["optTitle", "optimizingTitle"], ["optStop", "optimizingStop"],
   ["stVideoLimitTitle", "stVideoLimitTitle"], ["stVideoLimitHint", "stVideoLimitHint"], ["stVideoMbLabel", "stVideoMbLabel"],
   ["stVideoSecLabel", "stVideoSecLabel"], ["stVideoSecUnit", "unitSec"], ["stVideoReset", "resetDefault"], ["stVideoPresetLabel", "stPresetLabel"],
@@ -1576,6 +1577,41 @@ document.getElementById("sortBySpeed").addEventListener("change", function () {
   }
   applyDropdownOrder();
   if (lastSpeedtestState) renderSpeedtest(lastSpeedtestState);
+});
+
+// -------- 切換新舊版頁面（實驗性，進階設定）--------
+// 左「舊」右「新」，兩邊平等：勾選（右）= 新版。真正改的是 B 站的站點偏好 cookie，由 background.js 處理（HV_*）；
+// 顯示的是使用者上次選的，沒選過就看目前 cookie 對應哪一版，都看不出來就當新版（海外 IP 沒有 cookie 時 B 站給的就是新版）。
+// 瀏覽器沒有 cookies API（supported = false）時整張卡片不顯示。
+var hvBox = document.getElementById("homeVersion");
+function renderHomeVersion(version) {
+  hvBox.checked = version === "new";
+  document.getElementById("hvOldLabel").classList.toggle("on", version !== "new");
+  document.getElementById("hvNewLabel").classList.toggle("on", version === "new");
+}
+function showHomeVersionNote(key) {
+  var note = document.getElementById("hvNote");
+  note.textContent = key ? t(key) : "";
+  note.style.display = key ? "" : "none";
+}
+try {
+  chrome.runtime.sendMessage({ type: "CDN_SWITCHER_HOME_VERSION_GET" }, function (r) {
+    void chrome.runtime.lastError;
+    if (!r || !r.ok || !r.supported) return;
+    document.getElementById("hvItem").style.display = "";
+    renderHomeVersion(r.pref || r.state || "new");
+  });
+} catch (e) {}
+hvBox.addEventListener("change", function () {
+  var version = hvBox.checked ? "new" : "old";
+  renderHomeVersion(version);
+  showHomeVersionNote(null);
+  chrome.runtime.sendMessage({ type: "CDN_SWITCHER_HOME_VERSION_SET", version: version }, function (r) {
+    void chrome.runtime.lastError;
+    if (r && r.ok) { showHomeVersionNote("hvNoteDone"); return; }
+    renderHomeVersion(version === "new" ? "old" : "new"); // 沒改成功：開關回到原本那邊
+    showHomeVersionNote("hvNoteFail");
+  });
 });
 
 // -------- 測速門檻（進階設定）--------

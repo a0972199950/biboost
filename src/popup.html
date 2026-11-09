@@ -1030,6 +1030,37 @@
       margin-top: 4px;
     }
 
+    /* 新舊版頁面：左「舊」右「新」，兩邊平等，沒有開／關的意思——軌道不分顏色，目前選的那一邊字比較深、比較粗 */
+    .hvPick {
+      display: flex;
+      justify-content: center;
+      margin: 10px 0 8px;
+    }
+
+    .lrSwitch {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .lrSide {
+      color: var(--muted);
+      transition: color .15s;
+    }
+
+    .lrSide.on {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .switch.lr input:checked+.slider {
+      background: var(--slider-off);
+    }
+
+    .hint.hvNote {
+      color: var(--warn);
+    }
+
     /* 測速門檻：左下角「套用：」預設組合選單、右下角「恢復預設」 */
     .advItem .linkRow.presetRow {
       justify-content: space-between;
@@ -2930,6 +2961,22 @@
         <label class="switch"><input type="checkbox" id="sortBySpeed" /><span class="slider"></span></label>
       </div>
       <div class="hint" id="sortBySpeedHint"></div>
+    </div>
+
+    <!-- 切換新舊版頁面（實驗性）：改 B 站的站點偏好 cookie（background.js 的 HV_*）；瀏覽器沒有 cookies API 時整張卡片不顯示 -->
+    <div class="advItem" id="hvItem" style="display:none">
+      <div class="advTitle" id="hvLabel"></div>
+      <div class="hvPick">
+        <span class="lrSwitch">
+          <span class="lrSide" id="hvOldLabel"></span>
+          <label class="switch lr"><input type="checkbox" id="homeVersion" aria-labelledby="hvLabel" /><span class="slider"></span></label>
+          <span class="lrSide" id="hvNewLabel"></span>
+        </span>
+      </div>
+      <div class="hint" id="hvHintChange"></div>
+      <div class="hint" id="hvHintUse"></div>
+      <div class="hint" id="hvHintWarn"></div>
+      <div class="hint hvNote" id="hvNote" style="display:none"></div>
     </div>
 
     <div class="advItem" id="cloudAdvItem" style="display:none">

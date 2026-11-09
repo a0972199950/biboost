@@ -320,6 +320,30 @@
   "sortBySpeedHint": {
     "message": "켜면 테스트 중 노드를 빠른 순으로 자동 정렬하고, 다음 테스트까지 그 순서를 기억합니다. 영상과 라이브 모두 적용되며, 끄면 기본 순서로 돌아갑니다."
   },
+  "hvLabel": {
+    "message": "홈 화면 신/구 버전 전환 (실험적)"
+  },
+  "hvOld": {
+    "message": "구"
+  },
+  "hvNew": {
+    "message": "신"
+  },
+  "hvHintChange": {
+    "message": "bilibili 이번 개편: 새 홈 화면에서는 상단의 분류 메뉴(애니·게임·음악 등)와 배너 슬라이드가 사라지고, 추천 영상만 가득 나열돼요. 중국 본토 밖 사용자부터 순차적으로 새 버전으로 바뀌고 있어요."
+  },
+  "hvHintUse": {
+    "message": "이 스위치로 구 버전과 신 버전 중 원하는 쪽을 고를 수 있어요. 전환한 뒤 bilibili 홈 화면을 새로고침하면 적용돼요."
+  },
+  "hvHintWarn": {
+    "message": "실험적인 기능이에요. bilibili가 다시 개편하면 이 스위치가 작동하지 않을 수 있어요."
+  },
+  "hvNoteDone": {
+    "message": "전환했어요. bilibili 홈 화면을 새로고침하면 적용돼요."
+  },
+  "hvNoteFail": {
+    "message": "전환하지 못했어요. 잠시 후 다시 시도해 주세요."
+  },
   "stVideoLimitTitle": {
     "message": "영상 테스트 한도"
   },
