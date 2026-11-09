@@ -320,6 +320,30 @@
   "sortBySpeedHint": {
     "message": "When on, nodes are sorted fastest-first as the test runs, and the order is kept until the next test. Applies to video and live; turn off to restore the default order."
   },
+  "hvLabel": {
+    "message": "Old / new homepage (experimental)"
+  },
+  "hvOld": {
+    "message": "Old"
+  },
+  "hvNew": {
+    "message": "New"
+  },
+  "hvHintChange": {
+    "message": "What bilibili changed: the new homepage drops the category bar on top (Anime, Games, Music…) and the carousel banner, leaving just a grid of recommended videos. Users outside mainland China are being moved to it gradually."
+  },
+  "hvHintUse": {
+    "message": "Use this switch to pick the old or the new homepage. It takes effect after you refresh the bilibili homepage."
+  },
+  "hvHintWarn": {
+    "message": "Experimental: bilibili can change things again at any time, and this switch may stop working."
+  },
+  "hvNoteDone": {
+    "message": "Switched. Refresh the bilibili homepage to apply."
+  },
+  "hvNoteFail": {
+    "message": "Couldn't switch. Please try again later."
+  },
   "stVideoLimitTitle": {
     "message": "Video speed-test limits"
   },

@@ -320,6 +320,30 @@
   "sortBySpeedHint": {
     "message": "开启后，测速时节点会按速度由快到慢自动排序，并记住顺序直到下次测速。视频与直播都适用，关闭后恢复默认顺序。"
   },
+  "hvLabel": {
+    "message": "切换新旧版页面（实验性）"
+  },
+  "hvOld": {
+    "message": "旧"
+  },
+  "hvNew": {
+    "message": "新"
+  },
+  "hvHintChange": {
+    "message": "B 站这次改版：新版首页拿掉了上方的分区入口（番剧、游戏、音乐…）和轮播大图，只剩一整面推荐视频，海外用户会陆续换成新版。"
+  },
+  "hvHintUse": {
+    "message": "用这个开关自己选要看旧版还是新版，切换后刷新 B 站首页就会生效。"
+  },
+  "hvHintWarn": {
+    "message": "实验性功能：B 站随时可能再次改版，届时这个开关可能失效。"
+  },
+  "hvNoteDone": {
+    "message": "已切换，刷新 B 站首页后生效。"
+  },
+  "hvNoteFail": {
+    "message": "切换失败，请稍后再试。"
+  },
   "stVideoLimitTitle": {
     "message": "视频测速门槛"
   },

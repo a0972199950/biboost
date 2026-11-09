@@ -11,6 +11,7 @@
  *     沒有清單時擴充不啟用（bridge.js）。之後 B 站頁面或 popup 打開時檢查新版本（6 小時內不重問），
  *     有新版本就替用國家清單的人更新卡頓時要測的節點（autoSpeedHosts）；使用者正在用的節點不動
  *  7) 雲端備份（cloud.js）的自動同步；全新安裝時的歡迎頁（一律開；雲端備份那塊由歡迎頁自己看功能開關）
+ *  8) 新舊版首頁（實驗性）：改 B 站的兩個站點偏好 cookie，見下方 HV_*
  *
  * 1) 1.5.x 以前不會記錄 installedVersion，popup 沒辦法分辨「舊使用者剛更新」與「全新安裝」。
  * 瀏覽器在更新時會把 previousVersion 帶進 onInstalled，不用舊版配合，這裡把它補寫成 installedVersion，
@@ -314,9 +315,100 @@ function openHandoffUrl(url) {
   });
 }
 
+// 8) 新舊版首頁（實驗性）。
+//    B 站把海外用戶的首頁換成「海外版」（沒有分區入口與輪播大圖），舊版是國內站首頁。
+//    伺服器與頁面前端都看 B 站的兩個偏好 cookie 決定要不要把 / 導向海外版：
+//      user_site     CN | OVERSEAS      使用者所在的站點
+//      default_sites ["CN","OVERSEAS"]  帳號可用的站點（URL 編碼的 JSON 陣列）；只有 OVERSEAS 時，已登入的帳號會被導向海外版
+//    舊版：user_site=CN、default_sites 含 CN；新版：user_site=OVERSEAS、default_sites 只有 OVERSEAS。
+//    使用者選的值存在 storage 的 homeVersion（"old" | "new"），B 站之後把 cookie 改掉（登入、改版）時補回去。
+//    沒選過（沒有 homeVersion）就完全不碰這兩個 cookie。
+var HV_URL = "https://www.bilibili.com/";
+var HV_DOMAIN = ".bilibili.com";
+var HV_SITES = { old: { user_site: "CN", default_sites: ["CN", "OVERSEAS"] }, "new": { user_site: "OVERSEAS", default_sites: ["OVERSEAS"] } };
+var HV_TTL_SEC = { user_site: 365 * 86400, default_sites: 180 * 86400 }; // 同 B 站自己寫的有效期限
+var HV_ENFORCE_DELAY_MS = 500;
+var HV_QUIET_MS = 1500; // 自己寫入後這段時間內的 cookie 變動不當成「被 B 站改掉」
+var hvQuietUntil = 0;
+var hvTimer = null;
+function hvSupported() { return !!(chrome.cookies && chrome.cookies.get && chrome.cookies.set); }
+function hvCookieGet(name) {
+  return new Promise(function (resolve) {
+    try {
+      chrome.cookies.get({ url: HV_URL, name: name }, function (c) { void chrome.runtime.lastError; resolve(c ? c.value : null); });
+    } catch (e) { resolve(null); }
+  });
+}
+function hvCookieSet(name, value) {
+  return new Promise(function (resolve) {
+    try {
+      chrome.cookies.set({ url: HV_URL, domain: HV_DOMAIN, path: "/", name: name, value: value, sameSite: "lax", expirationDate: Date.now() / 1000 + HV_TTL_SEC[name] }, function (c) {
+        resolve(!chrome.runtime.lastError && !!c);
+      });
+    } catch (e) { resolve(false); }
+  });
+}
+// cookie 值 → "old" | "new" | null（看不出來）
+function hvDerive(userSite, defaultSites) {
+  var sites = null;
+  try { sites = JSON.parse(decodeURIComponent(defaultSites || "")); } catch (e) {}
+  if (Array.isArray(sites) && sites.length) return sites.indexOf("CN") >= 0 ? "old" : "new";
+  if (userSite === "CN") return "old";
+  if (userSite === "OVERSEAS") return "new";
+  return null;
+}
+function hvState() {
+  if (!hvSupported()) return Promise.resolve(null);
+  return Promise.all([hvCookieGet("user_site"), hvCookieGet("default_sites")]).then(function (v) { return hvDerive(v[0], v[1]); });
+}
+function hvApply(version) {
+  var want = HV_SITES[version];
+  if (!want || !hvSupported()) return Promise.resolve(false);
+  hvQuietUntil = Date.now() + HV_QUIET_MS;
+  return Promise.all([
+    hvCookieSet("user_site", want.user_site),
+    hvCookieSet("default_sites", encodeURIComponent(JSON.stringify(want.default_sites)))
+  ]).then(function (r) { return r[0] && r[1]; });
+}
+// 使用者選過、而 cookie 對不上就補回去
+function hvEnforce() {
+  return storageGet("homeVersion").then(function (items) {
+    var pref = items.homeVersion;
+    if (pref !== "old" && pref !== "new") return;
+    return hvState().then(function (state) { if (state !== pref) return hvApply(pref); });
+  });
+}
+function hvInfo() {
+  return Promise.all([storageGet("homeVersion"), hvState()]).then(function (r) {
+    var pref = r[0].homeVersion;
+    return { ok: true, supported: hvSupported(), pref: pref === "old" || pref === "new" ? pref : null, state: r[1] };
+  });
+}
+function hvSet(version) {
+  if (version !== "old" && version !== "new") return Promise.resolve({ ok: false, err: "bad version" });
+  if (!hvSupported()) return Promise.resolve({ ok: false, err: "unsupported" });
+  return hvApply(version).then(function (ok) {
+    if (!ok) return { ok: false, err: "cookie" };
+    return new Promise(function (r) { chrome.storage.local.set({ homeVersion: version }, r); }).then(function () { return { ok: true, pref: version, state: version }; });
+  });
+}
+if (hvSupported() && chrome.cookies.onChanged) {
+  chrome.cookies.onChanged.addListener(function (info) {
+    var c = info && info.cookie;
+    if (!c || info.removed || (c.name !== "user_site" && c.name !== "default_sites")) return;
+    if (String(c.domain || "").replace(/^\./, "") !== "bilibili.com") return;
+    if (Date.now() < hvQuietUntil) return;
+    clearTimeout(hvTimer);
+    hvTimer = setTimeout(hvEnforce, HV_ENFORCE_DELAY_MS);
+  });
+}
+
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (!msg || !msg.type) return;
   var tabId = sender && sender.tab ? sender.tab.id : (msg.tab != null ? msg.tab : null);
+  // popup 進階設定的「切換新舊版頁面」：GET 順便把被 B 站改掉的 cookie 補回去
+  if (msg.type === "CDN_SWITCHER_HOME_VERSION_GET") { hvEnforce().then(hvInfo).then(sendResponse, function () { sendResponse({ ok: false }); }); return true; }
+  if (msg.type === "CDN_SWITCHER_HOME_VERSION_SET") { hvSet(msg.version).then(sendResponse, function () { sendResponse({ ok: false }); }); return true; }
   if (msg.type === "CDN_SWITCHER_IMPORT_CUSTOM") { importCustomHosts(msg.hosts).then(sendResponse); return true; }
   if (msg.type === "CDN_SWITCHER_SELECT_COUNTRY") { selectCountry("retry").then(function () { sendResponse({ ok: true }); }); return true; }
   // bridge（B 站頁面）、popup 打開時：檢查有沒有新清單（6 小時內不重問）；force＝popup 遮罩的「重試」與每 10 秒的自動重試
@@ -348,6 +440,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
   globalThis.__BCS_TEST__.register("background", {
     importCustomHosts: importCustomHosts, selectCountry: selectCountry, whenListReady: whenListReady, refreshList: refreshList, syncAutoSpeedHosts: syncAutoSpeedHosts, LIST_RETRY_ALARM: LIST_RETRY_ALARM, appendJournal: appendJournal, appendSample: appendSample, putSnapshot: putSnapshot, pruneOld: pruneOld,
-    JOURNAL_MAX: JOURNAL_MAX, SAMPLES_MAX: SAMPLES_MAX, MERGE_WINDOW_MS: MERGE_WINDOW_MS, DIAG_KEEP_MS: DIAG_KEEP_MS
+    JOURNAL_MAX: JOURNAL_MAX, SAMPLES_MAX: SAMPLES_MAX, MERGE_WINDOW_MS: MERGE_WINDOW_MS, DIAG_KEEP_MS: DIAG_KEEP_MS,
+    hvDerive: hvDerive, hvState: hvState, hvSet: hvSet, hvInfo: hvInfo, hvEnforce: hvEnforce, HV_ENFORCE_DELAY_MS: HV_ENFORCE_DELAY_MS
   });
 }

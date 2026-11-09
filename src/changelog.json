@@ -19,6 +19,16 @@
         "ja": "インストール直後にようこそ画面を表示し、「はじめる」で設定をすぐ開けるように",
         "ko": "설치 직후 환영 화면을 표시하고, ‘시작하기’를 누르면 바로 설정이 열립니다"
       }
+    },
+    {
+      "type": "feature",
+      "text": {
+        "zh_TW": "進階設定新增「切換新舊版頁面」（實驗性），B 站首頁改版後，可以自己選要看舊版還是新版",
+        "zh_CN": "高级设置新增「切换新旧版页面」（实验性），B 站首页改版后，可以自己选要看旧版还是新版",
+        "en": "New in Advanced settings: an experimental switch between the old and the new bilibili homepage, so you can pick the layout you prefer",
+        "ja": "詳細設定に「トップページの新旧切り替え」（実験的）を追加。bilibili のトップページが新しくなっても、好みの版を選べます",
+        "ko": "고급 설정에 「홈 화면 신/구 버전 전환」(실험적)을 추가했어요. bilibili 홈 화면이 바뀐 뒤에도 원하는 버전을 고를 수 있어요"
+      }
     }
   ],
   "releases": [
