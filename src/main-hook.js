@@ -596,7 +596,10 @@
   //（红队测试：节点偶尔一次 403，缓冲 4 秒时就被换走、播放器重载）。缓冲快没了（< 1 秒）就不等
   var SEG_FAIL_SECOND_BUF_SEC = 1, SEG_FAIL_SECOND_MS = 10000;
   var segFail = { at: 0, reason: null, needSecond: false }; // 最近一次被暂缓的失败
+  // 最近一次目前节点的分段失败（不管有没有开自动切换）：mainVideoIdle 用
+  var lastSegFailAt = 0, SEG_FAIL_STUCK_MS = 60000;
   function onSegFailure(reason) {
+    lastSegFailAt = Date.now();
     var v = getMainVideo(), buf = v ? forwardBufferSec(v) : 0, now = Date.now();
     if (buf >= SEG_FAIL_BUFFER_SEC) {
       if (!segFail.reason) jlog("fb.defer", { reason: reason, buf: buf.toFixed(1) });
@@ -1977,7 +1980,9 @@
     if (!v) return false;
     if (v.ended) return true;
     if (!v.paused) return false;
-    return userPaused(v) || !hasPlayed(v);
+    // 「还没开始播」要排除最近有分段失败的分页：真实 B 站播放器连续失败后会把 video 整个重置（currentTime 0、played 清空），
+    // 看起来像没播过，其实是卡死；不 reload 的话手动换节点要等播放器自己重试（冒烟测试实测 14 秒）
+    return userPaused(v) || (!hasPlayed(v) && !(lastSegFailAt && Date.now() - lastSegFailAt < SEG_FAIL_STUCK_MS));
   }
 
   // 整页重载（保留进度）：用于需要安装/移除 hook 的切换
@@ -2246,7 +2251,7 @@
       rescueCandidates: rescueCandidates, isFailed: isFailed, markFailed: markFailed, failedHosts: failedHosts, testUrlFor: testUrlFor,
       currentBitrateBps: currentBitrateBps, resetFallbackState: resetFallbackState,
       measureHost: measureHost, trackVideoEvents: trackVideoEvents, noteSegment: noteSegment, segBusy: segBusy,
-      lastSegReqAt: function () { return lastSegReqAt; }, setLastSegReqAt: function (t) { lastSegReqAt = t; },
+      lastSegReqAt: function () { return lastSegReqAt; }, setLastSegReqAt: function (t) { lastSegReqAt = t; }, setLastSegFailAt: function (t) { lastSegFailAt = t; },
       setProgressSince: function (t) { progressSince = t; },
       stopTick: function () { clearInterval(tickTimer); } // 測試自己呼叫 checkStall／checkHealth，不要每秒的 interval 在背後亂跑
     });
