@@ -447,6 +447,28 @@
     }
     return null;
   }
+  // 播放器现在在播哪支影片（cid）。「最后一份 playurl」不等于「正在播的影片」：自动连播换到下一支后，
+  // 播放器紧接着会再打别支影片的 playurl（Safari 实测 2026-11：先打下一支、隔一秒又打第三支），
+  // 拿 playurl 判断换影片的话，之后在这支影片救援，player.reload() 重打的 playurl 会被当成「换了影片」，
+  // 覆写当场被取消、回到卡住的节点。读不到（播放器没有 getManifest）回传 null，呼叫端退回只看 playurl
+  function playerVideoKey() {
+    try {
+      var p = window.player, m = p && typeof p.getManifest === "function" ? p.getManifest() : null;
+      var c = m && m.cid;
+      return (typeof c === "number" || typeof c === "string") && /^\d+$/.test(String(c)) ? String(c) : null;
+    } catch (e) { return null; }
+  }
+  // 换到另一支影片：重置回退状态；不是这页的第一支影片（整页重载带过来的覆写要留着）的话，
+  // 救援的覆写只管前一支，取消 —— 在 playurl 改写之前呼叫，这份 playurl 才会照使用者的节点改写
+  function noteVideoKey(key) {
+    if (key == null || key === mediaKey) return;
+    var nextVideo = mediaKey != null;
+    mediaKey = key; resetFallbackState();
+    if (nextVideo && autoHost) {
+      jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) });
+      autoHost = null; renderOverlay(); postDebug();
+    }
+  }
 
   // 新影片：询问与「使用者中断」重置；失败标记保留（跟着网路走，见上方说明）
   function resetFallbackState() {
@@ -1228,6 +1250,7 @@
     for (var i = 0; i < arr.length; i++) { var top = applyTrack(arr[i]); if (top) onTop(top, arr[i]); }
   }
   function rewriteRoot(root, source) {
+    var heldAutoHost = null;
     try {
       if (!root || typeof root !== "object") return false;
       var d = root.data || root.result || root;
@@ -1236,13 +1259,13 @@
           (d.video_info.dash || d.video_info.durl)) d = d.video_info;
       // 回退额度以「影片」为单位：player.reload() 后播放器会再打一次同一支影片的 playurl（2026-10 的回报日志），
       // 每份 playurl 都重置的话「最多切 2 次再问使用者」永远到不了，会在备援之间每 30 秒来回切。
-      // 同一页换到下一支影片（不是这页的第一支：整页重载带过来的覆写要留着）：救援的覆写只管卡住的那支影片，
-      // 下一支回到使用者选的节点 —— 在改写之前取消，这份 playurl 才会照使用者的节点改写
-      var key = peekMediaKey(d);
-      if (key != null && key !== mediaKey) {
-        var nextVideo = mediaKey != null;
-        mediaKey = key; resetFallbackState();
-        if (nextVideo && autoHost) { jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) }); autoHost = null; }
+      // 同一页换到下一支影片：救援的覆写只管卡住的那支影片，下一支回到使用者选的节点（见 noteVideoKey）。
+      // 播放器读得到现在的影片时，只有「现在这支」的 playurl 算换影片；别支影片的（自动连播预载的、或播放器还没换过去的下一支）
+      // 照使用者的节点改写，这支影片的覆写留着 —— 播放器真的换过去时由 checkVideoKey（每秒）取消
+      var key = peekMediaKey(d), cur = key != null ? playerVideoKey() : null;
+      if (key != null) {
+        if (cur == null || cur === key) noteVideoKey(key);
+        else if (autoHost && key !== mediaKey) { heldAutoHost = autoHost; autoHost = null; }
       }
       pendingBackupHosts = [];
       var changed = rewriteContainer(d);
@@ -1255,7 +1278,10 @@
       pendingBackupHosts = null;
       return changed;
     } catch (e) { debug.lastError = String(e); pendingBackupHosts = null; return false; }
+    finally { if (heldAutoHost) autoHost = heldAutoHost; }
   }
+  // 每秒：播放器换到别支影片了（自动连播、页内点下一支）就当成换影片 —— 别支影片的 playurl 不算（见 rewriteRoot）
+  function checkVideoKey() { var k = playerVideoKey(); if (k != null) noteVideoKey(k); }
   function tryRewriteText(txt, source) {
     if (typeof txt !== "string" || !txt) return null;
     if (txt.indexOf("dash") < 0 && txt.indexOf("durl") < 0 && txt.indexOf("backupUrl") < 0 && txt.indexOf("backup_url") < 0) return null;
@@ -2279,7 +2305,7 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", renderOverlay);
   else renderOverlay();
-  var tickTimer = setInterval(function () { updateSpeed(); checkStall(); checkHealth(); checkSegFailure(); diagTick(); renderOverlay(); postDebug(); }, 1000);
+  var tickTimer = setInterval(function () { checkVideoKey(); updateSpeed(); checkStall(); checkHealth(); checkSegFailure(); diagTick(); renderOverlay(); postDebug(); }, 1000);
   // 分页切回前景：卡顿计时与健康累计从零开始（背景期间的状态不算），安装后第一支影片的优化补排一次（见 tabHidden）
   function onVisibility() {
     var hidden = tabHidden();
@@ -2307,7 +2333,7 @@
       clampNum: clampNum, cleanTitle: cleanTitle, pageTypeOf: pageTypeOf, qnText: qnText, currentQn: currentQn, isAllowedCdnHost: isAllowedCdnHost,
       addSample: addSample, updateSpeed: updateSpeed, videoQnByPath: function () { return videoQnByPath; },
       needsOwnSig: needsOwnSig, knownUrlOn: knownUrlOn, onSegFailure: onSegFailure, checkSegFailure: checkSegFailure, segFail: segFail, checkStall: checkStall, stallState: stallState,
-      autoHost: function () { return autoHost; }, mainVideoIdle: mainVideoIdle, noteEarlySample: noteEarlySample, runAutoSpeedTest: runAutoSpeedTest,
+      autoHost: function () { return autoHost; }, checkVideoKey: checkVideoKey, playerVideoKey: playerVideoKey, applyRescuePick: applyRescuePick, mainVideoIdle: mainVideoIdle, noteEarlySample: noteEarlySample, runAutoSpeedTest: runAutoSpeedTest,
       stopAutoTest: stopAutoTest, runSpeedTest: runSpeedTest, maybeFallback: maybeFallback,
       checkHealth: checkHealth, health: health, healthReset: healthReset, bufSlope: bufSlope, predictStall: predictStall,
       segReqStart: segReqStart, segReqEnd: segReqEnd,
