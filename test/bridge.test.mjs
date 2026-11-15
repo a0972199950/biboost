@@ -38,11 +38,10 @@ describe("autotest-done → storage", () => {
     assert.equal(env.storage.cdnHost, A);
     env.close();
   });
-  test("stall optimization applies with the switch on (the default)", () => {
+  test("a stall result is never written to the settings (the rescue applies in its own tab only), even with the switch on", () => {
     const env = boot({});
     autotestDone(env, { host: B, from: A, reason: "stall" });
-    assert.equal(env.storage.cdnHost, B);
-    assert.equal("videoEnabled" in env.storage, false, "only cdnHost is written");
+    assert.equal(env.storage.cdnHost, A);
     env.close();
   });
   test("install test applies regardless of the switch — but only after a real pending test armed it", () => {
@@ -54,6 +53,26 @@ describe("autotest-done → storage", () => {
     assert.equal("videoEnabled" in env.storage, false, "never forced from a page message");
     autotestDone(env, { host: A, from: B, reason: "install" });
     assert.equal(env.storage.cdnHost, B, "arming is single-use");
+    env.close();
+  });
+  test("install test dropped because the tab went hidden (autotest-end rerun): the flag goes back to storage and this frame is disarmed", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    assert.equal(env.storage.installTestPending, false);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true, "any foreground tab can take it over");
+    autotestDone(env, { host: B, from: A, reason: "install" });
+    assert.equal(env.storage.cdnHost, A, "disarmed: a late or forged result is not applied");
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } }); // 補測
+    autotestDone(env, { host: B, from: A, reason: "install" });
+    assert.equal(env.storage.cdnHost, B);
+    env.close();
+  });
+  test("a forged rerun without a real armed test does not create a pending test", () => {
+    const env = boot({});
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, undefined);
     env.close();
   });
   test("forged install result without a pending test is ignored (only a fresh install sets installTestPending)", () => {

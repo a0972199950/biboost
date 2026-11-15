@@ -1,5 +1,16 @@
 {
-  "unreleased": [],
+  "unreleased": [
+    {
+      "type": "fix",
+      "text": {
+        "zh_TW": "卡頓時自動換的節點只套用在卡住的那個分頁，不再改掉你選的節點，其他分頁也不會跟著重新載入；背景分頁不會再自動換節點",
+        "zh_CN": "卡顿时自动换的节点只套用在卡住的那个标签页，不再改掉你选的节点，其他标签页也不会跟着重新加载；后台标签页不会再自动换节点",
+        "en": "When playback stalls, the auto-picked node now applies only to that tab: your chosen node stays, other tabs are no longer reloaded, and background tabs never switch nodes on their own",
+        "ja": "再生が止まったときに自動で選んだノードは、そのタブだけに適用されるように。選んだノードは変わらず、他のタブが再読み込みされることもありません。バックグラウンドのタブが勝手にノードを切り替えることもなくなりました",
+        "ko": "재생이 멈췄을 때 자동으로 고른 노드는 그 탭에만 적용돼요. 직접 고른 노드는 그대로이고, 다른 탭이 다시 불러와지지 않으며, 백그라운드 탭이 스스로 노드를 바꾸지도 않아요"
+      }
+    }
+  ],
   "releases": [
     {
       "version": "2.10.0",

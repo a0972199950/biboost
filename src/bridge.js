@@ -191,7 +191,16 @@
       return;
     }
     if (d.dir === "autotest-progress" && d.payload) { if (latestAutoTest) latestAutoTest.done = d.payload.done || 0; return; }
-    if (d.dir === "autotest-end") { if (latestAutoTest) latestAutoTest.running = false; return; }
+    if (d.dir === "autotest-end") {
+      if (latestAutoTest) latestAutoTest.running = false;
+      // 安装后那一次因为分页切到背景而作废（rerun）：把旗标还回 storage，让之后任何一个前景分页接手，这个 frame 解除 armed。
+      // 只有真的 armed（开测时 storage 确实有 installTestPending）才还，页面伪造这个讯息造不出原本没有的测速
+      if (d.payload && d.payload.reason === "install" && d.payload.rerun && installTestArmed) {
+        installTestArmed = false;
+        try { chrome.storage.local.set({ installTestPending: true }); } catch (e) {}
+      }
+      return;
+    }
     if (d.dir === "speedtest-meta" && d.payload) {
       speedTest.title = d.payload.title || "";
       speedTest.qn = d.payload.qn || "";
@@ -209,25 +218,26 @@
       else speedTest.results.push(d.payload);
       return;
     }
-    // 自动优化测完：把选到的节点存成使用者选的节点（storage 变更会再推回 MAIN，由它做播放器内重载）。
-    // 存之前再确认一次设定：期间使用者关掉了开关、或自己换了节点（cdnHost 已不是开测时的 from），就不覆盖。
-    // 安装后的那一次（reason "install"）不看开关，但要先经过上面的 installTestArmed；卡顿时那次（"stall"）要开着「速度不佳时自动优化节点」
+    // 安装后那一次测完：把选到的节点存成使用者选的节点（storage 变更会再推回 MAIN，由它做播放器内重载）。
+    // 存之前再确认一次设定：期间使用者自己换了节点（cdnHost 已不是开测时的 from），就不覆盖。不看开关，但要先经过上面的 installTestArmed。
+    // 卡顿时那次（"stall"）只在发生的分页覆写、不写设定（main-hook 的 applyRescuePick），这里一律不收
     // Security: any script running in the page context (bilibili's own, third-party SDKs, other
     // extensions) can post a forged "autotest-done", and whatever host we store here is applied to
     // every segment request in every tab from then on. Every condition below reads storage, which
     // the page cannot write: the host must be in autoSpeedHosts (the list the test was asked to
-    // measure), "install" needs a real pending test, "stall" needs autoFallback on, and videoEnabled
+    // measure), only "install" is accepted and it needs a real pending test, and videoEnabled
     // is never touched from here (auto tests only run while video override is on anyway).
     if (d.dir === "autotest-done" && d.payload && typeof d.payload.host === "string") {
       var p = d.payload;
       journal("ui.speedtest", { phase: "apply", kind: "auto-" + (p.reason || ""), host: p.host, from: p.from });
-      var install = p.reason === "install" && installTestArmed;
-      if (p.reason === "install") installTestArmed = false;
+      if (p.reason !== "install") return;
+      var armed = installTestArmed;
+      installTestArmed = false;
+      if (!armed) return;
       try {
-        chrome.storage.local.get({ autoFallback: DEFAULTS.autoFallback, cdnHost: DEFAULTS.cdnHost, autoSpeedHosts: [], cdnListMeta: null }, function (items) {
+        chrome.storage.local.get({ cdnHost: DEFAULTS.cdnHost, autoSpeedHosts: [], cdnListMeta: null }, function (items) {
           if (!Array.isArray(items.autoSpeedHosts) || items.autoSpeedHosts.indexOf(p.host) < 0) return;
           if ((items.cdnHost || (items.cdnListMeta && items.cdnListMeta.defaultHost) || "") !== p.from) return;
-          if (!install && !(p.reason === "stall" && items.autoFallback)) return;
           chrome.storage.local.set({ cdnHost: p.host });
         });
       } catch (e) {}
