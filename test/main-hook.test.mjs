@@ -1865,6 +1865,68 @@ describe("per-tab rescue override lifetime", () => {
     assert.equal(mh.effHost(), HOST);
     env.close();
   });
+  // Safari 实测（2026-11）：自动连播换到下一支后，播放器紧接着又打了第三支影片的 playurl；
+  // 之后在这支影片救援，player.reload() 重打的 playurl 被当成「换了影片」，覆写当场被取消
+  const thirdVideo = () => JSON.parse(JSON.stringify(playurl()).split("/1/2/3/").join("/7/8/9/"));
+  function onPlayer(env, cid) { env.window.player = { reload() {}, getCurrentTime: () => 0, seek() {}, getManifest: () => ({ cid }) }; }
+  test("autoplay then a preload of another video: a rescue on the playing video survives its own reload playurl", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] }, VIDEO_URL);
+    const mh = env.internals("main-hook");
+    onPlayer(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    onPlayer(env, 6); mh.rewriteRoot(otherVideo(), "playurl"); // autoplay: the player is on video 6
+    mh.rewriteRoot(thirdVideo(), "playurl"); // ...then fetches video 9's playurl while still playing 6
+    env.window.sessionStorage.clear();
+    mh.applyRescuePick(HW, "stall");
+    assert.equal(mh.autoHost(), HW);
+    const reload = otherVideo();
+    mh.rewriteRoot(reload, "playurl"); // the rescue's player.reload() fetches video 6 again
+    assert.equal(mh.autoHost(), HW, "same video as the player is on: the override stays");
+    assert.equal(new URL(reload.data.dash.video[0].baseUrl).host, HW);
+    env.close();
+  });
+  test("another video's playurl while the override is on: rewritten for the user's node, this video's override stays", () => {
+    const { env, mh } = bootWithOverride();
+    onPlayer(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    const preload = otherVideo();
+    mh.rewriteRoot(preload, "playurl");
+    assert.equal(new URL(preload.data.dash.video[0].baseUrl).host, HOST, "the other video gets the user's node");
+    assert.equal(mh.autoHost(), HW, "the video being played keeps its override");
+    assert.equal(mh.effHost(), HW);
+    mh.checkVideoKey();
+    assert.equal(mh.autoHost(), HW, "the player is still on the same video");
+    env.close();
+  });
+  test("the player moves to the next video after its playurl: the override is dropped on the next tick", () => {
+    const { env, mh } = bootWithOverride();
+    onPlayer(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    mh.rewriteRoot(otherVideo(), "playurl"); // next video's playurl, player not switched yet
+    assert.equal(mh.autoHost(), HW);
+    onPlayer(env, 6); mh.checkVideoKey();
+    assert.equal(mh.autoHost(), null);
+    assert.equal(mh.effHost(), HOST);
+    env.close();
+  });
+  test("the player already on the next video when its playurl arrives: dropped right away, rewritten for the user's node", () => {
+    const { env, mh } = bootWithOverride();
+    onPlayer(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    onPlayer(env, 6);
+    const next = otherVideo();
+    mh.rewriteRoot(next, "playurl");
+    assert.equal(mh.autoHost(), null);
+    assert.equal(new URL(next.data.dash.video[0].baseUrl).host, HOST);
+    env.close();
+  });
+  test("another video's playurl does not reset the playing video's state (the user's stop stays)", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] }, VIDEO_URL);
+    const mh = env.internals("main-hook");
+    onPlayer(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    mh.FALLBACK.userStopped = true;
+    mh.rewriteRoot(otherVideo(), "playurl");
+    assert.equal(mh.FALLBACK.userStopped, true);
+    onPlayer(env, 6); mh.checkVideoKey();
+    assert.equal(mh.FALLBACK.userStopped, false, "the player really moved on: new video");
+    env.close();
+  });
   test("auto-clear from the popup drops the override and reloads the player on the user's node", () => {
     const { env, mh } = bootWithOverride();
     const calls = [];
