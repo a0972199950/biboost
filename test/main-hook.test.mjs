@@ -1300,7 +1300,7 @@ describe("background tab: no automatic switching at all (#46 #47)", () => {
     env.close();
   });
   // 審查 F4：子母畫面一律算背景，分頁本身還在前景也一樣
-  test("picture-in-picture counts as background even while the tab itself is visible", () => {
+  test("picture-in-picture counts as background even while the tab itself is visible", async () => {
     const env = boot({ autoSpeedHosts: [HOST, HW] });
     const mh = env.internals("main-hook");
     mh.rewriteRoot(playurl(), "playurl");
@@ -1313,6 +1313,99 @@ describe("background tab: no automatic switching at all (#46 #47)", () => {
     assert.equal(mh.maybeFallback("stalled"), false, "Safari PiP");
     Object.defineProperty(v, "webkitPresentationMode", { configurable: true, get: () => "inline" });
     assert.equal(mh.maybeFallback("stalled"), true, "back inline in a visible tab: rescue as usual");
+    mh.stopAutoTest(); await env.settle(50);
+    env.close();
+  });
+  const AKAM = "upos-hz-mirrorakam.akamaized.net";
+  // 審查第 2 輪 1：使用者節點是 akamai（要專屬簽章）：換了影片的第一個分段，判斷能不能換 host 時就要用使用者的節點
+  test("next video's first segment with an akamai user node: not swapped onto akamai with a borrowed signature", async () => {
+    const env = boot({ cdnHost: AKAM, autoSpeedHosts: [AKAM, HW] }, VIDEO_URL, (e) => e.window.sessionStorage.setItem("__CDN_SWITCHER_AUTO__", JSON.stringify({ host: HW })));
+    const mh = env.internals("main-hook");
+    onPlayerCid(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    assert.equal(mh.autoHost(), HW);
+    onPlayerCid(env, 6);
+    env.fetchHandler = () => fakeResponse({ status: 206, body: "x".repeat(16) });
+    const url = `https://${COS}/upgcxcode/4/5/6/v80.m4s?deadline=${FUTURE}`;
+    await env.window.fetch(url);
+    assert.equal(env.fetchCalls[env.fetchCalls.length - 1].url, url, "no akamai URL without its own token: left on bilibili's host");
+    assert.equal(mh.autoHost(), null);
+    await env.settle();
+    env.close();
+  });
+  // 審查第 2 輪 2：救援測完時播放器暫時不在（SPA 換頁）或網址換了 → 不套用，不整頁重載
+  for (const [name, change] of [
+    ["the player is gone (SPA rebuild)", (env) => { env.window.player = undefined; }],
+    ["the page moved to another video URL", (env) => { env.window.history.pushState({}, "", "/video/BV1other/"); }],
+  ]) {
+    test(`a rescue finishing while ${name} is dropped: no reload, nothing carried in sessionStorage`, async () => {
+      const env = boot({ autoSpeedHosts: [HOST, HW] });
+      const mh = env.internals("main-hook");
+      slowSpeedFetch(env, { [HW]: "fast" }, 200);
+      const posted = capture(env);
+      onPlayerCid(env, 3); mh.rewriteRoot(playurl(), "playurl");
+      addVideo(env, { paused: false, buffered: [0, 10.2] });
+      mh.FALLBACK.holdUntil = 0;
+      assert.equal(mh.maybeFallback("stalled"), true);
+      change(env);
+      await untilEnd(env, posted);
+      assert.equal(mh.autoHost(), null);
+      assert.equal(env.window.sessionStorage.getItem("__CDN_SWITCHER_AUTO__"), null);
+      assert.equal(mh.isFailed(HOST), false, "the failure noted for the previous video is withdrawn");
+      env.close();
+    });
+  }
+  // 審查第 2 輪 3a：開測時還不知道是哪支影片，測到一半播放器才讀得到 → 同一支影片，照樣套用
+  test("the video was unknown when the rescue started and becomes known mid-test: still applied", async () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    slowSpeedFetch(env, { [HW]: "fast" }, 200);
+    const posted = capture(env);
+    mh.noteEarlySample(`https://${COS}/upgcxcode/1/2/3/v80.m4s?deadline=${FUTURE}`); // a sample to test with, but no playurl seen: video unknown
+    addVideo(env, { paused: false, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    assert.equal(mh.maybeFallback("stalled"), true);
+    onPlayerCid(env, 3);
+    await untilEnd(env, posted);
+    assert.equal(mh.autoHost(), HW);
+    env.close();
+  });
+  // 審查第 2 輪 3b：覆寫套用時不知道是哪支影片，之後網址換了才第一次知道 cid → 是下一支，取消
+  test("an override applied while the video was unknown is dropped when the first known cid comes with a new page URL", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    env.window.player = { reload() {}, getCurrentTime: () => 0, seek() {} };
+    mh.applyRescuePick(HW, "stall");
+    assert.equal(mh.autoHost(), HW);
+    env.window.history.pushState({}, "", "/video/BV1next/");
+    onPlayerCid(env, 6); mh.checkVideoKey();
+    assert.equal(mh.autoHost(), null);
+    env.close();
+  });
+  // 審查第 2 輪 4：別支影片的 playurl 不送 debug 快照（覆寫暫時拿掉的那一刻 popup 會以為沒有覆寫），也不改「原始」節點
+  test("another video's playurl posts no debug snapshot and keeps the playing video's original host", () => {
+    const { env, mh } = (() => { const e = boot({ autoSpeedHosts: [HOST, HW] }, VIDEO_URL, (x) => x.window.sessionStorage.setItem("__CDN_SWITCHER_AUTO__", JSON.stringify({ host: HW }))); return { env: e, mh: e.internals("main-hook") }; })();
+    onPlayerCid(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    const given = mh.debug.playurlGiven;
+    const posted = capture(env);
+    const other = video6(); other.data.dash.video[0].baseUrl = other.data.dash.video[0].baseUrl.replace(COS, ALI);
+    mh.rewriteRoot(other, "playurl");
+    assert.deepEqual(posted.filter((m) => m.dir === "debug"), []);
+    assert.equal(mh.debug.playurlGiven, given);
+    assert.equal(mh.autoHost(), HW);
+    env.close();
+  });
+  // 審查第 2 輪 5：播放器剛換到下一支、tick 還沒跑，下一支的分段失敗要記在使用者的節點，不是前一支的救援節點
+  test("a segment failure right after the player moved on is charged to the node the new video uses", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] }, VIDEO_URL, (e) => e.window.sessionStorage.setItem("__CDN_SWITCHER_AUTO__", JSON.stringify({ host: HW })));
+    const mh = env.internals("main-hook");
+    onPlayerCid(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, buffered: [0, 10.0], currentTime: 10 });
+    mh.FALLBACK.holdUntil = 0;
+    onPlayerCid(env, 6);
+    mh.onSegFailure("http-403");
+    assert.equal(mh.isFailed(HW), false, "the previous video's rescue node is not blamed");
+    assert.equal(mh.autoHost(), null);
+    mh.stopAutoTest();
     env.close();
   });
   // 審查 F8：背景分頁的每秒 tick 被節流時，換了影片的分段也要先回到使用者的節點
