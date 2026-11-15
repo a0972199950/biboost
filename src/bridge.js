@@ -64,6 +64,24 @@
   // 开测（autotest-start）要先读 storage 才知道该不该 armed；读回来之前这一轮就结束了（刚开测就切到背景）：
   // 不 armed、也不清 storage 的旗标（等于没开测过，之后照常由前景分页来测）
   var installStartSeq = 0, installEndSeq = 0;
+  // 分页在背景（或影片在子母画面，一律算背景）：isolated world 读到的 DOM 状态，页面脚本改不了
+  function pageHidden() {
+    try {
+      if (document.visibilityState === "hidden" || document.pictureInPictureElement) return true;
+      if (window.documentPictureInPicture && window.documentPictureInPicture.window) return true;
+      var vs = document.getElementsByTagName("video");
+      for (var i = 0; i < vs.length; i++) if (vs[i].webkitPresentationMode === "picture-in-picture") return true;
+    } catch (e) {}
+    return false;
+  }
+  // 安装后那次测速期间，分页曾经进过背景：autotest-end 可能晚几秒才到（卡住的连线 abort 后不一定马上结束），
+  // 那时分页可能已经切回前景 —— 只看「讯息到的那一刻」会把该补测的那次漏掉，安装后的优化就再也不会跑
+  var installSawHidden = false;
+  function noteInstallHidden() { if (installStartSeq > installEndSeq && pageHidden()) installSawHidden = true; }
+  try {
+    document.addEventListener("visibilitychange", noteInstallHidden, true);
+    ["enterpictureinpicture", "webkitpresentationmodechanged"].forEach(function (ev) { document.addEventListener(ev, noteInstallHidden, true); });
+  } catch (e) {}
 
   function pushConfig(cfg) {
     try { window.localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
@@ -189,6 +207,7 @@
       if (d.payload.reason === "install") {
         try {
           var seq = ++installStartSeq;
+          installSawHidden = pageHidden();
           chrome.storage.local.get(INSTALL_SIG_KEYS, function (items) {
             if (installEndSeq >= seq) return;
             installTestArmed = !!items.installTestPending;
@@ -209,10 +228,12 @@
       //  - 分页真的在背景（见下方）；
       //  - 使用者在测的期间没有自己改节点设定（节点、清单／自订模式、开关跟开测时一样，installTestPending 还是 false）——popup 选节点会取消安装后的优化
       if (d.payload && d.payload.reason === "install") {
+        var sawHidden = installSawHidden || pageHidden();
         var wasArmed = installTestArmed, armedHost = installArmedHost;
-        installTestArmed = false; installArmedHost = null; installEndSeq = installStartSeq;
-        // 分页真的在背景才补：isolated world 读到的 visibilityState 页面脚本改不了，伪造的 rerun（分页在前景时）一律不理
-        if (d.payload.rerun && wasArmed && document.visibilityState === "hidden") {
+        installTestArmed = false; installArmedHost = null; installEndSeq = installStartSeq; installSawHidden = false;
+        // 分页真的进过背景才补（测的期间曾经 hidden／子母画面，或现在就是）：isolated world 读到的状态页面脚本改不了，
+        // 分页从头到尾都在前景时的 rerun（伪造的）一律不理
+        if (d.payload.rerun && wasArmed && sawHidden) {
           try {
             chrome.storage.local.get(INSTALL_SIG_KEYS, function (items) {
               if (items.installTestPending || installSig(items) !== armedHost) return;

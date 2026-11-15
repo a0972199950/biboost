@@ -1252,6 +1252,81 @@ describe("background tab: no automatic switching at all (#46 #47)", () => {
   const capture = (env) => { const p = []; env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) p.push(m); }; return p; };
   const untilEnd = async (env, posted) => { for (let i = 0; i < 200 && !posted.some((m) => m.dir === "autotest-end"); i++) await env.settle(10); };
   const HW = "upos-sz-mirrorhw.bilivideo.com";
+  const video6 = () => JSON.parse(JSON.stringify(playurl()).split("/1/2/3/").join("/4/5/6/"));
+  const onPlayerCid = (env, cid, extra = {}) => { env.window.player = { reload() {}, getCurrentTime: () => 10, seek() {}, getManifest: () => ({ cid }), ...extra }; };
+
+  // 審查 F1：上一支影片開始的救援，測完才換到下一支 → 不能套到新影片上
+  test("a rescue started on one video is not applied after the player moved to the next one mid-test", async () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    slowSpeedFetch(env, { [HW]: "fast" }, 200);
+    const posted = capture(env);
+    let reloads = 0; onPlayerCid(env, 3, { reload() { reloads++; } });
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    assert.equal(mh.maybeFallback("stalled"), true);
+    onPlayerCid(env, 6, { reload() { reloads++; } }); // the user clicked the next video while the test runs
+    mh.rewriteRoot(video6(), "playurl");
+    await untilEnd(env, posted);
+    assert.equal(mh.autoHost(), null, "the new video was not stalled");
+    assert.equal(reloads, 0);
+    assert.equal(mh.isFailed(HW), false);
+    env.close();
+  });
+  // 審查 F2：上一支影片暫緩的分段失敗，換影片後不能馬上觸發救援
+  test("a deferred segment failure of the previous video is dropped when the player moves on", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    onPlayerCid(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    mh.segFail.reason = "http-403"; mh.segFail.at = Date.now(); mh.segFail.needSecond = true;
+    onPlayerCid(env, 6); mh.checkVideoKey();
+    assert.equal(mh.segFail.reason, null);
+    assert.equal(mh.segFail.needSecond, false);
+    env.close();
+  });
+  // 審查 F3：別支影片的 playurl 不能蓋掉正在播影片的畫質／碼率對照與備援清單
+  test("another video's playurl leaves the playing video's quality/bitrate table, sample and backups alone", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    onPlayerCid(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    const before = { ...mh.videoQnByPath() }, backups = mh.backupHosts().slice(), lastQn = mh.debug.lastQn;
+    const other = video6(); other.data.quality = 16; other.data.dash.video[0].id = 16;
+    other.data.dash.video[0].backupUrl = ["https://upos-sz-mirrorcoso1.bilivideo.com/upgcxcode/4/5/6/v80.m4s"];
+    mh.rewriteRoot(other, "playurl");
+    for (const [path, qn] of Object.entries(before)) assert.equal(mh.videoQnByPath()[path], qn, "the playing video's entries stay");
+    assert.deepEqual(mh.backupHosts(), backups);
+    assert.equal(mh.debug.lastQn, lastQn);
+    env.close();
+  });
+  // 審查 F4：子母畫面一律算背景，分頁本身還在前景也一樣
+  test("picture-in-picture counts as background even while the tab itself is visible", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    Object.defineProperty(env.window.document, "pictureInPictureElement", { configurable: true, get: () => v });
+    assert.equal(mh.maybeFallback("stalled"), false, "standard PiP");
+    Object.defineProperty(env.window.document, "pictureInPictureElement", { configurable: true, get: () => null });
+    Object.defineProperty(v, "webkitPresentationMode", { configurable: true, get: () => "picture-in-picture" });
+    assert.equal(mh.maybeFallback("stalled"), false, "Safari PiP");
+    Object.defineProperty(v, "webkitPresentationMode", { configurable: true, get: () => "inline" });
+    assert.equal(mh.maybeFallback("stalled"), true, "back inline in a visible tab: rescue as usual");
+    env.close();
+  });
+  // 審查 F8：背景分頁的每秒 tick 被節流時，換了影片的分段也要先回到使用者的節點
+  test("a segment of the next video is routed to the user's node even before the tick notices the switch", () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] }, VIDEO_URL, (e) => e.window.sessionStorage.setItem("__CDN_SWITCHER_AUTO__", JSON.stringify({ host: HW })));
+    const mh = env.internals("main-hook");
+    onPlayerCid(env, 3); mh.rewriteRoot(playurl(), "playurl");
+    assert.equal(mh.autoHost(), HW);
+    onPlayerCid(env, 6);
+    const out = mh.swapSegHost(`https://${COS}/upgcxcode/4/5/6/v80.m4s?deadline=${FUTURE}`);
+    assert.equal(new URL(out).host, HOST);
+    assert.equal(mh.autoHost(), null);
+    env.close();
+  });
 
   test("a rescue that started in the foreground is dropped when the tab goes hidden mid-test: no settings written, no reload, no marks, rescue still possible later", async () => {
     const env = boot({ autoSpeedHosts: [HOST, HW] });

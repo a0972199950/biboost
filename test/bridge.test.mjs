@@ -70,6 +70,37 @@ describe("autotest-done → storage", () => {
     assert.equal(env.storage.cdnHost, B);
     env.close();
   });
+  // 審查 F5：autotest-end 晚到、分頁已經切回前景：測的期間進過背景，照樣把旗標還回去
+  test("the tab went hidden during the install test but is visible again when the late rerun arrives: still handed back", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    hideTab(env); env.window.document.dispatchEvent(new env.window.Event("visibilitychange"));
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
+    env.window.document.dispatchEvent(new env.window.Event("visibilitychange"));
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true);
+    env.close();
+  });
+  test("the next install test in this frame does not inherit the previous one's hidden spell", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    hideTab(env); env.window.document.dispatchEvent(new env.window.Event("visibilitychange"));
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } }); // 前景補測
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } }); // 前景時的 rerun = 偽造
+    assert.equal(env.storage.installTestPending, false);
+    env.close();
+  });
+  test("picture-in-picture during the install test counts as background for the hand-back", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    Object.defineProperty(env.window.document, "pictureInPictureElement", { configurable: true, get: () => ({}) });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true);
+    env.close();
+  });
   test("a forged rerun without a real armed test does not create a pending test", () => {
     const env = boot({});
     env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });

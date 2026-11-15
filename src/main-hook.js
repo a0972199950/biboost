@@ -455,15 +455,18 @@
     try {
       var p = window.player, m = p && typeof p.getManifest === "function" ? p.getManifest() : null;
       var c = m && m.cid;
-      return (typeof c === "number" || typeof c === "string") && /^\d+$/.test(String(c)) ? String(c) : null;
+      return (typeof c === "number" || typeof c === "string") && /^[1-9]\d*$/.test(String(c)) ? String(c) : null;
     } catch (e) { return null; }
   }
   // 换到另一支影片：重置回退状态；不是这页的第一支影片（整页重载带过来的覆写要留着）的话，
   // 救援的覆写只管前一支，取消 —— 在 playurl 改写之前呼叫，这份 playurl 才会照使用者的节点改写
-  function noteVideoKey(key) {
+  function noteVideoKey(key, by) {
     if (key == null || key === mediaKey) return;
     var nextVideo = mediaKey != null;
+    jlog("page.video", { cid: key, from: mediaKey || "", by: by || "" });
     mediaKey = key; resetFallbackState();
+    // 前一支影片暂缓的分段失败、顺播计时不算到这一支（不然新影片一开播就被救援）
+    segFail.reason = null; segFail.needSecond = false; progressSince = null;
     if (nextVideo && autoHost) {
       jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) });
       autoHost = null; renderOverlay(); postDebug();
@@ -600,10 +603,13 @@
   function startRescue(cands, reason) {
     var need = currentBitrateBps(), floor = need * RESCUE_HEADROOM;
     var good = need ? Math.max(floor, Math.min(UHD_BPS, need * 4)) : UHD_BPS;
-    var from = effHost();
+    var from = effHost(), forKey = mediaKey;
     var started = runAutoSpeedTest(cands, "stall", function (how, res) {
       if (how === "stopped") { FALLBACK.userStopped = true; return; }
       if (how !== "done" || !res) return; // 被手动测速取代：手动测速的结果会自己套用
+      // 测的期间换了影片（使用者点了下一支、自动连播）：这次救援是给前一支影片的，新影片没卡，不套用、不记失败
+      checkVideoKey();
+      if (mediaKey !== forKey) { jlog("fb.drop", { reason: "next-video", pick: res.pick ? shortHost(res.pick) : "" }); return; }
       // 一个都连不上（都没收到资料）：多半是整体断网，不是这些节点坏。不记失败，目前节点也撤销，过一下再试
       // 只算连线层的失败（连不上、逾时）；HTTP 403 之类代表节点有回应，不是断网
       var allDead = res.results.length > 0 && res.results.every(function (r) { return r.error && !r.bytes && !/^http-/.test(r.error); });
@@ -688,7 +694,18 @@
   // 第一个分段又因为一起抢频宽慢了几秒，被当成「线路死了」连换好几次节点，还把使用者正在看的分页一起重载。
   // 子母画面（影片弹成小窗、主视窗切到别的分页）也算背景，是刻意的决定：主视窗可能正在播另一支 B 站影片，
   // 两支同时在播时无法确定使用者在看哪一支，所以一律不救（Chrome 实测此时 visibilityState 是 hidden）
-  function tabHidden() { try { return document.visibilityState === "hidden"; } catch (e) { return false; } }
+  function tabHidden() { try { return document.visibilityState === "hidden" || inPip(); } catch (e) { return false; } }
+  // 子母画面一律算背景（使用者决定：主视窗可能同时在播另一支影片，无法确定在看哪一支）。分页还在前景、只把影片弹出去时，
+  // visibilityState 仍是 visible，要另外看：标准 PiP、Safari 的 webkitPresentationMode、Document PiP
+  function inPip() {
+    try {
+      if (document.pictureInPictureElement) return true;
+      if (window.documentPictureInPicture && window.documentPictureInPicture.window) return true;
+      var vs = document.getElementsByTagName("video");
+      for (var i = 0; i < vs.length; i++) if (vs[i].webkitPresentationMode === "picture-in-picture") return true;
+    } catch (e) {}
+    return false;
+  }
 
   // 这个 video 播放过没有（played 有区间）：没播过的暂停 = 还没开始，不是卡住
   function hasPlayed(v) { try { return !!(v.played && v.played.length); } catch (e) { return false; } }
@@ -895,7 +912,8 @@
     // akamai 要带它自己的 token，记不到这个档案在 akamai 的原始 URL 就留在原 host（硬换只会 403）
     return !needsOwnSig(effHost()) || !!knownUrlOn(url, effHost());
   }
-  function swapSegHost(url) { return urlOnHost(url, effHost()); }
+  // 先确认播放器还在同一支影片（背景分页的每秒 tick 会被节流，换了影片的覆写要在导向分段前就取消）
+  function swapSegHost(url) { checkVideoKey(); return urlOnHost(url, effHost()); }
 
   // 实测（2026-10）：bilivideo 自家节点（upos-* / cn-*）共用同一套签名，换 host 就能用；
   // akamai 的 URL 多一个 hdnts token，绑单一档案，换 host、借别的档案的 token 都是 403。
@@ -1221,24 +1239,27 @@
     track.backupUrl = rest; if ("backup_url" in track) track.backup_url = rest;
     return top; // 回传完整 URL（不只 host），让呼叫端自行取用
   }
-  function rewriteContainer(d) {
+  // foreign = 别支影片的 playurl（预载、预览，见 rewriteRoot）：只改写网址，正在播那支的画质／码率对照、测速样本、
+  // 备援清单与 debug 都不动 —— 不然救援的门槛会照别支影片的码率算。对照表只追加（路径含 cid，不会跟正在播的冲突），
+  // 播放器之后真的换过去时还查得到
+  function rewriteContainer(d, foreign) {
     if (!d || typeof d !== "object") return false;
     var changed = false, vHost = null, aHost = null;
     var dash = d.dash;
     if (dash && typeof dash === "object") {
-      videoQnByPath = {}; videoBwByPath = {}; // 这份 dash 的所有画质档，重建路径→画质／码率对照
+      if (!foreign) { videoQnByPath = {}; videoBwByPath = {}; } // 这份 dash 的所有画质档，重建路径→画质／码率对照
       eachTrack(dash.video, function (top, track) {
         changed = true; var h = hostOf(top);
         if (track && typeof track.id === "number") videoQnByPath[pathOf(top)] = track.id; // dash 的 id 即画质代码 qn
         if (track && typeof track.bandwidth === "number") videoBwByPath[pathOf(top)] = track.bandwidth;
-        if (!vHost) { vHost = h; noteEarlySample(top); }
+        if (!vHost) { vHost = h; if (!foreign) noteEarlySample(top); }
       });
       eachTrack(dash.audio, function (top) { changed = true; if (!aHost) aHost = hostOf(top); });
       if (dash.dolby && Array.isArray(dash.dolby.audio)) eachTrack(dash.dolby.audio, function (top) { changed = true; if (!aHost) aHost = hostOf(top); });
       if (dash.flac && dash.flac.audio) { var top1 = applyTrack(dash.flac.audio); if (top1) { changed = true; if (!aHost) aHost = hostOf(top1); } }
     }
-    if (Array.isArray(d.durl)) eachTrack(d.durl, function (top) { changed = true; var h = hostOf(top); if (!vHost) { vHost = h; noteEarlySample(top); } });
-    if (changed) {
+    if (Array.isArray(d.durl)) eachTrack(d.durl, function (top) { changed = true; var h = hostOf(top); if (!vHost) { vHost = h; if (!foreign) noteEarlySample(top); } });
+    if (changed && !foreign) {
       debug.pickVideoHost = vHost || debug.pickVideoHost;
       debug.pickAudioHost = aHost || debug.pickAudioHost;
       if (typeof d.quality === "number") debug.lastQn = d.quality;
@@ -1250,7 +1271,7 @@
     for (var i = 0; i < arr.length; i++) { var top = applyTrack(arr[i]); if (top) onTop(top, arr[i]); }
   }
   function rewriteRoot(root, source) {
-    var heldAutoHost = null;
+    var heldAutoHost = null, foreign = false;
     try {
       if (!root || typeof root !== "object") return false;
       var d = root.data || root.result || root;
@@ -1264,13 +1285,13 @@
       // 照使用者的节点改写，这支影片的覆写留着 —— 播放器真的换过去时由 checkVideoKey（每秒）取消
       var key = peekMediaKey(d), cur = key != null ? playerVideoKey() : null;
       if (key != null) {
-        if (cur == null || cur === key) noteVideoKey(key);
-        else if (autoHost && key !== mediaKey) { heldAutoHost = autoHost; autoHost = null; }
+        if (cur == null || cur === key) noteVideoKey(key, cur == null ? "playurl" : "player");
+        else { foreign = true; if (autoHost && key !== mediaKey) { heldAutoHost = autoHost; autoHost = null; } }
       }
       pendingBackupHosts = [];
-      var changed = rewriteContainer(d);
+      var changed = rewriteContainer(d, foreign);
       if (changed) {
-        if (pendingBackupHosts.length) backupHosts = pendingBackupHosts;
+        if (pendingBackupHosts.length && !foreign) backupHosts = pendingBackupHosts;
         debug.lastSource = source; debug.rewriteCount++; renderOverlay(); postDebug();
         swapLogged = false;
         jlog("cdn.rewrite", { src: source, orig: shortHost(debug.playurlGiven), to: effHost() === "backup" ? "backup" : shortHost(effHost()), backups: backupHosts.map(shortHost), dash: d && d.dash ? 1 : 0 });
@@ -1281,7 +1302,7 @@
     finally { if (heldAutoHost) autoHost = heldAutoHost; }
   }
   // 每秒：播放器换到别支影片了（自动连播、页内点下一支）就当成换影片 —— 别支影片的 playurl 不算（见 rewriteRoot）
-  function checkVideoKey() { var k = playerVideoKey(); if (k != null) noteVideoKey(k); }
+  function checkVideoKey() { var k = playerVideoKey(); if (k != null) noteVideoKey(k, "player"); }
   function tryRewriteText(txt, source) {
     if (typeof txt !== "string" || !txt) return null;
     if (txt.indexOf("dash") < 0 && txt.indexOf("durl") < 0 && txt.indexOf("backupUrl") < 0 && txt.indexOf("backup_url") < 0) return null;
@@ -2305,11 +2326,11 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", renderOverlay);
   else renderOverlay();
-  var tickTimer = setInterval(function () { checkVideoKey(); updateSpeed(); checkStall(); checkHealth(); checkSegFailure(); diagTick(); renderOverlay(); postDebug(); }, 1000);
+  var tickTimer = setInterval(function () { checkVideoKey(); onPipChange(); updateSpeed(); checkStall(); checkHealth(); checkSegFailure(); diagTick(); renderOverlay(); postDebug(); }, 1000);
   // 分页切回前景：卡顿计时与健康累计从零开始（背景期间的状态不算），安装后第一支影片的优化补排一次（见 tabHidden）
   function onVisibility() {
     var hidden = tabHidden();
-    jlog("page.vis", { hidden: hidden ? 1 : 0 });
+    jlog("page.vis", { hidden: hidden ? 1 : 0, pip: inPip() ? 1 : 0 });
     if (hidden) { abortAutoTestHidden(); return; }
     stallState.lastTime = -1; stallState.stuckSince = null; stallState.movedAt = 0;
     progressSince = null; // 「连续顺播 30 秒」不能把背景的时间算进去
@@ -2318,6 +2339,16 @@
     maybeScheduleAutoTest();
   }
   try { document.addEventListener("visibilitychange", onVisibility); } catch (e) {}
+  // 进出子母画面不会触发 visibilitychange：同样当成切到背景／回到前景（重复呼叫只是多一次重置，无害）
+  var lastPip = false;
+  function onPipChange() { var p = inPip(); if (p === lastPip) return; lastPip = p; onVisibility(); }
+  try {
+    ["enterpictureinpicture", "leavepictureinpicture", "webkitpresentationmodechanged"].forEach(function (ev) { document.addEventListener(ev, onPipChange, true); });
+    if (window.documentPictureInPicture) window.documentPictureInPicture.addEventListener("enter", function (e) {
+      onPipChange();
+      try { e.window.addEventListener("pagehide", function () { setTimeout(onPipChange, 0); }); } catch (_) {}
+    });
+  } catch (e) {}
 
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
