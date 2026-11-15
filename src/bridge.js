@@ -58,7 +58,9 @@
   // "install" auto test: armed only when storage (which the page cannot write) says one is pending
   // at the time autotest-start arrives; a forged autotest-done with reason "install" is otherwise ignored.
   var installTestArmed = false;
-  var installArmedHost = null; // armed 那一刻 storage 的 cdnHost
+  var installArmedHost = null; // armed 那一刻的节点设定（installSig）
+  var INSTALL_SIG_KEYS = { installTestPending: false, cdnHost: "", cdnMode: "", videoEnabled: true };
+  function installSig(items) { return [items.cdnHost || "", items.cdnMode || "", items.videoEnabled === false ? 0 : 1].join("|"); }
   // 开测（autotest-start）要先读 storage 才知道该不该 armed；读回来之前这一轮就结束了（刚开测就切到背景）：
   // 不 armed、也不清 storage 的旗标（等于没开测过，之后照常由前景分页来测）
   var installStartSeq = 0, installEndSeq = 0;
@@ -187,10 +189,10 @@
       if (d.payload.reason === "install") {
         try {
           var seq = ++installStartSeq;
-          chrome.storage.local.get({ installTestPending: false, cdnHost: DEFAULTS.cdnHost }, function (items) {
+          chrome.storage.local.get(INSTALL_SIG_KEYS, function (items) {
             if (installEndSeq >= seq) return;
             installTestArmed = !!items.installTestPending;
-            installArmedHost = items.cdnHost || ""; // 补测（rerun）前要确认使用者没有自己换过节点
+            installArmedHost = installSig(items); // 补测（rerun）前要确认使用者没有自己改过节点设定
             if (items.installTestPending) chrome.storage.local.set({ installTestPending: false });
           });
         } catch (e) {}
@@ -204,14 +206,16 @@
       // 不然测完没换节点时 armed 会一直悬着（main-hook 先送 autotest-done 再送 autotest-end，不影响正常写入）。
       // 因为分页切到背景而作废（rerun）：把旗标还回 storage，让之后任何一个前景分页接手补测。只在这些条件都成立时才还：
       //  - 真的 armed（开测时 storage 确实有 installTestPending），页面伪造这个讯息造不出原本没有的测速；
-      //  - 使用者在测的期间没有自己换节点（cdnHost 跟开测时一样、installTestPending 还是 false）——popup 选节点会取消安装后的优化
+      //  - 分页真的在背景（见下方）；
+      //  - 使用者在测的期间没有自己改节点设定（节点、清单／自订模式、开关跟开测时一样，installTestPending 还是 false）——popup 选节点会取消安装后的优化
       if (d.payload && d.payload.reason === "install") {
         var wasArmed = installTestArmed, armedHost = installArmedHost;
         installTestArmed = false; installArmedHost = null; installEndSeq = installStartSeq;
-        if (d.payload.rerun && wasArmed) {
+        // 分页真的在背景才补：isolated world 读到的 visibilityState 页面脚本改不了，伪造的 rerun（分页在前景时）一律不理
+        if (d.payload.rerun && wasArmed && document.visibilityState === "hidden") {
           try {
-            chrome.storage.local.get({ installTestPending: false, cdnHost: DEFAULTS.cdnHost }, function (items) {
-              if (items.installTestPending || (items.cdnHost || "") !== armedHost) return;
+            chrome.storage.local.get(INSTALL_SIG_KEYS, function (items) {
+              if (items.installTestPending || installSig(items) !== armedHost) return;
               chrome.storage.local.set({ installTestPending: true });
             });
           } catch (e) {}
