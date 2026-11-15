@@ -58,6 +58,10 @@
   // "install" auto test: armed only when storage (which the page cannot write) says one is pending
   // at the time autotest-start arrives; a forged autotest-done with reason "install" is otherwise ignored.
   var installTestArmed = false;
+  var installArmedHost = null; // armed 那一刻 storage 的 cdnHost
+  // 开测（autotest-start）要先读 storage 才知道该不该 armed；读回来之前这一轮就结束了（刚开测就切到背景）：
+  // 不 armed、也不清 storage 的旗标（等于没开测过，之后照常由前景分页来测）
+  var installStartSeq = 0, installEndSeq = 0;
 
   function pushConfig(cfg) {
     try { window.localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
@@ -182,8 +186,11 @@
         startedAt: Date.now(), maxMs: maxMs > 0 && maxMs < AUTOTEST_MAX_MS ? maxMs : AUTOTEST_MAX_MS };
       if (d.payload.reason === "install") {
         try {
-          chrome.storage.local.get({ installTestPending: false }, function (items) {
+          var seq = ++installStartSeq;
+          chrome.storage.local.get({ installTestPending: false, cdnHost: DEFAULTS.cdnHost }, function (items) {
+            if (installEndSeq >= seq) return;
             installTestArmed = !!items.installTestPending;
+            installArmedHost = items.cdnHost || ""; // 补测（rerun）前要确认使用者没有自己换过节点
             if (items.installTestPending) chrome.storage.local.set({ installTestPending: false });
           });
         } catch (e) {}
@@ -193,11 +200,22 @@
     if (d.dir === "autotest-progress" && d.payload) { if (latestAutoTest) latestAutoTest.done = d.payload.done || 0; return; }
     if (d.dir === "autotest-end") {
       if (latestAutoTest) latestAutoTest.running = false;
-      // 安装后那一次因为分页切到背景而作废（rerun）：把旗标还回 storage，让之后任何一个前景分页接手，这个 frame 解除 armed。
-      // 只有真的 armed（开测时 storage 确实有 installTestPending）才还，页面伪造这个讯息造不出原本没有的测速
-      if (d.payload && d.payload.reason === "install" && d.payload.rerun && installTestArmed) {
-        installTestArmed = false;
-        try { chrome.storage.local.set({ installTestPending: true }); } catch (e) {}
+      // 安装后那一次结束（不论有没有选到节点、是不是作废）：这个 frame 一律解除 armed，
+      // 不然测完没换节点时 armed 会一直悬着（main-hook 先送 autotest-done 再送 autotest-end，不影响正常写入）。
+      // 因为分页切到背景而作废（rerun）：把旗标还回 storage，让之后任何一个前景分页接手补测。只在这些条件都成立时才还：
+      //  - 真的 armed（开测时 storage 确实有 installTestPending），页面伪造这个讯息造不出原本没有的测速；
+      //  - 使用者在测的期间没有自己换节点（cdnHost 跟开测时一样、installTestPending 还是 false）——popup 选节点会取消安装后的优化
+      if (d.payload && d.payload.reason === "install") {
+        var wasArmed = installTestArmed, armedHost = installArmedHost;
+        installTestArmed = false; installArmedHost = null; installEndSeq = installStartSeq;
+        if (d.payload.rerun && wasArmed) {
+          try {
+            chrome.storage.local.get({ installTestPending: false, cdnHost: DEFAULTS.cdnHost }, function (items) {
+              if (items.installTestPending || (items.cdnHost || "") !== armedHost) return;
+              chrome.storage.local.set({ installTestPending: true });
+            });
+          } catch (e) {}
+        }
       }
       return;
     }
@@ -284,6 +302,11 @@
         speedTest = { running: true, results: [], total: 4, error: null, title: speedTest.title, qn: speedTest.qn, avail: null };
         journal("ui.speedtest", { phase: "start", kind: "live" });
         try { window.postMessage({ __cdnSwitcher: 1, dir: "livetest-run", payload: { limits: msg.limits || null } }, "*"); } catch (e) {}
+        sendResponse({ ok: true });
+        return true;
+      }
+      if (msg && msg.type === "CDN_SWITCHER_CLEAR_AUTO") {
+        try { window.postMessage({ __cdnSwitcher: 1, dir: "auto-clear" }, "*"); } catch (e) {}
         sendResponse({ ok: true });
         return true;
       }

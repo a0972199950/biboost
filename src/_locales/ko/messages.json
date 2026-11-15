@@ -470,6 +470,9 @@
   "customDelTitle": {
     "message": "목록에서 제거"
   },
+  "autoHostHint": {
+    "message": "재생이 멈춰서 이 탭만 {host}(으)로 자동 전환했어요. 직접 고른 노드를 누르면 되돌릴 수 있어요"
+  },
   "customClearTitle": {
     "message": "사용자 지정 노드 목록을 비울까요?"
   },

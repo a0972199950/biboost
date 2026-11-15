@@ -785,3 +785,39 @@ describe("advanced settings: old / new homepage switch", () => {
     env.close();
   });
 });
+
+// 救援只在卡住的分頁覆寫節點、不改設定：popup 要說明這個分頁暫用哪個節點，點使用者自己的節點可以換回來
+describe("a tab using a rescue-picked node (per-tab override)", () => {
+  const HW = "upos-sz-mirrorhw.bilivideo.com";
+  async function bootWithTab(autoHost) {
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, cdnMode: "list", cdnHost: DEFAULT_HOST },
+      tabs: [{ id: 7, url: "https://www.bilibili.com/video/BV1xx411c7mD", status: "complete" }],
+      tabResponder: (msg) => (msg.type === "CDN_SWITCHER_GET_DEBUG" ? { debug: { enabled: true, cdnHost: DEFAULT_HOST, autoHost }, autoTest: null } : { ok: true }) });
+    env.fetchHandler = () => { throw new TypeError("Failed to fetch"); };
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "popup.js"].forEach((f) => env.load(f));
+    await env.settle(20);
+    return env;
+  }
+  test("the hint says which node this tab is using; clicking the user's own node switches this tab back without touching the settings", async () => {
+    const env = await bootWithTab(HW);
+    const hint = env.window.document.getElementById("autoHostHint");
+    assert.equal(hint.style.display, "block");
+    assert.ok(hint.textContent.includes("upos-sz-mirrorhw"), hint.textContent);
+    assert.ok(!hint.textContent.includes(".bilivideo.com"));
+    const p = env.internals("popup");
+    const own = Array.from(p.els.cdnSelectList.children).find((r) => r.dataset.value === DEFAULT_HOST);
+    own.click();
+    assert.ok(env.tabMessages.some((m) => m.msg.type === "CDN_SWITCHER_CLEAR_AUTO"), "asks the tab to drop its override");
+    assert.equal(env.storage.cdnHost, DEFAULT_HOST);
+    assert.equal(hint.style.display, "none");
+    env.close();
+  });
+  test("no override: no hint, and clicking the current node does nothing", async () => {
+    const env = await bootWithTab(null);
+    assert.equal(env.window.document.getElementById("autoHostHint").style.display, "none");
+    const p = env.internals("popup");
+    Array.from(p.els.cdnSelectList.children).find((r) => r.dataset.value === DEFAULT_HOST).click();
+    assert.equal(env.tabMessages.some((m) => m.msg.type === "CDN_SWITCHER_CLEAR_AUTO"), false);
+    env.close();
+  });
+});

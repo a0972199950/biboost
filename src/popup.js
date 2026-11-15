@@ -839,7 +839,7 @@ function buildCdnSelectList(options) {
     }
     row.addEventListener("click", function () {
       closeCdnSelect();
-      if (o.value === cdnSelectValue) return;
+      if (o.value === cdnSelectValue) { if (tabAutoHost) clearTabAutoHost(); return; } // 这个分页暂用救援节点：点自己的节点＝换回来
       selectCdnValue(o.value);
       currentCdnHost = o.value;
       save({ videoEnabled: true, cdnHost: o.value, installTestPending: false }); // 使用者自己選了，安裝後的優化取消
@@ -1443,6 +1443,24 @@ document.getElementById("staleReloadBtn").addEventListener("click", function () 
   });
 });
 
+// -------- 这个分页卡顿时被自动换了节点（只在这个分页，设定不变）：在节点选单下方说明，点自己选的节点可以换回来 --------
+var tabAutoHost = null;
+function setTabAutoHost(h) {
+  tabAutoHost = h || null;
+  var el = document.getElementById("autoHostHint");
+  if (!el) return;
+  if (!tabAutoHost) { el.style.display = "none"; el.textContent = ""; return; }
+  var name = tabAutoHost === "backup" ? t("mhCdnTargetBackup") : String(tabAutoHost).replace(/\.bilivideo\.(com|cn)$/i, "");
+  el.textContent = t("autoHostHint").replace("{host}", name);
+  el.style.display = "block";
+}
+function clearTabAutoHost() {
+  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    if (tabs && tabs[0]) sendToTop(tabs[0].id, { type: "CDN_SWITCHER_CLEAR_AUTO" }, function () { void chrome.runtime.lastError; });
+  });
+  setTabAutoHost(null);
+}
+
 function pollDebug() {
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
     if (!tabs || !tabs[0]) return;
@@ -1454,6 +1472,7 @@ function pollDebug() {
         setStale(maybeStale && debugMissCount >= 2);
         renderDebug(null);
         renderOptimizing(null);
+        setTabAutoHost(null);
         // 第一次聯絡不上就立刻再確認一次，不等下一秒的輪詢：popup 一打開就能顯示提示，不會晚一秒才把下面的內容往下推
         if (maybeStale && debugMissCount === 1) pollDebug();
         return;
@@ -1462,6 +1481,7 @@ function pollDebug() {
       setStale(false);
       renderDebug(resp && resp.debug);
       renderOptimizing(resp && resp.autoTest);
+      setTabAutoHost(resp && resp.debug && !resp.debug.live && resp.debug.autoHost);
     });
   });
 }
@@ -2140,7 +2160,8 @@ function renderSpeedtest(st) {
 
 // 测速页点一下节点列即直接切换：写回目前那份节点（国家清单／自订节点列表）的选择并存档，主画面下次打开会同步显示
 function applySpeedtestHost(host) {
-  if (activeHosts().indexOf(host) < 0 || (videoOn && host === currentCdnHost)) return;
+  if (activeHosts().indexOf(host) < 0) return;
+  if (videoOn && host === currentCdnHost) { if (tabAutoHost) clearTabAutoHost(); return; }
   currentCdnHost = host;
   videoOn = true;
   (cdnMode === "custom" ? els.modeCustom : els.modeList).checked = true;

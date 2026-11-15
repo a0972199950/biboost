@@ -470,6 +470,9 @@
   "customDelTitle": {
     "message": "从列表移除"
   },
+  "autoHostHint": {
+    "message": "这个标签页卡顿时自动改用了 {host}，只影响这个标签页。点你选的节点可以换回来"
+  },
   "customClearTitle": {
     "message": "清空自定义节点列表？"
   },
