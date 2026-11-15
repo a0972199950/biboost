@@ -311,6 +311,7 @@
   //  2) 候选 = 节点清单 + playurl 里 B 站给的备援 host（baseUrl/backupUrl），扣掉失败的与目前的；
   //     B 站备援也要先测，不再盲换（#41 盲换到的 akamai 只有 61 kB/s）；
   //  3) 依序测速（runAutoSpeedTest 的 "stall"），第一个够快的就换过去；都不够快就换最快、而且撑得住目前画质的；
+  //     换节点只在这个分页覆写（autoHost），不改设定、不影响其他分页（见 applyRescuePick）；分页在背景时一律不做（见 tabHidden）；
   //     测过但没选上的也记为失败，所以候选只会越来越少，不会无限循环；
   //  4) 候选用完（或都不够快）还卡，才弹一个不会自动消失的提示，让用户自己按「重載並切換至備用URL」或「關閉」决定。
   // 换过去后新节点有 SWITCH_GRACE_MS 宽限；还卡就回到 1)。
@@ -446,7 +447,6 @@
     healthReset();
     if (grace !== false) FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS);
   }
-  var rescueReloadHost = null; // 救援选了清单节点、写进设定后等 config 回来：回来时这个分页一律 reload
 
   // FALLBACK.failed[host] = 失败标记到期的时间
   function isFailed(h, now) { var until = FALLBACK.failed[h]; return !!until && (now || Date.now()) < until; }
@@ -499,19 +499,15 @@
     }
   }
 
-  // 救援测速选出的节点：清单里的写进设定（同用户自己换节点，所有分页共用；config 回来时 reload 并弹 toast）；
-  // B 站备援只在这个分页覆写；选到的正是用户设定的节点（目前在用 B 站备援覆写）就取消覆写
+  // 救援测速选出的节点：只在这个分页覆写（autoHost），不写进设定 —— 设定是使用者自己的选择，救援是不得已才发生的；
+  // 其他分页、之后开的分页照样用设定里的节点，不会被重载（回报 #46 #47：一个分页换节点，正在看的分页跟着重载）。
+  // 选到的正是用户设定的节点（目前在用覆写）就取消覆写
   function applyRescuePick(pick, reason) {
     var from = effHost();
-    FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS); // 写设定要绕 bridge 一圈，先挡住这段空窗
+    FALLBACK.holdUntil = Math.max(FALLBACK.holdUntil, Date.now() + SWITCH_GRACE_MS);
     debug.lastError = "auto-fallback(" + reason + "): " + from + " -> " + pick;
     var fv = getMainVideo();
     jlog("fb.switch", { reason: reason, from: shortHost(from), to: shortHost(pick), buf: fv ? forwardBufferSec(fv).toFixed(1) : "-" });
-    if ((cfg.autoSpeedHosts || []).indexOf(pick) >= 0 && pick !== cfg.cdnHost) {
-      rescueReloadHost = pick;
-      postAutoTest("autotest-done", { host: pick, from: cfg.cdnHost, reason: "stall" });
-      return;
-    }
     showToast(MSGS.mhToastAutoSwitched.replace("{host}", pick));
     applyAutoHost(pick === cfg.cdnHost ? null : pick);
   }
@@ -527,6 +523,7 @@
   // 回传 true = 这次有动作（开始测速、换节点或弹询问），呼叫端可以据此清掉自己的累计
   function maybeFallback(reason) {
     if (!ACTIVE || !vodFallbackOn()) return false;
+    if (tabHidden()) return false; // 背景分页：不换节点、不记失败（分段失败、video error 也走这里）
     if (!WATCH_RE.test(location.pathname)) return false; // 非观看页（如首页 hover 预览）不回退
     if (autoTestRunning || speedTestRunning) return false; // 正在测速：等它的结果，不另外切
     if (effHost() === "backup" || FALLBACK.asked) return false;
@@ -600,6 +597,7 @@
   var lastSegFailAt = 0, SEG_FAIL_STUCK_MS = 60000;
   function onSegFailure(reason) {
     lastSegFailAt = Date.now();
+    if (tabHidden()) return; // 背景分页：不暂缓、不救援（见 tabHidden）
     var v = getMainVideo(), buf = v ? forwardBufferSec(v) : 0, now = Date.now();
     if (buf >= SEG_FAIL_BUFFER_SEC) {
       if (!segFail.reason) jlog("fb.defer", { reason: reason, buf: buf.toFixed(1) });
@@ -640,6 +638,11 @@
     });
   }
 
+  // 分页不在前景（切到别的分页、视窗最小化）：使用者没在看，一律不做自动切换、不跑自动测速，计时也不累计。
+  // 回报 #46 #47：在背景开了好几支影片，背景分页的 video 一直是 readyState 0（Chrome 背景分页不载入媒体），
+  // 第一个分段又因为一起抢频宽慢了几秒，被当成「线路死了」连换好几次节点，还把使用者正在看的分页一起重载
+  function tabHidden() { try { return document.visibilityState === "hidden"; } catch (e) { return false; } }
+
   // 这个 video 播放过没有（played 有区间）：没播过的暂停 = 还没开始，不是卡住
   function hasPlayed(v) { try { return !!(v.played && v.played.length); } catch (e) { return false; } }
 
@@ -663,7 +666,7 @@
   // 若把这当成「使用者主动暂停」就永远判不到卡住 —— 用前向缓冲区分：还有缓冲的暂停
   // 才是使用者主动的；缓冲耗尽的暂停继续累计。
   function checkStall() {
-    if (!(IS_LIVE_PAGE ? liveActive() : ACTIVE) || !(IS_LIVE_PAGE ? cfg.autoFallback : vodFallbackOn())) { stallState.lastTime = -1; stallState.stuckSince = null; return; }
+    if (!(IS_LIVE_PAGE ? liveActive() : ACTIVE) || !(IS_LIVE_PAGE ? cfg.autoFallback : vodFallbackOn()) || tabHidden()) { stallState.lastTime = -1; stallState.stuckSince = null; return; }
     // 模拟模式：连播放器状态检查也略过 —— 第一次回退的 player.reload() 会让影片短暂
     // 暂停/readyState 0，若照常重置计时器，第二段（询问）会一直等不到
     var simulating = Date.now() < simulateStallUntil;
@@ -785,6 +788,7 @@
       health.hist = []; health.freezeAt = 0; health.freezeCounted = false; health.lastT = -1; return;
     }
     if (autoTestRunning || speedTestRunning) { healthQuiet(); return; } // 测速抢频宽：测的期间与刚测完的缓冲变化不算
+    if (tabHidden()) { healthQuiet(); return; } // 背景分页：不累计（回到前景后再静默一下，背景节流的计时器不算落后）
     var qn = currentQn();
     if (qn !== health.lastQn) { var firstQn = health.lastQn == null; health.lastQn = qn; if (!firstQn) healthQuiet(); }
     if (v.seeking || now < health.quietUntil) { health.lastT = v.currentTime; health.lastAt = now; return; }
@@ -990,7 +994,7 @@
   // 失败自动切换（直播版）：目前线路播不动（持续一段时间没有码流）→ 切回国际线路(ov)。
   // 只针对「这个房间」，不动用户长期选的线路；已经是 ov 就没得退，不处理。
   function maybeLiveFallback(reason) {
-    if (!IS_LIVE_PAGE || !liveActive() || !cfg.autoFallback) return;
+    if (!IS_LIVE_PAGE || !liveActive() || !cfg.autoFallback || tabHidden()) return;
     var route = effLiveRoute();
     if (route === "ov") return;
     if (Date.now() - liveFb.lastAt < LIVE_FALLBACK_COOLDOWN_MS) return;
@@ -1022,7 +1026,8 @@
     function retry() {
       return _fetch.call(self, input, init).then(function (r2) {
         if (r2.ok) {
-          liveFallbackToOv(route);
+          // 这次请求照样就地改回页面原本的 host 重试（救的是这个请求）；背景分页不把这个房间改走 ov（见 tabHidden）
+          if (!tabHidden()) liveFallbackToOv(route);
           if (li.isStream) { live.activeHost = li.u.hostname; debug.currentCdn = li.u.hostname; }
         }
         return r2;
@@ -1575,7 +1580,8 @@
   //  - "install"：安装后第一支影片（installTestPending，background.js 安装时设），开播几秒后在背景跑一次；
   //  - "stall"：影片卡顿／分段失败时（maybeFallback 的第一步，「速度不佳时自动优化节点」开关），每支影片最多一次。
   // 先测目前的节点，达到 4K 标准就不动（就算别的节点更快也不换）；没达到才依清单顺序测其余节点，
-  // 第一个达标的就停下来选它，全部测完都没有达标才选最快的（还是目前的节点最快就不换）。选到的写进 storage（同用户自己换节点）。
+  // 第一个达标的就停下来选它，全部测完都没有达标才选最快的（还是目前的节点最快就不换）。"install" 选到的写进 storage（同用户自己换节点）；
+  // "stall" 的结果交给 startRescue，只在这个分页覆写（见 applyRescuePick）。
   // 过程向 bridge 回报开始／进度／结束（popup 开着就显示「当前节点速度不佳，优化中」；"stall" 那次可以手动中断）；
   // maxMs 是这一轮最长能跑多久：每个节点最多 stMaxMs（measureHost 的 timer 连线带下载一起算）× 节点数，再加一点余裕，到了不论测到哪都收掉。
   // 与手动测速共用 speedTestGen：popup 开始手动测速会让这一轮作废
@@ -1597,7 +1603,8 @@
       if (autoTestRunning || pendingTimer) return;
       pendingTimer = setTimeout(function () {
         pendingTimer = null;
-        if (cfg.installTestPending && isActive(cfg)) runAutoSpeedTest(cfg.autoSpeedHosts || [], "install");
+        // 背景分页不测（旗标留着）：回到前景时 visibilitychange 会再排一次
+        if (cfg.installTestPending && isActive(cfg) && !tabHidden()) runAutoSpeedTest(cfg.autoSpeedHosts || [], "install");
       }, AUTO_TEST_DELAY_MS);
     }
   }
@@ -1610,7 +1617,7 @@
     if (speedTestRunning || autoTestRunning || !hosts.length || !sampleUrl()) return false;
     var install = reason === "install";
     if (install) {
-      if (!cfg.installTestPending) return false;
+      if (!cfg.installTestPending || tabHidden()) return false;
       cfg.installTestPending = false; // 触发即清（bridge 收到 autotest-start 会写回 storage）
     }
     var from = cfg.cdnHost;
@@ -1625,7 +1632,7 @@
     autoTestRunning = true;
     var best = null, i = 0, over = false, watchdog = null;
     jlog("ui.speedtest", { phase: "start", kind: "auto-" + reason, hosts: hosts.length });
-    // how：done（测完，含逾时）／stopped（使用者在 popup 按中断）／replaced（被手动测速取代）
+    // how：done（测完，含逾时）／stopped（使用者在 popup 按中断）／replaced（被手动测速取代）／hidden（分页被切到背景）
     function end(clearAbort, how, res) {
       if (over) return;
       over = true;
@@ -1633,13 +1640,17 @@
       autoTestRunning = false;
       if (clearAbort) speedTestAbort = null; // 被手动测速取代时 speedTestAbort 已是对方的，不能动
       healthQuiet();
-      postAutoTest("autotest-end", { reason: reason });
+      // 安装后那一次因为分页切到背景而作废：rerun 请 bridge 把 installTestPending 还回 storage，
+      // 之后任何一个前景分页的影片都能接手补测（使用者常常就此关掉这个分页、在新分页看下一支）
+      postAutoTest("autotest-end", how === "hidden" && install ? { reason: reason, rerun: 1 } : { reason: reason });
       if (onEnd) onEnd(how, res || null);
     }
-    function interrupted() { end(false, autoTestStopGen === speedTestGen ? "stopped" : "replaced"); }
+    function interrupted() { end(false, autoTestStopGen === speedTestGen ? "stopped" : autoTestHiddenGen === speedTestGen ? "hidden" : "replaced"); }
     // pick：提早停下来选的节点；没给就用测到最快的（救援还要至少 floor）
     function finish(pick) {
       if (over) return;
+      // 测完的那一刻分页在背景（例如逾时计时器刚好在切走后触发）：结果不套用，不写设定、不重载其他分页
+      if (tabHidden()) { jlog("ui.speedtest", { phase: "stop", kind: "auto-" + reason, by: "hidden" }); end(true, "hidden"); return; }
       if (!pick && best && (!rescue || best.bps >= rescue.floor)) pick = best.host;
       pick = pick || "";
       jlog("ui.speedtest", { phase: "done", kind: "auto-" + reason, tested: i, best: shortHost(pick), kbps: best ? Math.round(best.bps / 1024) : "" });
@@ -1674,6 +1685,15 @@
     if (!autoTestRunning) return;
     jlog("ui.speedtest", { phase: "stop", kind: "auto" });
     autoTestStopGen = ++speedTestGen;
+    if (speedTestAbort) { try { speedTestAbort.abort(); } catch (e) {} }
+  }
+  // 分页被切到背景：这一轮自动测速作废（结果不套用）。跟使用者按中断不同，不会让这支影片之后不再救援；
+  // 也顺便把频宽还给使用者正在看的分页
+  var autoTestHiddenGen = -1;
+  function abortAutoTestHidden() {
+    if (!autoTestRunning) return;
+    jlog("ui.speedtest", { phase: "stop", kind: "auto", by: "hidden" });
+    autoTestHiddenGen = ++speedTestGen;
     if (speedTestAbort) { try { speedTestAbort.abort(); } catch (e) {} }
   }
 
@@ -2041,9 +2061,6 @@
     // 这个分页还没抓过任何分段（例如页面刚载入、bridge 第一次推设定）：不是「换掉正在用的节点」，不给宽限，
     // 不然一开页面就遇到死节点时，前 10 秒的失败全被忽略（冒烟测试实测）
     onNodeSwitched(lastSegReqAt > 0);
-    // 救援自己选的节点：这个分页一定卡着（可能从没播起来过、played 是空的），一律 reload，不套用下面「闲着就不 reload」的规则
-    var rescueSwitch = !!rescueReloadHost && cfg.cdnHost === rescueReloadHost;
-    rescueReloadHost = null;
     var afterActive = isActive(cfg);
     // 换节点（手动或自动测速）会闪一下黑画面：跟失败自动切换一样弹 toast 告知换到哪个节点；
     // 只开/关重排不算换节点，不弹
@@ -2054,9 +2071,9 @@
     } else if (cfg.cdnHost === "backup" || beforeEffHost === "backup") {
       toastAfterReload(switchedText);
       fullReload(); // 「备用」走 playurl 层，需重打 playurl 才生效 → 整页重载
-    } else if (!WATCH_RE.test(location.pathname) || (mainVideoIdle() && !rescueSwitch)) {
+    } else if (!WATCH_RE.test(location.pathname) || mainVideoIdle()) {
       // 具名节点只靠分段层改导，之后的分段请求自然会走新节点，不重载也生效。节点存在 storage、所有分页共用，
-      // 一个分页测速换节点，其他分页也会收到这次变更：暂停／播完的分页若跟着 player.reload()，
+      // 使用者手动换节点（或安装后那次测速）时，其他分页也会收到这次变更：暂停／播完的分页若跟着 player.reload()，
       // 影片会自己播起来（回报 #33）；非观看页（首页预览）也不必整页重载
     } else if (playerReload()) {
       if (switchedText) showToast(switchedText); // 具名节点：播放器内重载（分段层即时导向）
@@ -2229,6 +2246,18 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", renderOverlay);
   else renderOverlay();
   var tickTimer = setInterval(function () { updateSpeed(); checkStall(); checkHealth(); checkSegFailure(); diagTick(); renderOverlay(); postDebug(); }, 1000);
+  // 分页切回前景：卡顿计时与健康累计从零开始（背景期间的状态不算），安装后第一支影片的优化补排一次（见 tabHidden）
+  function onVisibility() {
+    var hidden = tabHidden();
+    jlog("page.vis", { hidden: hidden ? 1 : 0 });
+    if (hidden) { abortAutoTestHidden(); return; }
+    stallState.lastTime = -1; stallState.stuckSince = null; stallState.movedAt = 0;
+    progressSince = null; // 「连续顺播 30 秒」不能把背景的时间算进去
+    segFail.reason = null; segFail.needSecond = false; // 背景期间暂缓的分段失败不算：回到前景先给播放器自己恢复
+    healthQuiet();
+    maybeScheduleAutoTest();
+  }
+  try { document.addEventListener("visibilitychange", onVisibility); } catch (e) {}
 
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {

@@ -666,14 +666,14 @@ describe("rescue: test the candidates, switch to a fast one, skip failures, ask 
     assert.deepEqual(plain(mh.rescueCandidates()), [COS, ALI]);
     env.close();
   });
-  test("the current node is not tested again (it just failed in real playback); the first fast list node is written to the settings", async () => {
+  test("the current node is not tested again (it just failed in real playback); the first fast node is applied to this tab only (the settings stay the user's choice)", async () => {
     const { env, mh, asked, posted } = bootRescue({ [HOST]: "fast", [HW]: "fast", [COS]: "fast" });
     assert.equal(mh.maybeFallback("stalled"), true);
     assert.equal(mh.isFailed(HOST), true);
     await ended(env, posted);
     assert.deepEqual(asked, [HW], "stops at the first node that is fast enough");
-    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
-    assert.ok(mh.FALLBACK.holdUntil > Date.now(), "grace starts right away, before the settings round-trip");
+    assert.equal(mh.autoHost(), HW); assert.deepEqual(of(posted, "autotest-done"), [], "this tab only: the settings are not touched");
+    assert.ok(mh.FALLBACK.holdUntil > Date.now(), "grace starts right away");
     env.close();
   });
   test("bilibili's backups are measured too, never switched to blindly; slower ones tested on the way are marked failed", async () => {
@@ -705,7 +705,7 @@ describe("rescue: test the candidates, switch to a fast one, skip failures, ask 
     const { env, mh, posted } = bootRescue({ [HW]: 60000, [COS]: 10000, [ALI]: "403" });
     mh.maybeFallback("stalled");
     await ended(env, posted);
-    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
+    assert.equal(mh.autoHost(), HW); assert.deepEqual(of(posted, "autotest-done"), [], "this tab only: the settings are not touched");
     env.close();
   });
   test("nothing can carry the quality → no switch, all marked failed; the next stall asks the user", async () => {
@@ -849,14 +849,14 @@ describe("rescue: test the candidates, switch to a fast one, skip failures, ask 
     mh.maybeFallback("stalled");
     await ended(env, posted);
     assert.deepEqual(asked, [HW], "stopped at HW, did not go on testing everything");
-    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }]);
+    assert.equal(mh.autoHost(), HW); assert.deepEqual(of(posted, "autotest-done"), [], "this tab only: the settings are not touched");
     env.close();
   });
   test("tested-but-not-picked: only nodes that cannot carry the quality are marked, and only for a minute", async () => {
     const { env, mh, posted } = bootRescue({ [HW]: 60000, [COS]: 30000, [ALI]: "403" }, {}, null); // 沒碼率：floor 0、good 25 Mbps
     mh.maybeFallback("stalled");
     await ended(env, posted);
-    assert.deepEqual(plain(of(posted, "autotest-done")), [{ host: HW, from: HOST, reason: "stall" }], "fastest");
+    assert.equal(mh.autoHost(), HW, "fastest"); assert.deepEqual(of(posted, "autotest-done"), [], "this tab only: the settings are not touched");
     assert.equal(mh.isFailed(COS), false, "COS works, just not the fastest → not marked");
     assert.equal(mh.isFailed(ALI), true);
     assert.ok(mh.FALLBACK.failed[ALI] < Date.now() + 61000, "a test failure lasts about a minute");
@@ -1125,6 +1125,227 @@ describe("stall detection", () => {
   });
 });
 
+// 回報 #46 #47：背景分頁（剛開、從沒播過、readyState 0、第一個分段還在抓）被當成線路死了，連換好幾次節點
+describe("background tab: no automatic switching at all (#46 #47)", () => {
+  function setHidden(env, hidden) {
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+    Object.defineProperty(env.window.document, "hidden", { configurable: true, get: () => hidden });
+    env.window.document.dispatchEvent(new env.window.Event("visibilitychange"));
+  }
+  // #47 的樣子：背景開的影片，video 沒有任何資料、暫停、沒播過；分段請求剛送出、一筆資料都還沒回來
+  function backgroundTab(cfg = {}, url) {
+    const env = boot({ autoSpeedHosts: [COS, ALI], ...cfg }, url);
+    const mh = env.internals("main-hook");
+    if (!url) mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: true, readyState: 0, currentTime: 0, played: false });
+    mh.FALLBACK.holdUntil = 0;
+    mh.setLastSegReqAt(Date.now());
+    return { env, mh };
+  }
+
+  test("hidden: a first load with no data yet never counts as a stall, however long; nothing is marked failed or switched", () => {
+    const { env, mh } = backgroundTab();
+    const posted = [];
+    env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m); };
+    setHidden(env, true);
+    mh.checkStall(); mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    mh.stallState.stuckSince = Date.now() - 60000; // 就算計時已經跑很久了
+    mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    assert.equal(mh.isFailed(HOST), false);
+    assert.equal(mh.effHost(), HOST);
+    assert.deepEqual(posted.filter((m) => /^autotest/.test(m.dir)).map((m) => m.dir), [], "no rescue speed test, no node written to the settings");
+    env.close();
+  });
+  test("the same tab in the foreground: the dead-first-load rule still applies (8 s)", () => {
+    const { env, mh } = backgroundTab();
+    setHidden(env, false);
+    mh.checkStall(); mh.checkStall();
+    assert.notEqual(mh.stallState.stuckSince, null);
+    assert.equal(mh.stallState.limit, 8000);
+    env.close();
+  });
+  test("hidden: every other trigger is ignored too (segment failure, video error, rebuffer/prediction) and marks nothing", () => {
+    const { env, mh } = backgroundTab();
+    setHidden(env, true);
+    assert.equal(mh.maybeFallback("stalled"), false);
+    assert.equal(mh.maybeFallback("video-error"), false);
+    assert.equal(mh.maybeFallback("rebuffer"), false);
+    mh.onSegFailure("http-403"); // 緩衝 0：前景的話會立刻救援
+    mh.checkSegFailure();
+    assert.equal(mh.isFailed(HOST), false);
+    assert.equal(mh.FALLBACK.asked, false);
+    assert.equal(mh.effHost(), HOST);
+    env.close();
+  });
+  test("hidden: playback health is not accumulated (no rebuffer, no lag, no prediction history)", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, readyState: 2, currentTime: 10, buffered: [0, 10.2] }); // 播放中停住、前方只剩 0.2 秒
+    // 已經停住 5 秒：前景的話這一下就記一次 rebuffer
+    const frozen5s = () => Object.assign(mh.health, { quietUntil: 0, lastT: 10, lastAt: Date.now() - 1000, freezeAt: Date.now() - 5000, freezeCounted: false });
+    setHidden(env, true);
+    frozen5s(); mh.checkHealth();
+    assert.equal(mh.health.rebuf.length, 0);
+    assert.equal(mh.health.lag.length, 0);
+    assert.ok(mh.health.quietUntil > Date.now(), "back in the foreground it starts with a quiet period");
+    setHidden(env, false);
+    frozen5s(); mh.checkHealth();
+    assert.equal(mh.health.rebuf.length, 1, "foreground: unchanged");
+    env.close();
+  });
+  test("coming back to the foreground: the stall timer starts from zero (time spent hidden does not count)", () => {
+    const { env, mh } = backgroundTab();
+    setHidden(env, false);
+    mh.checkStall();
+    mh.stallState.stuckSince = Date.now() - 7000;
+    setHidden(env, true);
+    mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    setHidden(env, false);
+    assert.equal(mh.stallState.stuckSince, null);
+    mh.checkStall();
+    assert.ok(Date.now() - mh.stallState.stuckSince < 1000, "counting restarts now, not 7 s ago");
+    env.close();
+  });
+  test("install test: a hidden tab does not start it and keeps the one-shot flag; once shown it can run", () => {
+    const env = boot({ installTestPending: true, autoSpeedHosts: [HOST, COS] });
+    const mh = env.internals("main-hook");
+    mh.noteEarlySample(`https://${HOST}/upgcxcode/1/2/3/v80.m4s?deadline=${FUTURE}`);
+    speedFetch(env, {});
+    setHidden(env, true);
+    assert.equal(mh.runAutoSpeedTest([HOST, COS], "install"), false);
+    assert.equal(mh.cfg().installTestPending, true, "flag kept for when the tab is shown");
+    setHidden(env, false);
+    assert.equal(mh.runAutoSpeedTest([HOST, COS], "install"), true);
+    assert.equal(mh.cfg().installTestPending, false);
+    mh.stopAutoTest();
+    env.close();
+  });
+  test("a rescue switch in one tab never reaches the settings, so other tabs are never reloaded by it", async () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    slowSpeedFetch(env, { [HW]: "fast" }, 5);
+    const posted = capture(env);
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    mh.maybeFallback("stalled");
+    await untilEnd(env, posted);
+    assert.equal(mh.autoHost(), HW);
+    assert.equal(mh.cfg().cdnHost, HOST, "the user's node stays");
+    assert.deepEqual(posted.filter((m) => m.dir === "autotest-done"), []);
+    env.close();
+  });
+  // 測速用的假 fetch，每個節點延遲 delayMs 才給資料：讓測試有機會在測到一半時切到背景
+  function slowSpeedFetch(env, speeds, delayMs) {
+    env.fetchHandler = (url) => {
+      const sp = speeds[new URL(url).host];
+      if (sp === undefined) return new Promise(() => {});
+      let sent = false;
+      return { ok: true, status: 206, body: { getReader: () => ({ cancel() {},
+        read: () => sent ? Promise.resolve({ done: true }) : new Promise((r) => setTimeout(() => { sent = true; r({ done: false, value: { length: sp === "fast" ? 9e6 : sp } }); }, delayMs)) }) } };
+    };
+  }
+  const capture = (env) => { const p = []; env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) p.push(m); }; return p; };
+  const untilEnd = async (env, posted) => { for (let i = 0; i < 200 && !posted.some((m) => m.dir === "autotest-end"); i++) await env.settle(10); };
+  const HW = "upos-sz-mirrorhw.bilivideo.com";
+
+  test("a rescue that started in the foreground is dropped when the tab goes hidden mid-test: no settings written, no reload, no marks, rescue still possible later", async () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    slowSpeedFetch(env, { [HW]: "fast" }, 200);
+    const posted = capture(env);
+    let reloads = 0; env.window.player = { reload() { reloads++; }, getCurrentTime: () => 10, seek() {} };
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    assert.equal(mh.maybeFallback("stalled"), true, "foreground: the rescue starts");
+    setHidden(env, true);
+    await untilEnd(env, posted);
+    assert.deepEqual(posted.filter((m) => m.dir === "autotest-done"), [], "nothing written to the settings");
+    assert.equal(mh.effHost(), HOST);
+    assert.equal(mh.autoHost(), null);
+    assert.equal(reloads, 0);
+    assert.equal(mh.isFailed(HW), false, "tested nodes are not marked");
+    assert.equal(mh.FALLBACK.userStopped, false, "not the same as the user pressing stop");
+    env.close();
+  });
+  test("same, when the pick would be one of bilibili's backups (applied in this tab only): not applied while hidden", async () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    slowSpeedFetch(env, { [HW]: 1000, [COS]: "fast" }, 200);
+    const posted = capture(env);
+    let reloads = 0; env.window.player = { reload() { reloads++; }, getCurrentTime: () => 10, seek() {} };
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    mh.maybeFallback("stalled");
+    setHidden(env, true);
+    await untilEnd(env, posted);
+    assert.equal(mh.autoHost(), null);
+    assert.equal(reloads, 0);
+    env.close();
+  });
+  test("a rescue that finishes while hidden without a visibilitychange event (e.g. the watchdog) is not applied either", async () => {
+    const env = boot({ autoSpeedHosts: [HOST, HW] });
+    const mh = env.internals("main-hook");
+    slowSpeedFetch(env, { [HW]: "fast" }, 100);
+    const posted = capture(env);
+    mh.rewriteRoot(playurl(), "playurl");
+    addVideo(env, { paused: false, buffered: [0, 10.2] });
+    mh.FALLBACK.holdUntil = 0;
+    mh.maybeFallback("stalled");
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "hidden" }); // 不送事件
+    await untilEnd(env, posted);
+    assert.deepEqual(posted.filter((m) => m.dir === "autotest-done"), []);
+    assert.equal(mh.effHost(), HOST);
+    env.close();
+  });
+  test("install test hidden mid-test: dropped (nothing written) and handed back to storage (rerun) so any foreground tab can take it", async () => {
+    const env = boot({ installTestPending: true, autoSpeedHosts: [HOST, COS] });
+    const mh = env.internals("main-hook");
+    mh.noteEarlySample(`https://${HOST}/upgcxcode/1/2/3/v80.m4s?deadline=${FUTURE}`);
+    slowSpeedFetch(env, { [HOST]: 1000, [COS]: "fast" }, 100);
+    const posted = capture(env);
+    assert.equal(mh.runAutoSpeedTest([HOST, COS], "install"), true);
+    assert.equal(mh.cfg().installTestPending, false);
+    setHidden(env, true);
+    await untilEnd(env, posted);
+    assert.deepEqual(posted.filter((m) => m.dir === "autotest-done"), []);
+    assert.deepEqual(plain(posted.filter((m) => m.dir === "autotest-end").map((m) => m.payload)), [{ reason: "install", rerun: 1 }]);
+    assert.equal(mh.runAutoSpeedTest([HOST, COS], "install"), false, "not armed locally until storage gives the flag back");
+    env.close();
+  });
+  test("segment failures: not deferred while hidden; a failure deferred before hiding is dropped when the tab is shown again", () => {
+    const { env, mh } = backgroundTab();
+    setHidden(env, true);
+    mh.onSegFailure("http-403");
+    assert.equal(mh.segFail.reason, null, "hidden: not deferred");
+    setHidden(env, false);
+    env.window.document.querySelector("video").remove();
+    addVideo(env, { paused: false, currentTime: 10, buffered: [0, 13] }); // 緩衝 3 秒：前景時先等第二次失敗
+    mh.onSegFailure("http-403");
+    assert.equal(mh.segFail.reason, "http-403");
+    setHidden(env, true);
+    setHidden(env, false);
+    assert.equal(mh.segFail.reason, null, "the deferred failure from before is dropped");
+    env.close();
+  });
+  test("live: a hidden tab does not count a stall either", () => {
+    const { env, mh } = backgroundTab({ liveRoute: "cn" }, "https://live.bilibili.com/12345");
+    setHidden(env, true);
+    mh.checkStall(); mh.checkStall();
+    assert.equal(mh.stallState.stuckSince, null);
+    setHidden(env, false);
+    mh.checkStall(); mh.checkStall();
+    assert.notEqual(mh.stallState.stuckSince, null, "foreground: unchanged");
+    env.close();
+  });
+});
+
 describe("node change in other tabs", () => {
   // 假的 player.reload：記錄有沒有被呼叫（有 player API 時換節點走播放器內重載）
   function spyPlayer(env) {
@@ -1235,7 +1456,7 @@ describe("node change on a stalled tab (#41)", () => {
     assert.equal(mh.isFailed(COS), true, "rescued on the first failure");
     env.close();
   });
-  test("a node picked by the rescue reloads this tab even if it never started playing", async () => {
+  test("a node picked by the rescue reloads this tab even if it never started playing (applied in this tab, settings untouched)", async () => {
     const HW = "upos-sz-mirrorhw.bilivideo.com";
     const env = boot({ autoSpeedHosts: [HOST, HW] });
     const mh = env.internals("main-hook");
@@ -1247,10 +1468,9 @@ describe("node change on a stalled tab (#41)", () => {
     addVideo(env, { paused: true, currentTime: 0, readyState: 0, played: false }); // 開頭就卡住、播放器自己暫停
     mh.FALLBACK.holdUntil = 0;
     mh.maybeFallback("network-error");
-    for (let i = 0; i < 300 && !posted.some((m) => m.dir === "autotest-done"); i++) await env.settle(10);
-    const done = posted.find((m) => m.dir === "autotest-done");
-    assert.ok(done, "the rescue picked HW");
-    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: HW } }); // bridge 寫完設定推回來
+    for (let i = 0; i < 300 && !posted.some((m) => m.dir === "autotest-end"); i++) await env.settle(10);
+    assert.equal(mh.autoHost(), HW, "the rescue picked HW");
+    assert.deepEqual(posted.filter((m) => m.dir === "autotest-done"), [], "not written to the settings");
     assert.deepEqual(calls, ["reload"], "reloaded although the tab looks idle (never played)");
     env.close();
   });
