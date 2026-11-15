@@ -95,7 +95,11 @@ Windows 上 Chrome、Firefox 已經自動化實測過，Safari 還沒測。
 1. A 播放中，用 Safari 的子母畫面把影片彈出成小窗，然後切到別的分頁。
 2. 在 A 的主控台執行 `document.visibilityState`。執行時主控台要對準 A，可以在切走之前先打好指令。
 
-**記錄：** 結果是 `hidden` 還是 `visible`。照目前的規則，`hidden` 就代表子母畫面裡的影片卡住時不會救援（Chrome 實測是 `hidden`）。這一點待使用者決定。
+**記錄：** 結果是 `hidden` 還是 `visible`。
+
+已經決定：子母畫面一律算背景，卡住也不救援。理由是主視窗可能同時在播另一支 B 站影片，無法確定使用者在看哪一支。Chrome 實測此時是 `hidden`。
+
+如果 Safari 是 `visible`，代表 Safari 會把子母畫面當成前景、照常救援，跟 Chrome 的行為不一致，要回報。
 
 ### S7（選做）iPhone / iPad Safari
 1. 用 `npm run build:safari -- --platform=ios` 建置，或用 Xcode 裝到實機。
