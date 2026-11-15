@@ -55,8 +55,10 @@ describe("autotest-done → storage", () => {
     assert.equal(env.storage.cdnHost, B, "arming is single-use");
     env.close();
   });
+  const hideTab = (env) => Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "hidden" });
   test("install test dropped because the tab went hidden (autotest-end rerun): the flag goes back to storage and this frame is disarmed", () => {
     const env = boot({ installTestPending: true });
+    hideTab(env);
     env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
     assert.equal(env.storage.installTestPending, false);
     env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
@@ -75,8 +77,25 @@ describe("autotest-done → storage", () => {
     assert.equal(env.storage.installTestPending, undefined);
     env.close();
   });
+  test("a rerun while the tab is visible is forged (a real one only comes from a hidden tab): ignored, but it still disarms", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, false, "not handed back: rescue in every tab would stay off otherwise");
+    env.close();
+  });
+  test("rerun after the user changed the mode (same node, e.g. list → custom) is not handed back either", () => {
+    const env = boot({ installTestPending: true, cdnMode: "list" });
+    hideTab(env);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.chrome.storage.local.set({ cdnMode: "custom" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, false);
+    env.close();
+  });
   test("rerun after the user picked a node themselves during the test: the flag is not given back (their choice cancels the install optimization)", () => {
     const env = boot({ installTestPending: true });
+    hideTab(env);
     env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
     env.chrome.storage.local.set({ cdnHost: B, installTestPending: false }); // popup 選節點
     env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });

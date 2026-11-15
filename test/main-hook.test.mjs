@@ -1840,6 +1840,23 @@ describe("per-tab rescue override lifetime", () => {
     assert.equal(mh.autoHost(), HW, "player reload of the same video");
     env.close();
   });
+  test("the same video whose first URL is a PCDN path (no cid directory) is not taken for another video: the override stays", () => {
+    const { env, mh } = bootWithOverride();
+    mh.rewriteRoot(playurl(), "playurl");
+    const pcdnFirst = playurl();
+    pcdnFirst.data.dash.video[0].baseUrl = "https://xy1.mcdn.bilivideo.cn:4483/v1/resource/abc.m4s";
+    mh.rewriteRoot(pcdnFirst, "playurl");
+    assert.equal(mh.autoHost(), HW);
+    env.close();
+  });
+  test("next video: the override is dropped before the playurl is rewritten, so it is rewritten for the user's node", () => {
+    const { env, mh } = bootWithOverride();
+    mh.rewriteRoot(playurl(), "playurl");
+    const next = otherVideo();
+    mh.rewriteRoot(next, "playurl");
+    assert.equal(new URL(next.data.dash.video[0].baseUrl).host, HOST);
+    env.close();
+  });
   test("the next video in the same tab goes back to the user's node", () => {
     const { env, mh } = bootWithOverride();
     mh.rewriteRoot(playurl(), "playurl");

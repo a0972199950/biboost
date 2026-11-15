@@ -430,8 +430,23 @@
   }
 
   // 同一支影片的分段都在同一个目录（路径含 cid），拿第一个 video track 的目录当影片识别
-  var mediaKey = null, pendingMediaKey = null;
-  function mediaKeyOf(url) { return pathOf(url).replace(/[^/]*$/, ""); }
+  var mediaKey = null;
+  // 影片识别用 cid（/upgcxcode/xx/yy/<cid>/…）：以前用第一个 track 的目录，同一支影片的 playurl 第一个 base 有时是 PCDN（/v1/resource/…），
+  // 会被误当成换了影片（救援的覆写会被取消、回退额度被重置）。取不到 cid 就不当成换了影片
+  function cidOf(url) { var m = /\/upgcxcode\/\d+\/\d+\/(\d+)\//.exec(pathOf(url) || ""); return m ? m[1] : null; }
+  // 改写之前先看这份 playurl 是哪支影片（换影片要先取消救援的覆写，再照使用者的节点改写）
+  function peekMediaKey(d) {
+    if (!d || typeof d !== "object") return null;
+    var tracks = (d.dash && Array.isArray(d.dash.video) ? d.dash.video : []).concat(Array.isArray(d.durl) ? d.durl : []);
+    for (var i = 0; i < tracks.length; i++) {
+      var t = tracks[i];
+      if (!t || typeof t !== "object") continue;
+      var bk = t.backupUrl || t.backup_url || [];
+      var urls = [asStr(t.baseUrl) || asStr(t.base_url) || asStr(t.url)].concat(Array.isArray(bk) ? bk.map(asStr) : []);
+      for (var j = 0; j < urls.length; j++) { var c = urls[j] && cidOf(urls[j]); if (c) return c; }
+    }
+    return null;
+  }
 
   // 新影片：询问与「使用者中断」重置；失败标记保留（跟着网路走，见上方说明）
   function resetFallbackState() {
@@ -1162,7 +1177,6 @@
     if (!base && !backups.length) return null;
     if (pendingBackupHosts && !pendingBackupHosts.length && base) {
       debug.playurlGiven = hostOf(base); // 第一個 track（video）原本的 host
-      pendingMediaKey = mediaKeyOf(base);
     }
     noteBackupHost(base);
     for (var bi = 0; bi < backups.length; bi++) noteBackupHost(backups[bi]);
@@ -1218,19 +1232,20 @@
       // 番剧/课程（pgc v2、SSR playurlSSRData）把 dash/durl 多包一层在 result.video_info 下
       if (d && typeof d === "object" && d.video_info && typeof d.video_info === "object" &&
           (d.video_info.dash || d.video_info.durl)) d = d.video_info;
-      pendingBackupHosts = []; pendingMediaKey = null;
+      // 回退额度以「影片」为单位：player.reload() 后播放器会再打一次同一支影片的 playurl（2026-10 的回报日志），
+      // 每份 playurl 都重置的话「最多切 2 次再问使用者」永远到不了，会在备援之间每 30 秒来回切。
+      // 同一页换到下一支影片（不是这页的第一支：整页重载带过来的覆写要留着）：救援的覆写只管卡住的那支影片，
+      // 下一支回到使用者选的节点 —— 在改写之前取消，这份 playurl 才会照使用者的节点改写
+      var key = peekMediaKey(d);
+      if (key != null && key !== mediaKey) {
+        var nextVideo = mediaKey != null;
+        mediaKey = key; resetFallbackState();
+        if (nextVideo && autoHost) { jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) }); autoHost = null; }
+      }
+      pendingBackupHosts = [];
       var changed = rewriteContainer(d);
       if (changed) {
         if (pendingBackupHosts.length) backupHosts = pendingBackupHosts;
-        // 回退额度以「影片」为单位：player.reload() 后播放器会再打一次同一支影片的 playurl（2026-10 的回报日志），
-        // 每份 playurl 都重置的话「最多切 2 次再问使用者」永远到不了，会在备援之间每 30 秒来回切
-        if (pendingMediaKey !== mediaKey) {
-          // 同一页换到下一支影片（不是这页的第一支：整页重载带过来的覆写要留着）：救援的覆写只管卡住的那支影片，
-          // 下一支回到使用者选的节点。这份 playurl 已经照覆写改过，之后的分段请求由分段层改导回设定的节点
-          var nextVideo = mediaKey != null;
-          mediaKey = pendingMediaKey; resetFallbackState();
-          if (nextVideo && autoHost) { jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) }); autoHost = null; }
-        }
         debug.lastSource = source; debug.rewriteCount++; renderOverlay(); postDebug();
         swapLogged = false;
         jlog("cdn.rewrite", { src: source, orig: shortHost(debug.playurlGiven), to: effHost() === "backup" ? "backup" : shortHost(effHost()), backups: backupHosts.map(shortHost), dash: d && d.dash ? 1 : 0 });
