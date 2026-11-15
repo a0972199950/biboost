@@ -84,11 +84,14 @@
   // 重载前把覆写放进 sessionStorage 一次性带过去（读到就删，手动重整不会沿用）。
   var AUTO_KEY = "__CDN_SWITCHER_AUTO__";
   var autoHost = null; // null = 没有覆写；否则为具名备援 host 或 "backup"
+  // 覆写是给哪支影片的：autoHostKey = 那支影片的 cid（套用当下还不知道就是 null，等第一次知道 cid 时绑上），
+  // autoHostPath = 套用当下的网址路径（cid 不知道时，靠它分辨换了影片）
+  var autoHostKey = null, autoHostPath = null;
   try {
     var rawAuto = window.sessionStorage.getItem(AUTO_KEY);
     if (rawAuto) {
       window.sessionStorage.removeItem(AUTO_KEY);
-      if (ACTIVE) { var pa = JSON.parse(rawAuto); if (pa && typeof pa.host === "string" && pa.host) autoHost = pa.host; }
+      if (ACTIVE) { var pa = JSON.parse(rawAuto); if (pa && typeof pa.host === "string" && pa.host) { autoHost = pa.host; autoHostPath = location.pathname; } }
     }
   } catch (e) {}
 
@@ -462,15 +465,17 @@
   // 救援的覆写只管前一支，取消 —— 在 playurl 改写之前呼叫，这份 playurl 才会照使用者的节点改写
   function noteVideoKey(key, by) {
     if (key == null || key === mediaKey) return;
-    var nextVideo = mediaKey != null;
     jlog("page.video", { cid: key, from: mediaKey || "", by: by || "" });
     mediaKey = key; resetFallbackState();
     // 前一支影片暂缓的分段失败、顺播计时不算到这一支（不然新影片一开播就被救援）
     segFail.reason = null; segFail.needSecond = false; progressSince = null;
-    if (nextVideo && autoHost) {
-      jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) });
-      autoHost = null; renderOverlay(); postDebug();
-    }
+    if (!autoHost) return;
+    // 覆写绑在影片上：知道是哪支就比 cid；套用时还不知道（整页重载带过来的、或当时读不到 cid）就看网址路径有没有换，
+    // 没换就当成同一支、绑上这个 cid
+    var stale = autoHostKey != null ? autoHostKey !== key : (autoHostPath != null && autoHostPath !== location.pathname);
+    if (!stale) { if (autoHostKey == null) autoHostKey = key; return; }
+    jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) });
+    autoHost = null; autoHostKey = null; autoHostPath = null; renderOverlay(); postDebug();
   }
 
   // 新影片：询问与「使用者中断」重置；失败标记保留（跟着网路走，见上方说明）
@@ -526,6 +531,7 @@
   // 静默套用自动回退：只动 autoHost，不碰 cfg 与 chrome.storage（用户设定不变）。next 为 null = 取消覆写、回到用户设定的节点
   function applyAutoHost(next) {
     autoHost = next || null;
+    autoHostKey = next ? mediaKey : null; autoHostPath = next ? location.pathname : null;
     onNodeSwitched(); // 换了节点，前一个节点的失败不算到新节点头上
     renderOverlay(); postDebug();
     if (next === "backup") {
@@ -571,6 +577,7 @@
   // 回传 true = 这次有动作（开始测速、换节点或弹询问），呼叫端可以据此清掉自己的累计
   function maybeFallback(reason) {
     if (!ACTIVE || !vodFallbackOn()) return false;
+    checkVideoKey(); // 失败要记在这支影片现在用的节点上（每秒的检查可能还没跑到）
     if (tabHidden()) return false; // 背景分页：不换节点、不记失败（分段失败、video error 也走这里）
     if (!WATCH_RE.test(location.pathname)) return false; // 非观看页（如首页 hover 预览）不回退
     if (autoTestRunning || speedTestRunning) return false; // 正在测速：等它的结果，不另外切
@@ -603,13 +610,19 @@
   function startRescue(cands, reason) {
     var need = currentBitrateBps(), floor = need * RESCUE_HEADROOM;
     var good = need ? Math.max(floor, Math.min(UHD_BPS, need * 4)) : UHD_BPS;
-    var from = effHost(), forKey = mediaKey;
+    var from = effHost(), forKey = mediaKey, forPath = location.pathname, hadPlayer = !!window.player;
     var started = runAutoSpeedTest(cands, "stall", function (how, res) {
       if (how === "stopped") { FALLBACK.userStopped = true; return; }
       if (how !== "done" || !res) return; // 被手动测速取代：手动测速的结果会自己套用
       // 测的期间换了影片（使用者点了下一支、自动连播）：这次救援是给前一支影片的，新影片没卡，不套用、不记失败
+      // 播放器暂时不在（SPA 换页时会拆掉重建）也不套：这时 player.reload() 不能用，会退成整页重载，覆写会被带到新影片
       checkVideoKey();
-      if (mediaKey !== forKey) { jlog("fb.drop", { reason: "next-video", pick: res.pick ? shortHost(res.pick) : "" }); return; }
+      var drop = forKey != null && mediaKey !== forKey ? "next-video" : location.pathname !== forPath ? "page-changed" : hadPlayer && !window.player ? "player-gone" : "";
+      if (drop) {
+        if (from === effHost()) delete FALLBACK.failed[from]; // 开测前记的失败是给前一支影片的
+        jlog("fb.drop", { reason: drop, pick: res.pick ? shortHost(res.pick) : "" });
+        return;
+      }
       // 一个都连不上（都没收到资料）：多半是整体断网，不是这些节点坏。不记失败，目前节点也撤销，过一下再试
       // 只算连线层的失败（连不上、逾时）；HTTP 403 之类代表节点有回应，不是断网
       var allDead = res.results.length > 0 && res.results.every(function (r) { return r.error && !r.bytes && !/^http-/.test(r.error); });
@@ -648,6 +661,7 @@
   var lastSegFailAt = 0, SEG_FAIL_STUCK_MS = 60000;
   function onSegFailure(reason) {
     lastSegFailAt = Date.now();
+    checkVideoKey();
     if (tabHidden()) return; // 背景分页：不暂缓、不救援（见 tabHidden）
     var v = getMainVideo(), buf = v ? forwardBufferSec(v) : 0, now = Date.now();
     if (buf >= SEG_FAIL_BUFFER_SEC) {
@@ -905,6 +919,7 @@
 
   // 是否为「该被差替的分段请求」：具名节点模式、是分段、host 是 CDN、且尚未等于目标
   function isSwappableSeg(url) {
+    checkVideoKey(); // 先确认还在同一支影片：换了影片的覆写要在判断「能不能换 host」之前就取消（akamai 要专属签章，判断跟换 host 要用同一个目标）
     if (!isHostMode()) return false;
     if (!SEG_RE.test(url)) return false;
     var h = hostOf(url);
@@ -1289,12 +1304,20 @@
         else { foreign = true; if (autoHost && key !== mediaKey) { heldAutoHost = autoHost; autoHost = null; } }
       }
       pendingBackupHosts = [];
+      var givenBefore = debug.playurlGiven;
       var changed = rewriteContainer(d, foreign);
+      var given = debug.playurlGiven;
+      if (foreign) debug.playurlGiven = givenBefore; // 问题回报的「原始」节点是正在播那支的
       if (changed) {
-        if (pendingBackupHosts.length && !foreign) backupHosts = pendingBackupHosts;
-        debug.lastSource = source; debug.rewriteCount++; renderOverlay(); postDebug();
-        swapLogged = false;
-        jlog("cdn.rewrite", { src: source, orig: shortHost(debug.playurlGiven), to: effHost() === "backup" ? "backup" : shortHost(effHost()), backups: backupHosts.map(shortHost), dash: d && d.dash ? 1 : 0 });
+        if (foreign) {
+          // 别支影片：不更新 debug、不送快照（覆写这时暂时拿掉了，送出去 popup 会以为没有覆写）
+          jlog("cdn.rewrite", { src: source, orig: shortHost(given), to: effHost() === "backup" ? "backup" : shortHost(effHost()), dash: d && d.dash ? 1 : 0, foreign: 1, cid: key, pcid: cur });
+        } else {
+          if (pendingBackupHosts.length) backupHosts = pendingBackupHosts;
+          debug.lastSource = source; debug.rewriteCount++; renderOverlay(); postDebug();
+          swapLogged = false;
+          jlog("cdn.rewrite", { src: source, orig: shortHost(debug.playurlGiven), to: effHost() === "backup" ? "backup" : shortHost(effHost()), backups: backupHosts.map(shortHost), dash: d && d.dash ? 1 : 0 });
+        }
       }
       pendingBackupHosts = null;
       return changed;
