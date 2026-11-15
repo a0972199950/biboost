@@ -470,6 +470,9 @@
   "customDelTitle": {
     "message": "リストから削除"
   },
+  "autoHostHint": {
+    "message": "再生が止まったため、このタブだけ {host} に自動で切り替えました。選んだノードをクリックすると元に戻せます"
+  },
   "customClearTitle": {
     "message": "カスタムノードリストをクリアしますか？"
   },

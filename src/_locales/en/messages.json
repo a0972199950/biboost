@@ -470,6 +470,9 @@
   "customDelTitle": {
     "message": "Remove from list"
   },
+  "autoHostHint": {
+    "message": "Playback stalled, so this tab switched to {host} on its own (this tab only). Click your chosen node to switch back"
+  },
   "customClearTitle": {
     "message": "Clear the custom node list?"
   },

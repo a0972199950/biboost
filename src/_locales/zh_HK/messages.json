@@ -470,6 +470,9 @@
   "customDelTitle": {
     "message": "由列表移除"
   },
+  "autoHostHint": {
+    "message": "呢個分頁卡頓嗰陣自動轉咗用 {host}，只影響呢個分頁。撳返你揀嘅節點就可以轉返去"
+  },
   "customClearTitle": {
     "message": "清空自訂節點列表？"
   },

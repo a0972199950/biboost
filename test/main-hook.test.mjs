@@ -1822,3 +1822,43 @@ describe("install test (first video after a fresh install)", () => {
     env.close();
   });
 });
+
+// 救援的覆寫只管卡住的那支影片：同一頁換到下一支影片就回到使用者的節點；popup 也可以直接換回來
+describe("per-tab rescue override lifetime", () => {
+  const HW = "upos-sz-mirrorhw.bilivideo.com";
+  const otherVideo = () => JSON.parse(JSON.stringify(playurl()).split("/1/2/3/").join("/4/5/6/"));
+  function bootWithOverride() {
+    const env = boot({ autoSpeedHosts: [HOST, HW] }, VIDEO_URL, (e) => e.window.sessionStorage.setItem("__CDN_SWITCHER_AUTO__", JSON.stringify({ host: HW })));
+    return { env, mh: env.internals("main-hook") };
+  }
+  test("an override carried over a full reload survives the page's first playurl, and the same video's playurl again", () => {
+    const { env, mh } = bootWithOverride();
+    assert.equal(mh.autoHost(), HW);
+    mh.rewriteRoot(playurl(), "playurl");
+    assert.equal(mh.autoHost(), HW, "first video of this page: it is the video the override was made for");
+    mh.rewriteRoot(playurl(), "playurl");
+    assert.equal(mh.autoHost(), HW, "player reload of the same video");
+    env.close();
+  });
+  test("the next video in the same tab goes back to the user's node", () => {
+    const { env, mh } = bootWithOverride();
+    mh.rewriteRoot(playurl(), "playurl");
+    mh.rewriteRoot(otherVideo(), "playurl");
+    assert.equal(mh.autoHost(), null);
+    assert.equal(mh.effHost(), HOST);
+    env.close();
+  });
+  test("auto-clear from the popup drops the override and reloads the player on the user's node", () => {
+    const { env, mh } = bootWithOverride();
+    const calls = [];
+    env.window.player = { reload: () => calls.push("reload"), getCurrentTime: () => 0, seek() {} };
+    mh.rewriteRoot(playurl(), "playurl");
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-clear" });
+    assert.equal(mh.autoHost(), null);
+    assert.equal(mh.effHost(), HOST);
+    assert.deepEqual(calls, ["reload"]);
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-clear" });
+    assert.deepEqual(calls, ["reload"], "nothing to clear: no extra reload");
+    env.close();
+  });
+});

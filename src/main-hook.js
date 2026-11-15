@@ -499,6 +499,14 @@
     }
   }
 
+  // 取消这个分页的救援覆写、回到使用者设定的节点。备用URL 走 playurl 层，离开要整页重载；具名节点播放器内重载即可
+  function clearAutoHost(by) {
+    if (!autoHost) return;
+    jlog("fb.autoClear", { reason: by, host: autoHost === "backup" ? "backup" : shortHost(autoHost) });
+    if (autoHost === "backup") { autoHost = null; onNodeSwitched(); fullReload(); return; }
+    applyAutoHost(null);
+  }
+
   // 救援测速选出的节点：只在这个分页覆写（autoHost），不写进设定 —— 设定是使用者自己的选择，救援是不得已才发生的；
   // 其他分页、之后开的分页照样用设定里的节点，不会被重载（回报 #46 #47：一个分页换节点，正在看的分页跟着重载）。
   // 选到的正是用户设定的节点（目前在用覆写）就取消覆写
@@ -1216,7 +1224,13 @@
         if (pendingBackupHosts.length) backupHosts = pendingBackupHosts;
         // 回退额度以「影片」为单位：player.reload() 后播放器会再打一次同一支影片的 playurl（2026-10 的回报日志），
         // 每份 playurl 都重置的话「最多切 2 次再问使用者」永远到不了，会在备援之间每 30 秒来回切
-        if (pendingMediaKey !== mediaKey) { mediaKey = pendingMediaKey; resetFallbackState(); }
+        if (pendingMediaKey !== mediaKey) {
+          // 同一页换到下一支影片（不是这页的第一支：整页重载带过来的覆写要留着）：救援的覆写只管卡住的那支影片，
+          // 下一支回到使用者选的节点。这份 playurl 已经照覆写改过，之后的分段请求由分段层改导回设定的节点
+          var nextVideo = mediaKey != null;
+          mediaKey = pendingMediaKey; resetFallbackState();
+          if (nextVideo && autoHost) { jlog("fb.autoClear", { reason: "next-video", host: autoHost === "backup" ? "backup" : shortHost(autoHost) }); autoHost = null; }
+        }
         debug.lastSource = source; debug.rewriteCount++; renderOverlay(); postDebug();
         swapLogged = false;
         jlog("cdn.rewrite", { src: source, orig: shortHost(debug.playurlGiven), to: effHost() === "backup" ? "backup" : shortHost(effHost()), backups: backupHosts.map(shortHost), dash: d && d.dash ? 1 : 0 });
@@ -1641,7 +1655,8 @@
       if (clearAbort) speedTestAbort = null; // 被手动测速取代时 speedTestAbort 已是对方的，不能动
       healthQuiet();
       // 安装后那一次因为分页切到背景而作废：rerun 请 bridge 把 installTestPending 还回 storage，
-      // 之后任何一个前景分页的影片都能接手补测（使用者常常就此关掉这个分页、在新分页看下一支）
+      // 之后任何一个前景分页的影片都能接手补测（例如在新分页开推荐影片、没再回到这个分页）。
+      // 直接关掉分页的话页面马上卸载，这则讯息多半送不出去，那一次优化就没了（跟以前一样）
       postAutoTest("autotest-end", how === "hidden" && install ? { reason: reason, rerun: 1 } : { reason: reason });
       if (onEnd) onEnd(how, res || null);
     }
@@ -1951,6 +1966,8 @@
     if (d.dir === "speedtest-run") { runSpeedTest((d.payload && d.payload.hosts) || [], d.payload && d.payload.limits); return; }
     if (d.dir === "speedtest-stop") { stopSpeedTest(); return; }
     if (d.dir === "autotest-stop") { stopAutoTest(); return; }
+    // popup 在这个分页有救援覆写时点了使用者自己的节点：取消覆写、换回设定的节点
+    if (d.dir === "auto-clear") { clearAutoHost("popup"); return; }
     if (d.dir === "livetest-run") { runLiveSpeedTest(d.payload && d.payload.limits); return; }
     if (d.dir === "debug-poll") { probeLiveAvail(); return; }
     if (d.dir === "debug-flush") { updateSpeed(); postDebug(); postSample(); return; } // 回報頁開啟：立刻給一份最新快照與採樣

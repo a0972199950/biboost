@@ -75,6 +75,35 @@ describe("autotest-done → storage", () => {
     assert.equal(env.storage.installTestPending, undefined);
     env.close();
   });
+  test("rerun after the user picked a node themselves during the test: the flag is not given back (their choice cancels the install optimization)", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.chrome.storage.local.set({ cdnHost: B, installTestPending: false }); // popup 選節點
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, false);
+    assert.equal(env.storage.cdnHost, B);
+    env.close();
+  });
+  test("an install test that ended normally without a new pick disarms: a later forged rerun or result does nothing", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install" } }); // 目前節點就達標：沒有 autotest-done
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } }); // 之後偽造
+    assert.equal(env.storage.installTestPending, false);
+    autotestDone(env, { host: B, from: A, reason: "install" });
+    assert.equal(env.storage.cdnHost, A);
+    env.close();
+  });
+  test("CDN_SWITCHER_CLEAR_AUTO from the popup is relayed to the page as auto-clear", () => {
+    const env = boot({});
+    const posted = [];
+    env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m.dir); };
+    let resp;
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CLEAR_AUTO" }, (r) => { resp = r; });
+    assert.deepEqual(posted, ["auto-clear"]);
+    assert.equal(resp.ok, true);
+    env.close();
+  });
   test("forged install result without a pending test is ignored (only a fresh install sets installTestPending)", () => {
     const env = boot({});
     autotestDone(env, { host: B, from: A, reason: "install" });
