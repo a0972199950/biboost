@@ -2,6 +2,7 @@
 // 時間用可調的時鐘（window.Date.now = 真實時間 + offset）：測速的假 fetch 還是要真的經過幾毫秒才算得出速度
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createEnv, plain, closeAll } from "./helpers/load.mjs";
 
 after(closeAll);
@@ -657,6 +658,12 @@ describe("terminal prompt", () => {
     assert.match(el.textContent, /所有節點都不流暢/);
     const labels = [...el.querySelectorAll("button")].map((x) => x.textContent);
     assert.deepEqual(labels.sort(), ["×", "繼續觀看", "重新測速選節點", "關閉介入"].sort());
+    // 跟换节点提示一样：播放器中间上方、深色底框（jsdom 解析不了 font 简写、整段 style 会被丢掉，所以看原始码）
+    const src = readFileSync(new URL("../src/main-hook.js", import.meta.url), "utf8");
+    const css = src.slice(src.indexOf("function showTerminal"), src.indexOf("function termAttach"));
+    assert.match(css, /"top:24px", "left:50%", "transform:translateX\(-50%\)"/);
+    assert.match(css, /"background:rgba\(0,0,0,\.78\)"/);
+    assert.doesNotMatch(css, /top:50%/);
     b.env.close();
   });
   test("recovered during the test: no prompt; 'used up' is remembered — the next entry 1 shows it at once without testing; entry 2 is off", async () => {
