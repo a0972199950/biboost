@@ -1226,6 +1226,9 @@ describe("spec update after acceptance (2026-11-16)", () => {
     assert.doesNotMatch(toast(b).textContent, /過於頻繁/, "2nd: plain notice");
     b.mh.applyRescuePick(HW, "test");
     assert.match(toast(b).textContent, /如覺得切換過於頻繁，請關閉自動優化/);
+    const noteEl = [...toast(b).querySelectorAll("span")].find((x) => /過於頻繁/.test(x.textContent));
+    assert.match(noteEl.parentElement.style.flex, /100%/, "on its own line below the text");
+    assert.ok([...noteEl.parentElement.querySelectorAll("button")].some((x) => x.textContent === "關閉優化"), "the button sits on that line");
     const off = [...toast(b).querySelectorAll("button")].find((x) => x.textContent === "關閉優化");
     assert.ok(off);
     off.dispatchEvent(new b.env.window.MouseEvent("click", { bubbles: true }));

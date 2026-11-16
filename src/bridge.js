@@ -270,7 +270,7 @@
       try {
         chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" }, function (r) {
           void chrome.runtime.lastError;
-          journal("ui.term", { retest: 1, popup: r && r.popup ? 1 : 0, why: (r && r.why) || (r ? "" : "no-response") });
+          journal("ui.term", { retest: 1, popup: r && r.popup ? 1 : 0, why: (r && r.why) || (r ? "" : "no-response"), tries: (r && r.tries) || 1 });
         });
       } catch (e) {}
       return;

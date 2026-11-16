@@ -293,7 +293,7 @@
     el.style.cssText = [
       fixed ? "position:fixed" : "position:absolute",
       fixed ? "top:15%" : "top:24px",
-      "left:50%", "transform:translateX(-50%)", "z-index:999999",
+      "left:50%", "transform:translateX(-50%)", "z-index:2147483646",
       // 放不下就讓按钮换到下一行：手机版页面（m.bilibili.com）播放器很窄，不换行时文字会被挤成一行一两个字、「关闭」被切掉
       "display:flex", "flex-wrap:wrap", "align-items:center", "gap:8px 10px", "max-width:85%", "box-sizing:border-box",
       "font:13px/1.6 " + TOAST_FONT, "color:#fff",
@@ -307,11 +307,16 @@
     span.style.cssText = "flex:1 1 160px;min-width:0";
     span.textContent = text;
     el.appendChild(span);
+    // note：文字下面另起一行（使用者要的是「下面加一行」），按钮跟着放在这一行的右边
+    var btnRow = el;
     if (opts.note) {
+      btnRow = document.createElement("div");
+      btnRow.style.cssText = "flex:0 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px";
       var note = document.createElement("span");
       note.style.cssText = "flex:1 1 160px;min-width:0;font-size:12px;opacity:.85";
       note.textContent = opts.note;
-      el.appendChild(note);
+      btnRow.appendChild(note);
+      el.appendChild(btnRow);
     }
     if (opts.actionText && opts.onAction) {
       var btn = document.createElement("button");
@@ -319,7 +324,7 @@
       btn.textContent = opts.actionText;
       btn.style.cssText = "cursor:pointer;border:0;border-radius:6px;padding:5px 12px;font:13px " + TOAST_FONT + ";background:#00aeec;color:#fff;white-space:nowrap";
       btn.addEventListener("click", function () { var fn = opts.onAction; hideToast(); try { fn(); } catch (e) {} });
-      el.appendChild(btn);
+      btnRow.appendChild(btn);
     }
     if (opts.cancelText) {
       var cancelBtn = document.createElement("button");
@@ -327,7 +332,7 @@
       cancelBtn.textContent = opts.cancelText;
       cancelBtn.style.cssText = "cursor:pointer;border:1px solid rgba(255,255,255,.45);border-radius:6px;padding:5px 12px;font:13px " + TOAST_FONT + ";background:transparent;color:#fff;white-space:nowrap";
       cancelBtn.addEventListener("click", function () { var fn = opts.onCancel; hideToast(); if (fn) try { fn(); } catch (e) {} });
-      el.appendChild(cancelBtn);
+      btnRow.appendChild(cancelBtn);
     }
     if (closable) el.appendChild(closeBtn(function () { if (toastEl === el) hideToast(); }));
     var dur = opts.duration || 3000;
@@ -1178,10 +1183,11 @@
     hideToast();
     var el = document.createElement("div");
     el.id = "cdn-switcher-terminal";
-    el.style.cssText = ["position:absolute", "left:50%", "top:50%", "transform:translate(-50%,-50%)", "z-index:2147483000",
+    // 深灰底＋淺邊框：全黑畫面上也看得出框（纯黑半透明底在黑画面上等于没有）；z-index 用最大值，压过 B 站的载入图示
+    el.style.cssText = ["position:absolute", "left:50%", "top:50%", "transform:translate(-50%,-50%)", "z-index:2147483647",
       "box-sizing:border-box", "max-width:88%", "width:440px", "padding:14px 32px 12px 16px", "border-radius:10px",
-      "background:rgba(0,0,0,.82)", "color:#fff", "font:14px/1.6 " + TOAST_FONT, "box-shadow:0 4px 16px rgba(0,0,0,.4)",
-      "pointer-events:auto", "text-align:left"].join(";");
+      "background:rgba(32,33,36,.96)", "border:1px solid rgba(255,255,255,.22)", "color:#fff", "font:14px/1.6 " + TOAST_FONT,
+      "box-shadow:0 4px 20px rgba(0,0,0,.6)", "pointer-events:auto", "text-align:left", "isolation:isolate"].join(";");
     var txt = document.createElement("div");
     txt.textContent = MSGS.mhTermText;
     el.appendChild(txt);
