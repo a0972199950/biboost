@@ -649,12 +649,14 @@ describe("terminal prompt", () => {
     await roundEnded(b.env, b.mh);
     return b;
   }
-  test("shown only while this stall has not recovered; inside the player container, with a 10 s countdown", async () => {
+  test("shown only while this stall has not recovered; inside the player container; three buttons and a × (no countdown)", async () => {
     const b = await bootExhausted(true);
     const el = b.env.window.document.getElementById("cdn-switcher-terminal");
     assert.ok(el);
     assert.equal(el.parentElement, b.p.c);
     assert.match(el.textContent, /所有節點都不流暢/);
+    const labels = [...el.querySelectorAll("button")].map((x) => x.textContent);
+    assert.deepEqual(labels.sort(), ["×", "繼續觀看", "重新測速選節點", "關閉介入"].sort());
     b.env.close();
   });
   test("recovered during the test: no prompt; 'used up' is remembered — the next entry 1 shows it at once without testing; entry 2 is off", async () => {
@@ -666,17 +668,16 @@ describe("terminal prompt", () => {
     assert.equal(b.mh.round(), null);
     b.env.close();
   });
-  test("while shown, detection is paused; hidden pauses the countdown; time up = keep watching: no more optimization for this video", async () => {
+  test("while shown, detection is paused; it never closes by itself; × = keep watching: no more optimization for this video", async () => {
     const b = await bootExhausted(true);
     assert.equal(b.mh.rescueBlocked(b.clk.now()), "prompt");
-    Object.defineProperty(b.env.window.document, "visibilityState", { configurable: true, get: () => "hidden" });
-    b.clk.add(20000); b.mh.termTick(b.clk.now());
-    assert.ok(b.mh.term(), "countdown paused in the background");
-    Object.defineProperty(b.env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
-    b.mh.termTick(b.clk.now());
-    for (let i = 0; i < 11; i++) { b.clk.add(1000); b.mh.termTick(b.clk.now()); }
+    for (let i = 0; i < 60; i++) { b.clk.add(1000); b.mh.termTick(b.clk.now()); }
+    assert.ok(b.mh.term(), "still showing after a minute");
+    const x = [...b.env.window.document.querySelectorAll("#cdn-switcher-terminal button")].find((e) => e.textContent === "×");
+    x.dispatchEvent(new b.env.window.MouseEvent("click", { bubbles: true }));
     assert.equal(b.mh.term(), null);
     assert.equal(b.mh.FALLBACK.noMore, true);
+    assert.deepEqual(plain(journal(b.posted, "ui.term").filter((d) => d.choice)), [{ choice: "continue", by: "x" }]);
     b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(30000);
     assert.equal(b.mh.round(), null, "no rescue for this video any more");
     assert.equal(b.mh.term(), null);
@@ -1078,15 +1079,19 @@ describe("user decisions 2026-11-16 (cool-down, silent rescue)", () => {
     assert.equal(b.mh.autoHost(), null);
     b.env.close();
   });
-  test("the rescue is silent: no toast on the page, no 'optimizing' messages for the popup", async () => {
+  test("the rescue test is silent (no toast, no 'optimizing' messages for the popup); the notice comes only after the switch", async () => {
     const b = bootPlaying();
     speedFetch(b.env, { [HW]: "fast" });
     b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
+    assert.ok(b.mh.round());
+    assert.equal(b.env.window.document.getElementById("cdn-switcher-toast"), null, "nothing while testing");
     await roundEnded(b.env, b.mh);
     assert.equal(b.mh.autoHost(), HW);
-    assert.equal(b.env.window.document.getElementById("cdn-switcher-toast"), null);
     assert.deepEqual(of(b.posted, "autotest-start"), []);
     assert.deepEqual(of(b.posted, "autotest-progress"), []);
+    // 没有 player.reload：整页重新整理，提示留到重载后再显示
+    const saved = JSON.parse(b.env.window.sessionStorage.getItem("__CDN_SWITCHER_SWITCH_TOAST__"));
+    assert.deepEqual(saved, { t: "[節點網速不佳自動優化] 切換到 " + HW, n: 1, auto: 1 });
     b.env.close();
   });
 });
@@ -1102,3 +1107,178 @@ describe("pre-push smoke test", () => {
   });
 });
 
+
+describe("spec update after acceptance (2026-11-16)", () => {
+  function bootBlack() {
+    const b = boot();
+    b.mh.rewriteRoot(playurl(), "playurl");
+    b.p = addPlayer(b.env, { readyState: 0, paused: true, currentTime: 0, buffered: null });
+    b.mh.trackVideoEvents();
+    speedFetch(b.env, {});
+    return b;
+  }
+  const click = (b, sel) => b.env.window.document.querySelector(sel).dispatchEvent(new b.env.window.MouseEvent("click", { bubbles: true }));
+  test("black screen with a valid standby: switch to it at once (current node marked, this tab only)", () => {
+    const b = bootBlack();
+    b.mh.e2.standby = { host: HW, at: b.clk.now() };
+    b.mh.setSegFailAt(b.clk.now());
+    b.mh.rescueTick();
+    b.mh.noteSegReq(b.clk.now());
+    b.clk.run(1000);
+    assert.equal(b.mh.autoHost(), HW);
+    assert.equal(b.mh.isFailed(HOST), true);
+    assert.equal(b.mh.round(), null, "no test");
+    assert.ok(b.mh.FALLBACK.coolUntil > b.clk.now() + 28000);
+    assert.equal(journal(b.posted, "fb.switch")[0].reason, "blackout-standby");
+    b.env.close();
+  });
+  test("black screen with a standby still waits out the user's 8 s cool-down", () => {
+    const b = bootBlack();
+    const op = b.clk.now();
+    b.mh.noteUserOp("test", op);
+    b.mh.rescueTick();
+    b.mh.noteSegReq(b.clk.now());
+    b.clk.run(2000);
+    b.mh.e2.standby = { host: HW, at: b.clk.now() };
+    b.mh.setSegFailAt(b.clk.now());
+    b.clk.run(4000);
+    assert.equal(b.mh.autoHost(), null);
+    b.clk.run(3000);
+    assert.equal(b.mh.autoHost(), HW);
+    b.env.close();
+  });
+  test("the user pressed pause: the black screen is not timed until the user presses play, then 8 s cool-down + 8 s", () => {
+    const b = bootPlaying();
+    speedFetch(b.env, {});
+    click(b, ".bpx-player-ctrl-play");
+    setVideo(b.p.v, { paused: true });
+    b.p.v.dispatchEvent(new b.env.window.Event("pause"));
+    assert.equal(b.mh.userPause(), true);
+    // 节点不通：B 站自己重载成全黑（readyState 0、暂停）
+    b.clk.run(15000);
+    setVideo(b.p.v, { readyState: 0, currentTime: 0, buffered: null });
+    b.p.v.dispatchEvent(new b.env.window.Event("emptied"));
+    b.mh.noteSegReq(b.clk.now());
+    b.clk.run(60000);
+    assert.equal(b.mh.round(), null, "not while the user has it paused");
+    assert.equal(journal(b.posted, "fb.hit").length, 0);
+    click(b, ".bpx-player-ctrl-play");
+    assert.equal(b.mh.userPause(), false);
+    b.clk.run(15000);
+    assert.equal(b.mh.round(), null, "8 s cool-down, then 8 s of black");
+    b.clk.run(2000);
+    assert.ok(b.mh.round());
+    b.env.close();
+  });
+  test("bilibili's own pause (reload, no user action) does not count as the user's pause; media keys do", () => {
+    const b = bootPlaying();
+    setVideo(b.p.v, { paused: true });
+    b.p.v.dispatchEvent(new b.env.window.Event("pause"));
+    assert.equal(b.mh.userPause(), false);
+    b.clk.add(5000);
+    b.env.window.document.body.dispatchEvent(new b.env.window.KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    setVideo(b.p.v, { paused: false });
+    b.p.v.dispatchEvent(new b.env.window.Event("play"));
+    assert.equal(b.mh.userPause(), false, "space while paused = play");
+    b.env.close();
+  });
+  test("media keys: pause sets the user pause, play clears it (setActionHandler is wrapped before bilibili registers)", () => {
+    const env = createEnv({ url: VIDEO_URL });
+    const handlers = {};
+    Object.defineProperty(env.window.navigator, "mediaSession", { configurable: true, value: { setActionHandler(a, h) { handlers[a] = h; } } });
+    env.window.localStorage.setItem("__CDN_SWITCHER_CFG__", JSON.stringify({ cdnHost: HOST, autoSpeedHosts: [HOST, HW, COS] }));
+    env.load("main-hook.js");
+    const mh = env.internals("main-hook");
+    mh.stopTick();
+    let paused = 0;
+    env.window.navigator.mediaSession.setActionHandler("pause", () => { paused++; });
+    env.window.navigator.mediaSession.setActionHandler("play", () => {});
+    handlers.pause();
+    assert.equal(paused, 1, "bilibili's handler still runs");
+    assert.equal(mh.userPause(), true);
+    handlers.play();
+    assert.equal(mh.userPause(), false);
+    env.close();
+  });
+  test("the user pause ends when the video is really playing, and on a new video", () => {
+    const b = bootPlaying();
+    b.mh.setUserPause(true, "test");
+    setVideo(b.p.v, { paused: false, readyState: 4 });
+    b.clk.run(1000);
+    assert.equal(b.mh.userPause(), false);
+    b.mh.setUserPause(true, "test");
+    b.mh.rewriteRoot(playurl(9), "playurl");
+    assert.equal(b.mh.userPause(), false);
+    b.env.close();
+  });
+  function withPlayer(b) {
+    b.env.window.player = { reload() {}, getCurrentTime: () => 10, seek() {} };
+  }
+  const toast = (b) => b.env.window.document.getElementById("cdn-switcher-toast");
+  test("auto switch notice: its own prefix and a ×; from the 3rd switch on this video, a 'turn off' line, button and countdown", () => {
+    const b = bootPlaying();
+    withPlayer(b);
+    b.mh.applyRescuePick(HW, "test");
+    assert.match(toast(b).textContent, /^\[節點網速不佳自動優化\] 切換到 upos-sz-mirrorhw\.bilivideo\.com/);
+    assert.ok([...toast(b).querySelectorAll("button")].some((x) => x.textContent === "×"));
+    assert.doesNotMatch(toast(b).textContent, /過於頻繁/);
+    b.mh.applyRescuePick(COS, "test");
+    assert.doesNotMatch(toast(b).textContent, /過於頻繁/, "2nd: plain notice");
+    b.mh.applyRescuePick(HW, "test");
+    assert.match(toast(b).textContent, /如覺得切換過於頻繁，請關閉自動優化/);
+    const off = [...toast(b).querySelectorAll("button")].find((x) => x.textContent === "關閉優化");
+    assert.ok(off);
+    off.dispatchEvent(new b.env.window.MouseEvent("click", { bubbles: true }));
+    assert.equal(of(b.posted, "auto-fallback-off").length, 1);
+    assert.equal(toast(b), null, "closed on click");
+    // 换影片：次数归零
+    b.mh.rewriteRoot(playurl(9), "playurl");
+    b.mh.applyRescuePick(COS, "test");
+    assert.doesNotMatch(toast(b).textContent, /過於頻繁/);
+    b.env.close();
+  });
+  test("× closes a notice at once; the manual switch notice has no prefix but has a ×", () => {
+    const b = bootPlaying();
+    withPlayer(b);
+    b.mh.setLastSegReqAt(b.clk.now());
+    b.env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.equal(toast(b).firstChild.textContent, "切換到 " + COS);
+    const x = [...toast(b).querySelectorAll("button")].find((e) => e.textContent === "×");
+    x.dispatchEvent(new b.env.window.MouseEvent("click", { bubbles: true }));
+    assert.equal(toast(b), null);
+    b.env.close();
+  });
+  test("the switch count survives a full-page reload of the same video", () => {
+    const carry = JSON.stringify({ host: HW, page: "/video/BV1xx411c7mD?p=", failed: [HOST], cool: Date.now() + 20000, n: 2 });
+    const b = boot({}, { session: { "__CDN_SWITCHER_AUTO__": carry } });
+    b.mh.rewriteRoot(playurl(), "playurl");
+    assert.equal(b.mh.FALLBACK.autoN, 2);
+    b.env.close();
+  });
+  test("'re-test and pick a node' = keep watching (no flag, no reload) + ask for the popup speed test", async () => {
+    const b = bootPlaying({ autoSpeedHosts: [HOST] });
+    b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
+    assert.ok(b.mh.term());
+    const btn = [...b.env.window.document.querySelectorAll("#cdn-switcher-terminal button")].find((e) => e.textContent === "重新測速選節點");
+    btn.dispatchEvent(new b.env.window.MouseEvent("click", { bubbles: true }));
+    assert.equal(b.mh.term(), null);
+    assert.equal(b.mh.FALLBACK.noMore, true);
+    assert.equal(b.env.window.sessionStorage.getItem("__CDN_SWITCHER_NO_INTERVENE__"), null);
+    assert.equal(of(b.posted, "open-speedtest").length, 1);
+    // popup 的手动测速套用结果（换节点）→ 恢复这支影片的自动优化
+    b.env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.equal(b.mh.FALLBACK.noMore, false);
+    b.env.close();
+  });
+  test("log fixes: an error screen without its code yet is not logged as '?'; locale paths keep their page type", () => {
+    const b = bootPlaying();
+    b.p.err(""); b.mh.uiSample(b.clk.now());
+    assert.deepEqual(journal(b.posted, "ui.errsign"), []);
+    b.p.err("-404"); b.mh.uiSample(b.clk.now());
+    assert.deepEqual(plain(journal(b.posted, "ui.errsign")), [{ code: "404" }]);
+    b.env.close();
+    const z = boot({}, { url: "https://www.bilibili.com/zh-Hant/video/BV1xx411c7mD" });
+    assert.equal(z.mh.pageTypeOf(), "video");
+    z.env.close();
+  });
+});

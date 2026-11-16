@@ -21,7 +21,7 @@
     "message": "速度唔好時自動優化節點"
   },
   "autoFallbackHint": {
-    "message": "影片卡住或者載入失敗時，會喺背景測試目前清單啲節點，只喺呢個分頁轉去夠快嗰個；全部都唔夠快就會彈出提示，畀你揀繼續睇定關閉介入。直播就改用國際線路。如果網絡本身唔穩定（例如 Wi-Fi 訊號弱），可能會成日切換，建議關閉。"
+    "message": "影片卡住或者載入失敗時，會喺背景測試目前清單啲節點，只喺呢個分頁轉去夠快嗰個；全部都唔夠快就會彈出提示，畀你揀繼續睇、重新測速定關閉介入。直播就改用國際線路。如果網絡本身唔穩定（例如 Wi-Fi 訊號弱），可能會成日切換，建議關閉。"
   },
   "cdnHostRowLabel": {
     "message": "CDN 節點"
@@ -160,6 +160,18 @@
   },
   "mhTermDisable": {
     "message": "關閉介入"
+  },
+  "mhTermRetest": {
+    "message": "重新測速揀節點"
+  },
+  "mhToastAutoSwitched": {
+    "message": "[節點網速唔好自動優化] 轉咗去 {host}"
+  },
+  "mhToastTooFrequent": {
+    "message": "如果覺得轉得太密，可以關閉自動優化"
+  },
+  "mhToastDisableAuto": {
+    "message": "關閉優化"
   },
   "mhCdnTargetOriginal": {
     "message": "原本（唔覆寫）"

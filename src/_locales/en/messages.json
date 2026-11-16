@@ -21,7 +21,7 @@
     "message": "Auto-optimize node when slow"
   },
   "autoFallbackHint": {
-    "message": "When a video freezes or fails to load, the nodes in your current list are speed-tested in the background and this tab switches to a fast enough one; if none is fast enough, a prompt lets you keep watching or stop the extension from intervening. Live streams switch to the international route. On an unstable connection (e.g. weak Wi-Fi) it may keep switching, so turn it off."
+    "message": "When a video freezes or fails to load, the nodes in your current list are speed-tested in the background and this tab switches to a fast enough one; if none is fast enough, a prompt lets you keep watching, re-test the nodes, or stop the extension from intervening. Live streams switch to the international route. On an unstable connection (e.g. weak Wi-Fi) it may keep switching, so turn it off."
   },
   "cdnHostRowLabel": {
     "message": "CDN node"
@@ -160,6 +160,18 @@
   },
   "mhTermDisable": {
     "message": "Stop intervening"
+  },
+  "mhTermRetest": {
+    "message": "Re-test and pick a node"
+  },
+  "mhToastAutoSwitched": {
+    "message": "[Auto-optimized: slow node] Switched to {host}"
+  },
+  "mhToastTooFrequent": {
+    "message": "If it switches too often, turn off auto-optimize"
+  },
+  "mhToastDisableAuto": {
+    "message": "Turn off"
   },
   "mhCdnTargetOriginal": {
     "message": "Original (no override)"

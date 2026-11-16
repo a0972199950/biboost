@@ -63,10 +63,14 @@
     mhTermText: "所有節點都不流暢，你可以繼續觀看，或是關閉擴充介入回到B站預設",
     mhTermContinue: "繼續觀看",
     mhTermDisable: "關閉介入",
+    mhTermRetest: "重新測速選節點",
     mhCdnTargetOriginal: "原始（不覆寫）",
     mhCdnTargetBackup: "備用URL（優先）",
     mhToastLiveFallback: "目前直播線路不佳，已自動切換至國際線路(ov)",
     mhToastSwitched: "切換到 {host}",
+    mhToastAutoSwitched: "[節點網速不佳自動優化] 切換到 {host}",
+    mhToastTooFrequent: "如覺得切換過於頻繁，請關閉自動優化",
+    mhToastDisableAuto: "關閉優化",
     liveRouteOv: "國際線路(ov)",
     liveRouteOvB: "國際備用線路(ov-b)",
     liveRouteCn: "中國線路(cn)",
@@ -102,7 +106,7 @@
         var pa = JSON.parse(rawAuto);
         if (pa && typeof pa.host === "string" && pa.host) { autoHost = pa.host; autoHostPath = location.pathname; }
         // 救援改用整页重新整理（播放器不能 reload）：同一支影片的「实际播放失败」与冷静期一起带过来，不然会在两个节点间来回重整
-        if (pa && pa.page === pageKeyOf(location)) carriedRescue = { failed: Array.isArray(pa.failed) ? pa.failed.filter(function (h) { return typeof h === "string"; }) : [], cool: Number(pa.cool) || 0 };
+        if (pa && pa.page === pageKeyOf(location)) carriedRescue = { failed: Array.isArray(pa.failed) ? pa.failed.filter(function (h) { return typeof h === "string"; }) : [], cool: Number(pa.cool) || 0, n: Math.max(0, Math.min(99, Number(pa.n) || 0)) };
       }
     }
   } catch (e) {}
@@ -138,7 +142,8 @@
   function shortHost(h) { return (h || "").replace(/\.bilivideo\.(com|cn)$/i, "").replace(/\.akamaized\.net$/i, "@akam"); }
   function segName(url) { try { var u = new URL(url, location.href); return u.hostname + u.pathname.replace(/^.*\//, "/"); } catch (e) { return ""; } }
   function pageTypeOf() {
-    var p = location.pathname;
+    // 语系版网址（/zh-Hant/video/…、/en/…）：去掉开头的语系那一段再判断
+    var p = location.pathname.replace(/^\/[a-z]{2}(?:-[A-Za-z]{2,4})?(?=\/)/, "");
     if (location.hostname === "live.bilibili.com") return "live";
     if (/^\/bangumi\//.test(p)) return "bangumi";
     if (/^\/cheese\//.test(p)) return "cheese";
@@ -270,9 +275,11 @@
   }
 
   var TOAST_FONT = "-apple-system,'Microsoft JhengHei','Microsoft YaHei',sans-serif";
-  // opts: { duration, actionText, onAction, cancelText, onCancel, persistent }
-  //  - persistent=true：不设定时器，不会自动消失，只能靠 actionText/cancelText 按钮关掉
-  //  - 有任一按钮时 toast 才接收滑鼠事件，否则不挡播放器操作
+  // opts: { duration, actionText, onAction, cancelText, onCancel, persistent, note, countdown, noClose }
+  //  - persistent=true：不设定时器，不会自动消失，只能靠按钮或 × 关掉
+  //  - note：文字下面多一行；countdown=true：底下显示倒数计时条，duration 到了自动关闭
+  //  - 右上角一律有 ×（使用者 2026-11-16：换节点后的提示都要能马上关掉），noClose 才不加
+  //  - 有任一按钮时 toast 才接收滑鼠事件，否则不挡播放器操作（× 自己接收）
   function showToast(text, opts) {
     opts = opts || {};
     hideToast();
@@ -280,44 +287,77 @@
     if (!host) return;
     var fixed = host === document.body;
     var hasButton = !!(opts.actionText || opts.cancelText);
-    toastEl = document.createElement("div");
-    toastEl.id = "cdn-switcher-toast";
-    toastEl.style.cssText = [
+    var closable = !opts.noClose;
+    var el = toastEl = document.createElement("div");
+    el.id = "cdn-switcher-toast";
+    el.style.cssText = [
       fixed ? "position:fixed" : "position:absolute",
       fixed ? "top:15%" : "top:24px",
       "left:50%", "transform:translateX(-50%)", "z-index:999999",
       // 放不下就讓按钮换到下一行：手机版页面（m.bilibili.com）播放器很窄，不换行时文字会被挤成一行一两个字、「关闭」被切掉
-      "display:flex", "flex-wrap:wrap", "align-items:center", "gap:10px", "max-width:85%", "box-sizing:border-box",
+      "display:flex", "flex-wrap:wrap", "align-items:center", "gap:8px 10px", "max-width:85%", "box-sizing:border-box",
       "font:13px/1.6 " + TOAST_FONT, "color:#fff",
-      "background:rgba(0,0,0,.78)", "padding:8px 14px", "border-radius:8px",
+      "background:rgba(0,0,0,.78)", "padding:8px " + (closable ? "30px" : "14px") + " 8px 14px", "border-radius:8px",
       "box-shadow:0 2px 10px rgba(0,0,0,.35)", "opacity:1", "transition:opacity .4s",
       (hasButton ? "pointer-events:auto" : "pointer-events:none")
     ].join(";");
+    // 不要让点击穿透到播放器（点画面会暂停／播放）
+    ["click", "pointerdown", "mousedown", "dblclick"].forEach(function (ev) { el.addEventListener(ev, function (e) { e.stopPropagation(); }); });
     var span = document.createElement("span");
     span.style.cssText = "flex:1 1 160px;min-width:0";
     span.textContent = text;
-    toastEl.appendChild(span);
+    el.appendChild(span);
+    if (opts.note) {
+      var note = document.createElement("span");
+      note.style.cssText = "flex:1 1 160px;min-width:0;font-size:12px;opacity:.85";
+      note.textContent = opts.note;
+      el.appendChild(note);
+    }
     if (opts.actionText && opts.onAction) {
       var btn = document.createElement("button");
+      btn.type = "button";
       btn.textContent = opts.actionText;
       btn.style.cssText = "cursor:pointer;border:0;border-radius:6px;padding:5px 12px;font:13px " + TOAST_FONT + ";background:#00aeec;color:#fff;white-space:nowrap";
       btn.addEventListener("click", function () { var fn = opts.onAction; hideToast(); try { fn(); } catch (e) {} });
-      toastEl.appendChild(btn);
+      el.appendChild(btn);
     }
     if (opts.cancelText) {
       var cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
       cancelBtn.textContent = opts.cancelText;
       cancelBtn.style.cssText = "cursor:pointer;border:1px solid rgba(255,255,255,.45);border-radius:6px;padding:5px 12px;font:13px " + TOAST_FONT + ";background:transparent;color:#fff;white-space:nowrap";
       cancelBtn.addEventListener("click", function () { var fn = opts.onCancel; hideToast(); if (fn) try { fn(); } catch (e) {} });
-      toastEl.appendChild(cancelBtn);
+      el.appendChild(cancelBtn);
+    }
+    if (closable) el.appendChild(closeBtn(function () { if (toastEl === el) hideToast(); }));
+    var dur = opts.duration || 3000;
+    var bar = null;
+    if (opts.countdown && !opts.persistent) {
+      var track = document.createElement("div");
+      track.style.cssText = "flex:0 0 100%;height:3px;border-radius:2px;background:rgba(255,255,255,.2);overflow:hidden";
+      bar = document.createElement("div");
+      bar.style.cssText = "height:100%;width:100%;background:#00aeec;transition:width " + dur + "ms linear";
+      track.appendChild(bar);
+      el.appendChild(track);
     }
     try { if (!fixed && getComputedStyle(host).position === "static") host.style.position = "relative"; } catch (e) {}
-    host.appendChild(toastEl);
+    host.appendChild(el);
+    if (bar) setTimeout(function () { bar.style.width = "0%"; }, 30);
     if (!opts.persistent) {
-      var dur = opts.duration || 3000;
-      toastFadeTimer = setTimeout(function () { if (toastEl) toastEl.style.opacity = "0"; }, Math.max(0, dur - 400));
+      toastFadeTimer = setTimeout(function () { if (toastEl === el) el.style.opacity = "0"; }, Math.max(0, dur - 400));
       toastTimer = setTimeout(hideToast, dur);
     }
+  }
+  // 右上角的 ×（toast 与终态提示共用）：自己接收滑鼠事件
+  function closeBtn(onClick) {
+    var x = document.createElement("button");
+    x.type = "button";
+    x.textContent = "\u00d7";
+    x.setAttribute("aria-label", "close");
+    x.style.cssText = "position:absolute;top:2px;right:4px;width:24px;height:24px;padding:0;border:0;background:transparent;color:#fff;" +
+      "opacity:.75;cursor:pointer;font:18px/24px " + TOAST_FONT + ";pointer-events:auto";
+    x.addEventListener("click", function (e) { e.stopPropagation(); onClick(); });
+    return x;
   }
 
   // ---------------- 自动救援（卡顿救援 v2，2026-11-16 定案）----------------
@@ -349,11 +389,13 @@
   var STANDBY_TTL_MS = 60000, STANDBY_IDLE_MS = 20000; // 预备节点：选好起 60 秒，或 20 秒内都没有新的分段失败就作废
   var TICK_GAP_MS = 3000; // 取样中断超过这么久（电脑睡眠、分页被节流）：进行中的计时从恢复那一刻重新开始
   var UI_MISSING_MS = 10000, UI_MISSING_HOLD_MS = 3000; // 有 video 这么久了还找不到播放器元素（而且持续缺 3 秒）＝B 站改版，退回旧判断
-  var TERM_MS = 10000; // 终态提示的倒数
+  var AUTO_TOAST_MS = 10000; // 同一支影片第 3 次（含）以后的自动优化提示：倒数这么久自动关闭
+  var AUTO_TOAST_NOTE_N = 3;
   // coolUntil：冷静期结束的时间；failed：host → 失败标记到期的时间（PLAY_FAIL＝到换影片为止）；
   // noMore：这支影片选了「继续观看」，不再自动优化；exhausted：这支影片候选已用完（测的期间影片恢复了，没显示提示）；
   // manualPause：popup 按了手动测速，到测速页关掉为止
-  var FALLBACK = { coolUntil: 0, failed: {}, noMore: false, exhausted: false, manualPause: false };
+  // autoN：这支影片自动优化换了几次节点（提示用，换影片归零）
+  var FALLBACK = { coolUntil: 0, failed: {}, noMore: false, exhausted: false, manualPause: false, autoN: 0 };
   var segFailAt = 0; // 最近一次「目前节点」的分段失败（入口二用；换节点、换影片清掉）
   // 最近一次目前节点的分段失败（不管有没有开自动切换）：mainVideoIdle 用
   var lastSegFailAt = 0, SEG_FAIL_STUCK_MS = 60000;
@@ -446,16 +488,18 @@
       if (carriedRescue) {
         carriedRescue.failed.forEach(function (h) { markFailed(h, PLAY_FAIL); });
         FALLBACK.coolUntil = Math.max(FALLBACK.coolUntil, carriedRescue.cool);
+        FALLBACK.autoN = Math.max(FALLBACK.autoN, carriedRescue.n);
         carriedRescue = null;
       }
       return;
     }
     abortRescue("next-video");
     closeTerminal("next-video");
-    FALLBACK.failed = {}; FALLBACK.noMore = false; FALLBACK.exhausted = false; FALLBACK.coolUntil = 0;
+    FALLBACK.failed = {}; FALLBACK.noMore = false; FALLBACK.exhausted = false; FALLBACK.coolUntil = 0; FALLBACK.autoN = 0;
     e1NoSampleLogged = false;
     segFailAt = 0;
     e1.eps = []; e1.ep = null; blackReset();
+    userPause = false; toggleOpAt = 0;
     e2Reset(true);
     // 卡住 class 可能從前一支一路掛到新影片（自动连播时载入画面先出现、新 cid 才进来）：
     // 清掉「已在卡」的记忆，下一次取样就会替新影片重新开始算，不然 class 一直在就永远不会再建立卡顿
@@ -522,10 +566,12 @@
     if (next === "backup") {
       // 备用URL 走 playurl 层，需重打 playurl 才生效 → 整页重载，覆写用 sessionStorage 一次性带过去
       try { window.sessionStorage.setItem(AUTO_KEY, JSON.stringify(rescueCarry(next))); } catch (e) {}
+      autoToastAfterReload();
       fullReload();
     } else if (!playerReload()) {
       // 具名备援本走播放器内重载；player.reload 不可用时退整页重载，同样一次性带覆写
       if (next) { try { window.sessionStorage.setItem(AUTO_KEY, JSON.stringify(rescueCarry(next))); } catch (e) {} }
+      autoToastAfterReload();
       fullReload();
     }
   }
@@ -533,7 +579,7 @@
   // 整页重新整理要带过去的：覆写的节点，加上同一支影片（同网址路径）实际播放失败的节点与冷静期到期时间
   function rescueCarry(next) {
     var failed = Object.keys(FALLBACK.failed).filter(function (h) { return FALLBACK.failed[h] === PLAY_FAIL; });
-    return { host: next, page: pageKeyOf(location), failed: failed, cool: FALLBACK.coolUntil };
+    return { host: next, page: pageKeyOf(location), failed: failed, cool: FALLBACK.coolUntil, n: FALLBACK.autoN };
   }
   // 取消这个分页的救援覆写、回到使用者设定的节点（popup 点了使用者自己的节点）。备用URL 走 playurl 层，离开要整页重载；具名节点播放器内重载即可
   function clearAutoHost(by) {
@@ -544,7 +590,8 @@
     applyAutoHost(null);
   }
 
-  // 救援在背景默默进行，没有任何提示（使用者 2026-11-16）：看得到的只有 popup 的「这个分页暂时改用了 xxx」与终态提示。
+  // 救援测速在背景默默进行，测的期间没有任何提示（使用者 2026-11-16）；换了节点之后才在影片上提示（autoSwitchToast），
+  // 另外还有 popup 的「这个分页暂时改用了 xxx」与终态提示。
   // 救援选出的节点：只在这个分页覆写（autoHost），不写进设定 —— 设定是使用者自己的选择，救援是不得已才发生的；
   // 其他分页、之后开的分页照样用设定里的节点，不会被重载（回报 #46 #47：一个分页换节点，正在看的分页跟着重载）。
   // 选到的正是用户设定的节点（目前在用覆写）就取消覆写
@@ -553,7 +600,24 @@
     debug.lastError = "auto-fallback(" + reason + "): " + from + " -> " + pick;
     var fv = getMainVideo();
     jlog("fb.switch", { reason: reason, from: shortHost(from), to: shortHost(pick), buf: fv ? forwardBufferSec(fv).toFixed(1) : "-" });
+    FALLBACK.autoN++;
+    var toast = { t: MSGS.mhToastAutoSwitched.replace("{host}", pick === "backup" ? MSGS.mhCdnTargetBackup : pick), n: FALLBACK.autoN };
+    // 整页重新整理才生效时，提示等重载后再显示（applyAutoHost 走 fullReload 前会先存）
+    pendingAutoToast = toast;
     applyAutoHost(pick === cfg.cdnHost ? null : pick); // onNodeSwitched 给 30 秒冷静期
+    if (pendingAutoToast) { pendingAutoToast = null; autoSwitchToast(toast); }
+  }
+  var pendingAutoToast = null;
+  // 自动优化换节点后的提示（使用者 2026-11-16）：跟手动换节点的「切换到 xxx」分开，加前缀。
+  // 同一支影片第 3 次（含）以后多一行「觉得切换过于频繁就关闭自动优化」与「关闭优化」按钮（把 autoFallback 关掉，全域），倒数 10 秒
+  function autoSwitchToast(o) {
+    if (!o || !o.t) return;
+    if (!(o.n >= AUTO_TOAST_NOTE_N)) { showToast(o.t); return; }
+    showToast(o.t, { note: MSGS.mhToastTooFrequent, actionText: MSGS.mhToastDisableAuto, countdown: true, duration: AUTO_TOAST_MS,
+      onAction: function () {
+        jlog("ui.autoOff", { by: "toast", n: o.n });
+        try { window.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" }, "*"); } catch (e) {}
+      } });
   }
 
   // 目前画质「实际要的」速度（bytes/s）：playurl 的 dash 码率 × 播放速度（2 倍速要两倍的量）；没有码率回传 0
@@ -643,8 +707,8 @@
     if (c.classList.contains("bpx-player-error-sign-active")) {
       var code = uiErrCode(c);
       if (code === "3001") return "err";
-      // 别的错误（或读不到错误码）可能是下架、权限、地区，换节点救不了：只记日志
-      if (UI.errLogged !== (code || "?")) { UI.errLogged = code || "?"; jlog("ui.errsign", { code: code || "?" }); }
+      // 别的错误可能是下架、权限、地区，换节点救不了：只记日志。错误画面刚出现、错误码还没渲染出来时先不记（不然多一笔 "?"）
+      if (code && UI.errLogged !== code) { UI.errLogged = code; jlog("ui.errsign", { code: code }); }
     } else UI.errLogged = "";
     return "";
   }
@@ -701,6 +765,17 @@
   function lastOpBefore(t) { for (var i = userOps.length - 1; i >= 0; i--) if (userOps[i] <= t) return userOps[i]; return 0; }
   function userCoolUntil() { var op = userOps.length ? userOps[userOps.length - 1] : 0; return op ? op + USER_OP_GRACE_MS : 0; }
   function excludeStart(t) { var op = lastOpBefore(t); return op && t - op < USER_OP_GRACE_MS ? op + USER_OP_GRACE_MS : t; }
+  // 使用者按了暂停（使用者 2026-11-16）：从使用者的暂停操作起、到使用者再按播放为止，全黑备援不计时、不触发。
+  // 不能只看 video.paused（B 站重载后影片本来就是暂停）：播放／暂停键、点画面、空白键之后 1 秒内主 video 暂停了，才算使用者按的暂停；
+  // 媒体键直接看动作。解除：使用者再按一次这几种操作（这时影片是暂停的，按下去就是要播）、媒体键播放、影片实际在播（readyState > 2）、换影片
+  var userPause = false, toggleOpAt = 0;
+  var TOGGLE_SEL = ".bpx-player-ctrl-play,.bpx-player-video-wrap";
+  function setUserPause(on, by) {
+    if (userPause === !!on) return;
+    userPause = !!on;
+    jlog("ui.userPause", { on: userPause ? 1 : 0, by: by });
+  }
+  function noteToggleOp(at) { toggleOpAt = at || Date.now(); if (userPause) setUserPause(false, "op"); }
   function isTypingTarget(t) {
     if (!t) return false;
     var tag = (t.tagName || "").toLowerCase();
@@ -709,7 +784,12 @@
   try {
     var onOpPointer = function (e) {
       var t = e && e.target;
-      try { if (t && t.closest && t.closest(OP_SEL)) noteUserOp(e.type === "click" ? "" : "ptr"); } catch (err) {}
+      try {
+        if (t && t.closest && t.closest(OP_SEL)) {
+          noteUserOp(e.type === "click" ? "" : "ptr");
+          if (t.closest(TOGGLE_SEL)) noteToggleOp();
+        }
+      } catch (err) {}
     };
     document.addEventListener("pointerdown", onOpPointer, true);
     document.addEventListener("click", onOpPointer, true);
@@ -722,6 +802,7 @@
       if (e.repeat) { if (e.key === "ArrowLeft" || e.key === "ArrowRight") noteUserOp(""); return; } // 按住方向键：照样算操作，但不记日志
       var k = e.key;
       if (k === " " || k === "Spacebar" || k === "ArrowLeft" || k === "ArrowRight") noteUserOp("key");
+      if (k === " " || k === "Spacebar") noteToggleOp();
     }, true);
   } catch (e) {}
   // 系统媒体键、耳机：mediaSession 没有事件可听，包装 setActionHandler（main-hook 在 document_start 执行，早于 B 站注册）
@@ -730,7 +811,12 @@
     if (ms && typeof ms.setActionHandler === "function") {
       var origSet = ms.setActionHandler;
       ms.setActionHandler = function (action, handler) {
-        var h = typeof handler === "function" ? function () { noteUserOp("media"); return handler.apply(this, arguments); } : handler;
+        var h = typeof handler === "function" ? function () {
+          noteUserOp("media");
+          if (action === "pause" || action === "stop") setUserPause(true, "media");
+          else if (action === "play") setUserPause(false, "media");
+          return handler.apply(this, arguments);
+        } : handler;
         return origSet.call(this, action, h);
       };
     }
@@ -798,6 +884,7 @@
   function blackReset() { BLACK.rs0At = 0; BLACK.reqAt = 0; BLACK.base = 0; }
   function noteSegReq(t) { lastSegReqAt = t; if (BLACK.rs0At && !BLACK.reqAt && t >= BLACK.rs0At) BLACK.reqAt = t; }
   function blackTrack(now, v) {
+    if (userPause && v && !v.paused && v.readyState > 2) setUserPause(false, "playing");
     if (UI.stuck || !v || v.readyState !== 0) { blackReset(); return; }
     if (!BLACK.rs0At) BLACK.rs0At = rs0EventAt && rs0EventAt <= now && v === trackedVideo ? rs0EventAt : now;
     if (!BLACK.reqAt) { if (lastSegReqAt >= BLACK.rs0At) BLACK.reqAt = lastSegReqAt; else return; }
@@ -806,8 +893,16 @@
     if (!BLACK.base) {
       var op = lastOpBefore(ws);
       BLACK.base = Math.max(ws, op ? op + USER_OP_GRACE_MS : 0);
-      jlog("fb.black", { phase: "start", wait: Math.round((BLACK.base - now) / 1000) });
+      jlog("fb.black", { phase: "start", wait: Math.round((BLACK.base - now) / 1000), up: userPause ? 1 : 0 });
     }
+    if (userPause) BLACK.base = Math.max(BLACK.base, now); // 使用者按了暂停：不计时；按播放后照使用者操作冷却 8 秒再算（holdTimers）
+  }
+  // 全黑备援该救援了：从起点满 8 秒；有有效的预备节点时一进入全黑就换（使用者 2026-11-16：目前节点持续失败时
+  // B 站播放器约 10～20 秒就会自己丢掉缓冲、重载成全黑，入口二「缓冲掉到 3 秒以下才换」几乎等不到）。
+  // 起点还在使用者操作的冷却里、使用者按了暂停，都不算
+  function blackDue(now) {
+    if (!BLACK.base || userPause || now < BLACK.base) return false;
+    return now - BLACK.base >= BLACK_MS || (!R && !autoTestRunning && standbyOk(now));
   }
 
   // ---- 入口一达标：救援 ----
@@ -1049,10 +1144,19 @@
   }
 
   // ---------------- 终态提示：所有节点都不流畅 ----------------
-  // 10 秒倒数，「继续观看」（按下或倒数结束）＝这支影片不再自动优化；「关闭介入」＝整页重新整理，这个分页回到 B 站原始行为。
-  // 挂在 .bpx-player-container 里（全屏也看得到），B 站重建播放器 DOM 时重新挂上；显示期间这个分页不侦测；分页在背景时倒数暂停
-  var term = null; // { el, bar, left, lastAt, reason }
+  // 不倒数、不自动关闭（使用者 2026-11-16），一直显示到使用者选择或被关掉（换影片、手动换节点、手动测速、关掉自动优化）：
+  //  「继续观看」或右上角 ×＝这支影片不再自动优化；「关闭介入」＝整页重新整理，这个分页回到 B 站原始行为；
+  //  「重新测速选节点」＝等同继续观看，再请 background 打开 popup、用目前的节点清单开始手动测速。
+  // 挂在 .bpx-player-container 里（全屏也看得到），B 站重建播放器 DOM 时重新挂上；显示期间这个分页不侦测
+  var term = null; // { el, reason, timer }
   function termHost() { return uiContainer() || ((getMainVideo() || {}).parentElement) || null; }
+  function termBtn(text, primary) {
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = text;
+    b.style.cssText = "cursor:pointer;border-radius:6px;padding:6px 14px;font:13px " + TOAST_FONT + ";color:#fff;" +
+      (primary ? "border:0;background:#00aeec" : "border:1px solid rgba(255,255,255,.5);background:transparent");
+    return b;
+  }
   function showTerminal(reason) {
     if (term) return;
     var host = termHost();
@@ -1061,35 +1165,26 @@
     var el = document.createElement("div");
     el.id = "cdn-switcher-terminal";
     el.style.cssText = ["position:absolute", "left:50%", "top:50%", "transform:translate(-50%,-50%)", "z-index:2147483000",
-      "box-sizing:border-box", "max-width:88%", "width:420px", "padding:14px 16px 12px", "border-radius:10px",
+      "box-sizing:border-box", "max-width:88%", "width:440px", "padding:14px 32px 12px 16px", "border-radius:10px",
       "background:rgba(0,0,0,.82)", "color:#fff", "font:14px/1.6 " + TOAST_FONT, "box-shadow:0 4px 16px rgba(0,0,0,.4)",
       "pointer-events:auto", "text-align:left"].join(";");
     var txt = document.createElement("div");
     txt.textContent = MSGS.mhTermText;
     el.appendChild(txt);
-    var track = document.createElement("div");
-    track.style.cssText = "height:4px;border-radius:2px;background:rgba(255,255,255,.2);margin:10px 0 12px;overflow:hidden";
-    var bar = document.createElement("div");
-    bar.style.cssText = "height:100%;width:100%;background:#00aeec";
-    track.appendChild(bar);
-    el.appendChild(track);
     var row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap";
-    var bc = document.createElement("button");
-    bc.type = "button"; bc.textContent = MSGS.mhTermContinue;
-    bc.style.cssText = "cursor:pointer;border:0;border-radius:6px;padding:6px 14px;font:13px " + TOAST_FONT + ";background:#00aeec;color:#fff";
-    var bo = document.createElement("button");
-    bo.type = "button"; bo.textContent = MSGS.mhTermDisable;
-    bo.style.cssText = "cursor:pointer;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:6px 14px;font:13px " + TOAST_FONT + ";background:transparent;color:#fff";
+    row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px";
+    var bc = termBtn(MSGS.mhTermContinue, true), bo = termBtn(MSGS.mhTermDisable, false), br = termBtn(MSGS.mhTermRetest, false);
     // 不要让点击穿透到播放器（点画面会暂停／播放）
     ["click", "pointerdown", "mousedown", "dblclick"].forEach(function (ev) { el.addEventListener(ev, function (e) { e.stopPropagation(); }); });
     bc.addEventListener("click", function () { termChoose("continue", "click"); });
     bo.addEventListener("click", function () { termChoose("disable", "click"); });
-    row.appendChild(bo); row.appendChild(bc);
+    br.addEventListener("click", function () { termChoose("retest", "click"); });
+    row.appendChild(bo); row.appendChild(br); row.appendChild(bc);
     el.appendChild(row);
-    term = { el: el, bar: bar, left: TERM_MS, lastAt: Date.now(), reason: reason, timer: null };
+    el.appendChild(closeBtn(function () { termChoose("continue", "x"); }));
+    term = { el: el, reason: reason, timer: null };
     termAttach();
-    term.timer = setInterval(function () { termTick(Date.now()); }, 200);
+    term.timer = setInterval(function () { termTick(Date.now()); }, 500);
     debug.lastError = "auto-fallback(" + reason + "): " + effHost() + " -> terminal";
     jlog("ui.term", { phase: "show", reason: reason, failed: failedHosts().length });
   }
@@ -1102,16 +1197,8 @@
       host.appendChild(term.el);
     }
   }
-  function termTick(now) {
-    if (!term) return;
-    termAttach();
-    var dt = now - term.lastAt;
-    // 分页在背景：倒数暂停；电脑睡眠、计时器被节流（中断超过 3 秒）的时间也不算
-    if (!tabHidden() && dt > 0 && dt <= TICK_GAP_MS) term.left -= dt;
-    term.lastAt = now;
-    term.bar.style.width = Math.max(0, term.left / TERM_MS * 100) + "%";
-    if (term.left <= 0) termChoose("continue", "timeout");
-  }
+  // 每秒检查：B 站重建播放器 DOM 时重新挂上
+  function termTick() { termAttach(); }
   function closeTerminal(by) {
     if (!term) return;
     clearInterval(term.timer);
@@ -1124,9 +1211,15 @@
     if (!term) return;
     closeTerminal("");
     jlog("ui.term", { choice: choice, by: by });
-    if (choice === "continue") { FALLBACK.noMore = true; return; } // 用目前的节点继续播；这支影片不再自动优化（只在记忆体，换影片、重新整理就重来）
-    try { window.sessionStorage.setItem(NOINT_KEY, "1"); window.sessionStorage.removeItem(AUTO_KEY); } catch (e) {}
-    fullReload();
+    if (choice === "disable") {
+      try { window.sessionStorage.setItem(NOINT_KEY, "1"); window.sessionStorage.removeItem(AUTO_KEY); } catch (e) {}
+      fullReload();
+      return;
+    }
+    // 用目前的节点继续播；这支影片不再自动优化（只在记忆体，换影片、重新整理就重来）
+    FALLBACK.noMore = true;
+    // 重新测速选节点：popup 打开后自己开始手动测速（之后照手动测速的规则：测速期间暂停、套用结果就恢复这支影片的自动优化）
+    if (choice === "retest") { try { window.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" }, "*"); } catch (e) {} }
   }
 
   // ---------------- 每秒的侦测（点播）----------------
@@ -1183,7 +1276,7 @@
     else {
       var st = e1Stats(now);
       if (st.n >= E1_TRIGGER_N || st.ms >= E1_TRIGGER_MS) rescue1(simulateStallUntil > now ? "simulated" : "stalled", st);
-      else if (BLACK.base && now - BLACK.base >= BLACK_MS) rescue1("blackout");
+      else if (blackDue(now)) rescue1("blackout");
     }
     e2Tick(now, v, block);
   }
@@ -2543,20 +2636,33 @@
     }
   });
 
-  // 整页重载才生效的切换：toast 文字先放 sessionStorage，重载后等播放器出现再弹（读到就删）
+  // 整页重载才生效的切换：提示先放 sessionStorage，重载后等播放器出现再显示（读到就删）。
+  // 存的是 JSON：{ t：文字, n：自动优化第几次（有 auto 才有）, auto：1＝自动优化的提示 }
   var SWITCH_TOAST_KEY = "__CDN_SWITCHER_SWITCH_TOAST__";
   function toastAfterReload(text) {
     if (!text) return;
-    try { window.sessionStorage.setItem(SWITCH_TOAST_KEY, text); } catch (e) {}
+    try { window.sessionStorage.setItem(SWITCH_TOAST_KEY, JSON.stringify({ t: text })); } catch (e) {}
+  }
+  function autoToastAfterReload() {
+    var o = pendingAutoToast;
+    pendingAutoToast = null;
+    if (!o) return;
+    try { window.sessionStorage.setItem(SWITCH_TOAST_KEY, JSON.stringify({ t: o.t, n: o.n, auto: 1 })); } catch (e) {}
   }
   (function showPendingSwitchToast() {
-    var text = null;
-    try { text = window.sessionStorage.getItem(SWITCH_TOAST_KEY); window.sessionStorage.removeItem(SWITCH_TOAST_KEY); } catch (e) {}
-    if (!text) return;
+    var raw = null, o = null;
+    try { raw = window.sessionStorage.getItem(SWITCH_TOAST_KEY); window.sessionStorage.removeItem(SWITCH_TOAST_KEY); } catch (e) {}
+    if (!raw) return;
+    try { o = JSON.parse(raw); } catch (e) {}
+    if (!o || typeof o !== "object" || typeof o.t !== "string" || !o.t) o = { t: String(raw) }; // 旧版存的是纯文字
     var tries = 0;
     var iv = setInterval(function () {
       tries++;
-      if (getToastHost() !== document.body || tries > 40) { clearInterval(iv); showToast(text); }
+      if (getToastHost() !== document.body || tries > 40) {
+        clearInterval(iv);
+        if (o.auto) autoSwitchToast({ t: o.t, n: Number(o.n) || 0 });
+        else showToast(o.t);
+      }
     }, 500);
   })();
 
@@ -2703,6 +2809,8 @@
     v.addEventListener("seeking", function () { if (getMainVideo() === v) e2.lowSince = null; });
     // 暂停当下前方几乎没缓冲 → 缓冲暂停（播放器自己按的）；一播放、换来源就清掉
     v.addEventListener("pause", function () { if (getMainVideo() === v) health.bufPause = !v.ended && hasPlayed(v) && forwardBufferSec(v) < 0.5; });
+    // 播放／暂停键、点画面、空白键之后 1 秒内暂停＝使用者按的暂停（全黑备援不计时，见 userPause）
+    v.addEventListener("pause", function () { if (getMainVideo() === v && !v.ended && Date.now() - toggleOpAt < 1000) setUserPause(true, "op"); });
     ["play", "emptied", "loadstart"].forEach(function (ev) {
       v.addEventListener(ev, function () { if (getMainVideo() === v) health.bufPause = false; });
     });
@@ -2775,6 +2883,7 @@
       noteSegReq: noteSegReq, setLastSampleAt: function (t) { lastSampleAt = t; },
       // 卡顿救援 v2
       rescueTick: rescueTick, rescueBlocked: rescueBlocked, rescue1: rescue1, e1: e1, e2: e2, BLACK: BLACK, UI: UI, e1Stats: e1Stats,
+      blackDue: blackDue, userPause: function () { return userPause; }, setUserPause: setUserPause, noteToggleOp: noteToggleOp, autoSwitchToast: autoSwitchToast,
       uiStuckKind: uiStuckKind, uiSample: uiSample, noteUserOp: noteUserOp, excludeStart: excludeStart, userOps: function () { return userOps; },
       startRound: startRound, round: function () { return R; }, abortRescue: abortRescue, standbyOk: standbyOk,
       term: function () { return term; }, showTerminal: showTerminal, termChoose: termChoose, closeTerminal: closeTerminal, termTick: termTick,

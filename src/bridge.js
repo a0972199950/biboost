@@ -29,6 +29,7 @@
   };
 
   var latestDebug = null;
+  var openStAt = 0; // 最近一次请 background 打开 popup 测速的时间
   var isTopFrame = window.top === window;
 
   // ---- 問題回報：日誌／採樣／快照 → background（單一寫入者，寫進 storage.session）----
@@ -110,8 +111,9 @@
   // 开局推一次；使用者在 popup 切换语言（uiMsgs 变更）时会再推一次。
   var MSGS_KEY = "__CDN_SWITCHER_MSGS__";
   var MSG_KEYS = [
-    "mhTermText", "mhTermContinue", "mhTermDisable",
+    "mhTermText", "mhTermContinue", "mhTermDisable", "mhTermRetest",
     "mhCdnTargetOriginal", "mhCdnTargetBackup", "mhToastLiveFallback", "mhToastSwitched",
+    "mhToastAutoSwitched", "mhToastTooFrequent", "mhToastDisableAuto",
     "liveRouteOv", "liveRouteOvB", "liveRouteCn", "liveRouteCnB"
   ];
   // 使用者在 popup 進階設定選了語言時，popup 會把該語系的整份文案存在 storage 的 uiMsgs，優先用它
@@ -242,6 +244,23 @@
           } catch (e) {}
         }
       }
+      return;
+    }
+    // 换节点后的提示按了「关闭优化」：把「速度不佳时自动优化节点」关掉（全域，所有分页都生效；跟 popup 的开关同一个设定）
+    if (d.dir === "auto-fallback-off" && isTopFrame) {
+      try { chrome.storage.local.set({ autoFallback: false }); } catch (e) {}
+      return;
+    }
+    // 终态提示按了「重新测速选节点」：请 background 打开 popup 并自动开始手动测速。页面脚本也能送这个讯息，10 秒内只理一次
+    if (d.dir === "open-speedtest" && isTopFrame) {
+      if (Date.now() - openStAt < 10000) return;
+      openStAt = Date.now();
+      try {
+        chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" }, function (r) {
+          void chrome.runtime.lastError;
+          journal("ui.term", { retest: 1, popup: r && r.popup ? 1 : 0, why: (r && r.why) || (r ? "" : "no-response") });
+        });
+      } catch (e) {}
       return;
     }
     if (d.dir === "speedtest-meta" && d.payload) {
