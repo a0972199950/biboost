@@ -1183,16 +1183,16 @@
     hideToast();
     var el = document.createElement("div");
     el.id = "cdn-switcher-terminal";
-    // 深灰底＋淺邊框：全黑畫面上也看得出框（纯黑半透明底在黑画面上等于没有）；z-index 用最大值，压过 B 站的载入图示
-    el.style.cssText = ["position:absolute", "left:50%", "top:50%", "transform:translate(-50%,-50%)", "z-index:2147483647",
-      "box-sizing:border-box", "max-width:88%", "width:440px", "padding:14px 32px 12px 16px", "border-radius:10px",
-      "background:rgba(32,33,36,.96)", "border:1px solid rgba(255,255,255,.22)", "color:#fff", "font:14px/1.6 " + TOAST_FONT,
-      "box-shadow:0 4px 20px rgba(0,0,0,.6)", "pointer-events:auto", "text-align:left", "isolation:isolate"].join(";");
+    // 位置与外观跟换节点提示（cdn-switcher-toast）一样（使用者 2026-11-16）：播放器中间上方、深色底框；z-index 用最大值，压过 B 站的载入图示
+    el.style.cssText = ["position:absolute", "top:24px", "left:50%", "transform:translateX(-50%)", "z-index:2147483647",
+      "box-sizing:border-box", "max-width:85%", "width:440px", "padding:8px 30px 8px 14px", "border-radius:8px",
+      "background:rgba(0,0,0,.78)", "color:#fff", "font:13px/1.6 " + TOAST_FONT, "box-shadow:0 2px 10px rgba(0,0,0,.35)",
+      "pointer-events:auto", "text-align:left"].join(";");
     var txt = document.createElement("div");
     txt.textContent = MSGS.mhTermText;
     el.appendChild(txt);
     var row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px";
+    row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px";
     var bc = termBtn(MSGS.mhTermContinue, true), bo = termBtn(MSGS.mhTermDisable, false), br = termBtn(MSGS.mhTermRetest, false);
     // 不要让点击穿透到播放器（点画面会暂停／播放）
     ["click", "pointerdown", "mousedown", "dblclick"].forEach(function (ev) { el.addEventListener(ev, function (e) { e.stopPropagation(); }); });
