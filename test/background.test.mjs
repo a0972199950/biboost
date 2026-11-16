@@ -623,4 +623,32 @@ describe("terminal prompt 're-test' → popup", () => {
     assert.equal(env.storage.speedtestOnPopup.tabId, 7, "written again before the retry");
     env.close();
   });
+  test("'another popup is already open' is not retried (that popup handles the flag); the flag carries one click id", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.reject(new Error("Invalid call to action.openPopup(). Another popup is already open.")));
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(1300);
+    assert.equal(calls.length, 1);
+    assert.ok(env.storage.speedtestOnPopup.id);
+    env.close();
+  });
+  test("the user switched away during the retries: the popup is not opened", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.reject(new Error("Failed to open popup.")));
+    env.chrome.tabs.get = (id, cb) => cb({ id, windowId: 3, active: false });
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(500);
+    assert.equal(calls.length, 1);
+    env.close();
+  });
+  test("all three tries fail: three calls, the flag stays for a popup opened by hand", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.reject(new Error("Failed to open popup.")));
+    env.chrome.tabs.get = (id, cb) => cb({ id, windowId: 3, active: true });
+    const id0 = await new Promise((r) => { env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" }); setTimeout(() => r(env.storage.speedtestOnPopup.id), 20); });
+    await env.settle(1400);
+    assert.equal(calls.length, 3);
+    assert.equal(env.storage.speedtestOnPopup.id, id0, "same click id on every retry");
+    env.close();
+  });
 });

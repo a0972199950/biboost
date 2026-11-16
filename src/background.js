@@ -85,27 +85,44 @@ function loginDone(tabId) {
 // 打不開時標記照樣留著（popup 那邊只認一分鐘內、而且是這個分頁的）：使用者自己點工具列的圖示打開 popup，也會自動開始測速。
 // 分頁不是作用中的（頁面腳本在背景分頁偽造的請求）不理，也不搶視窗焦點
 // popup 開著時使用者去點頁面上的按鈕：Chrome 會先把那個 popup 關掉，關閉途中 openPopup 會失敗（"Failed to open popup."，Windows 實測），
-// 而且關閉中的 popup 可能已經讀走標記。所以失敗時隔一下重寫標記再開，最多再試兩次（300、800 毫秒後）
+// 所以失敗時隔一下再開，最多再試兩次（300、800 毫秒後）。"Another popup is already open"（Safari：popup 還開著）不重試，那個 popup 自己會處理標記。
+// 重試前再確認分頁仍是作用中、視窗仍在前景，使用者已經換走就不開。標記帶這次點擊的 id，重試沿用同一個，popup 同一個 id 只處理一次
 var OPEN_ST_RETRY_MS = [300, 800];
 function openSpeedtestPopup(tab) {
   if (!tab || tab.id == null) return Promise.resolve({ popup: false, why: "no-tab" });
   if (tab.active === false) return Promise.resolve({ popup: false, why: "inactive" });
-  function setFlag() { return new Promise(function (r) { chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: tab.id } }, r); }); }
+  var flag = { at: Date.now(), tabId: tab.id, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) };
+  function setFlag() { flag.at = Date.now(); return new Promise(function (r) { chrome.storage.local.set({ speedtestOnPopup: flag }, r); }); }
   function openOnce() {
     return Promise.resolve().then(function () { return tab.windowId != null ? chrome.action.openPopup({ windowId: tab.windowId }) : chrome.action.openPopup(); })
       .then(function () { return { popup: true, why: "" }; }, function (e) { return { popup: false, why: String((e && e.message) || e || "error").slice(0, 120) }; });
   }
+  function stillThere() {
+    return new Promise(function (r) {
+      if (!chrome.tabs || !chrome.tabs.get) return r(true);
+      chrome.tabs.get(tab.id, function (t) {
+        void chrome.runtime.lastError;
+        if (!t || t.active === false) return r(false);
+        if (!chrome.windows || !chrome.windows.get || t.windowId == null) return r(true);
+        chrome.windows.get(t.windowId, function (w) { void chrome.runtime.lastError; r(!w || w.focused !== false); });
+      });
+    });
+  }
   function attempt(n) {
-    return setFlag().then(openOnce).then(function (res) {
-      if (res.popup || n >= OPEN_ST_RETRY_MS.length) { if (n) res.tries = n + 1; return res; }
-      return new Promise(function (r) { setTimeout(r, OPEN_ST_RETRY_MS[n]); }).then(function () { return attempt(n + 1); });
+    return openOnce().then(function (res) {
+      if (n) res.tries = n + 1;
+      if (res.popup || n >= OPEN_ST_RETRY_MS.length || /already open/i.test(res.why)) return res;
+      return new Promise(function (r) { setTimeout(r, OPEN_ST_RETRY_MS[n]); }).then(stillThere).then(function (ok) {
+        if (!ok) { res.why = "tab-left"; return res; }
+        return setFlag().then(function () { return attempt(n + 1); });
+      });
     });
   }
   if (!chrome.action || typeof chrome.action.openPopup !== "function") return setFlag().then(function () { return { popup: false, why: "no-api" }; });
   var focus = tab.windowId != null && chrome.windows && chrome.windows.update
     ? new Promise(function (r) { chrome.windows.update(tab.windowId, { focused: true }, function () { void chrome.runtime.lastError; r(); }); })
     : Promise.resolve();
-  return focus.then(function () { return attempt(0); });
+  return setFlag().then(function () { return focus; }).then(function () { return attempt(0); });
 }
 
 chrome.runtime.onInstalled.addListener(function (details) {
