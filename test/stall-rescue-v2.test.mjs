@@ -1281,4 +1281,68 @@ describe("spec update after acceptance (2026-11-16)", () => {
     assert.equal(z.mh.pageTypeOf(), "video");
     z.env.close();
   });
+  test("review: pressing play in the black screen and the player's own pause right after is not the user's pause; a play event clears it", () => {
+    const b = bootPlaying();
+    setVideo(b.p.v, { paused: true });
+    click(b, ".bpx-player-ctrl-play");
+    b.p.v.dispatchEvent(new b.env.window.Event("pause"));
+    assert.equal(b.mh.userPause(), false, "the video was paused when pressed: that press meant play");
+    b.mh.setUserPause(true, "test");
+    b.p.v.dispatchEvent(new b.env.window.Event("play"));
+    assert.equal(b.mh.userPause(), false, "big play icon or any other control");
+    b.env.close();
+  });
+  test("review: an error screen whose code never renders is logged as '?' after 3 s", () => {
+    const b = bootPlaying();
+    b.p.err(""); b.mh.uiSample(b.clk.now());
+    b.clk.add(2000); b.mh.uiSample(b.clk.now());
+    assert.deepEqual(journal(b.posted, "ui.errsign"), []);
+    b.clk.add(1500); b.mh.uiSample(b.clk.now());
+    assert.deepEqual(plain(journal(b.posted, "ui.errsign")), [{ code: "?" }]);
+    b.env.close();
+  });
+  test("review: switching back to the user's own node from the popup shows 'switched to'", () => {
+    const b = bootPlaying();
+    withPlayer(b);
+    b.mh.applyRescuePick(HW, "test");
+    b.env.postMessage({ __cdnSwitcher: 1, dir: "auto-clear" });
+    assert.equal(b.mh.autoHost(), null);
+    assert.equal(toast(b).firstChild.textContent, "切換到 " + HOST);
+    b.env.close();
+  });
+  test("review: a notice saved before a full-page reload comes back after it (3rd+ with the turn-off button; old plain text too)", async () => {
+    const a = boot({}, { session: { "__CDN_SWITCHER_SWITCH_TOAST__": JSON.stringify({ t: "[節點網速不佳自動優化] 切換到 " + HW, n: 3, auto: 1 }) } });
+    a.p = addPlayer(a.env);
+    await a.env.settle(700);
+    assert.ok([...toast(a).querySelectorAll("button")].some((x) => x.textContent === "關閉優化"));
+    a.env.close();
+    const c = boot({}, { session: { "__CDN_SWITCHER_SWITCH_TOAST__": "切換到 " + COS } });
+    c.p = addPlayer(c.env);
+    await c.env.settle(700);
+    assert.equal(toast(c).firstChild.textContent, "切換到 " + COS);
+    c.env.close();
+  });
+  test("review: a standby switch counts toward the 3rd notice", () => {
+    const b = bootPlaying();
+    withPlayer(b);
+    b.mh.applyRescuePick(HW, "test");
+    b.mh.applyRescuePick(COS, "test");
+    b.mh.e2.standby = { host: HW, at: b.clk.now() };
+    b.mh.setSegFailAt(b.clk.now());
+    b.mh.FALLBACK.coolUntil = 0;
+    b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
+    assert.equal(b.mh.autoHost(), HW);
+    assert.match(toast(b).textContent, /過於頻繁/);
+    b.env.close();
+  });
+  test("review: in the fallback mode (ui.missing) the user's pause also stops the old readyState-0 rule", () => {
+    const b = bootBlack();
+    b.mh.UI.missing = true;
+    b.mh.setUserPause(true, "test");
+    b.mh.noteSegReq(b.clk.now());
+    b.clk.run(60000);
+    assert.equal(b.mh.round(), null);
+    assert.equal(journal(b.posted, "fb.hit").length, 0);
+    b.env.close();
+  });
 });

@@ -30,6 +30,15 @@
 
   var latestDebug = null;
   var openStAt = 0; // 最近一次请 background 打开 popup 测速的时间
+  // 使用者刚刚在这个页面上点了东西（transient activation：同一个 frame 的 MAIN 与 ISOLATED world 共用，页面脚本伪造不了），而且分页在前景。
+  // 浏览器没有 userActivation（Safari 16.3 以前）时只看前景
+  function userGesture() {
+    try {
+      if (document.visibilityState !== "visible") return false;
+      var ua = navigator.userActivation;
+      return !ua || !!ua.isActive;
+    } catch (e) { return false; }
+  }
   var isTopFrame = window.top === window;
 
   // ---- 問題回報：日誌／採樣／快照 → background（單一寫入者，寫進 storage.session）----
@@ -246,13 +255,16 @@
       }
       return;
     }
-    // 换节点后的提示按了「关闭优化」：把「速度不佳时自动优化节点」关掉（全域，所有分页都生效；跟 popup 的开关同一个设定）
+    // 换节点后的提示按了「关闭优化」：把「速度不佳时自动优化节点」关掉（全域，所有分页都生效；跟 popup 的开关同一个设定）。
+    // 页面脚本也能送这两则讯息：要真的是使用者刚刚点了（userGesture），而且分页在前景
     if (d.dir === "auto-fallback-off" && isTopFrame) {
+      if (!userGesture()) { journal("ui.autoOff", { rejected: 1 }); return; }
       try { chrome.storage.local.set({ autoFallback: false }); } catch (e) {}
       return;
     }
-    // 终态提示按了「重新测速选节点」：请 background 打开 popup 并自动开始手动测速。页面脚本也能送这个讯息，10 秒内只理一次
+    // 终态提示按了「重新测速选节点」：请 background 打开 popup 并自动开始手动测速。10 秒内只理一次
     if (d.dir === "open-speedtest" && isTopFrame) {
+      if (!userGesture()) { journal("ui.term", { retest: 1, rejected: 1 }); return; }
       if (Date.now() - openStAt < 10000) return;
       openStAt = Date.now();
       try {

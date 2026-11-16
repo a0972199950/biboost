@@ -499,7 +499,7 @@
     e1NoSampleLogged = false;
     segFailAt = 0;
     e1.eps = []; e1.ep = null; blackReset();
-    userPause = false; toggleOpAt = 0;
+    userPause = false; toggleOpAt = 0; toggleFromPlaying = false;
     e2Reset(true);
     // 卡住 class 可能從前一支一路掛到新影片（自动连播时载入画面先出现、新 cid 才进来）：
     // 清掉「已在卡」的记忆，下一次取样就会替新影片重新开始算，不然 class 一直在就永远不会再建立卡顿
@@ -586,8 +586,10 @@
     if (!autoHost) return;
     jlog("fb.autoClear", { reason: by, host: autoHost === "backup" ? "backup" : shortHost(autoHost) });
     onUserSwitched(by);
-    if (autoHost === "backup") { autoHost = null; onNodeSwitched(); fullReload(); return; }
-    applyAutoHost(null);
+    // 换回使用者自己的节点也是手动换节点：照样提示「切换到 xxx」
+    var toast = { t: MSGS.mhToastSwitched.replace("{host}", cfg.cdnHost === "backup" ? MSGS.mhCdnTargetBackup : cfg.cdnHost) };
+    if (autoHost === "backup") { autoHost = null; onNodeSwitched(); toastAfterReload(toast.t); fullReload(); return; }
+    switchWithToast(toast, function () { applyAutoHost(null); });
   }
 
   // 救援测速在背景默默进行，测的期间没有任何提示（使用者 2026-11-16）；换了节点之后才在影片上提示（autoSwitchToast），
@@ -601,13 +603,16 @@
     var fv = getMainVideo();
     jlog("fb.switch", { reason: reason, from: shortHost(from), to: shortHost(pick), buf: fv ? forwardBufferSec(fv).toFixed(1) : "-" });
     FALLBACK.autoN++;
-    var toast = { t: MSGS.mhToastAutoSwitched.replace("{host}", pick === "backup" ? MSGS.mhCdnTargetBackup : pick), n: FALLBACK.autoN };
-    // 整页重新整理才生效时，提示等重载后再显示（applyAutoHost 走 fullReload 前会先存）
-    pendingAutoToast = toast;
-    applyAutoHost(pick === cfg.cdnHost ? null : pick); // onNodeSwitched 给 30 秒冷静期
-    if (pendingAutoToast) { pendingAutoToast = null; autoSwitchToast(toast); }
+    var toast = { t: MSGS.mhToastAutoSwitched.replace("{host}", pick === "backup" ? MSGS.mhCdnTargetBackup : pick), n: FALLBACK.autoN, auto: 1 };
+    switchWithToast(toast, function () { applyAutoHost(pick === cfg.cdnHost ? null : pick); }); // onNodeSwitched 给 30 秒冷静期
   }
-  var pendingAutoToast = null;
+  // 换节点并显示换节点后的提示：播放器内重载就马上显示；整页重新整理才生效时，提示等重载后再显示（applyAutoHost 走 fullReload 前会先存）
+  var pendingAutoToast = null; // { t, n, auto }
+  function switchWithToast(toast, doSwitch) {
+    pendingAutoToast = toast;
+    doSwitch();
+    if (pendingAutoToast) { pendingAutoToast = null; if (toast.auto) autoSwitchToast(toast); else showToast(toast.t); }
+  }
   // 自动优化换节点后的提示（使用者 2026-11-16）：跟手动换节点的「切换到 xxx」分开，加前缀。
   // 同一支影片第 3 次（含）以后多一行「觉得切换过于频繁就关闭自动优化」与「关闭优化」按钮（把 autoFallback 关掉，全域），倒数 10 秒
   function autoSwitchToast(o) {
@@ -690,7 +695,7 @@
   // ---------------- 画面元素：播放器显示「卡住」（只用 class，不看文字；B 站各语系 class 相同）----------------
   // 缓冲中：容器带 bpx-state-buff；错误画面：容器带 bpx-player-error-sign-active 且错误码 3001；载入画面：loading-panel 带 bpx-state-loading。
   // 这些元素平常就在 DOM 里，要看状态 class。MutationObserver 记下出现的时刻（每秒的检查当保险，B 站会重建播放器 DOM）
-  var UI = { stuck: "", since: 0, goneAt: 0, errLogged: "", missing: false, missingSince: 0, videoSince: 0, obsC: null, obsL: null, mo: null };
+  var UI = { stuck: "", since: 0, goneAt: 0, errLogged: "", errSince: 0, missing: false, missingSince: 0, videoSince: 0, obsC: null, obsL: null, mo: null };
   function uiContainer() {
     var v = getMainVideo(), c = v && v.closest ? v.closest(".bpx-player-container") : null;
     return c || document.querySelector(".bpx-player-container");
@@ -707,9 +712,13 @@
     if (c.classList.contains("bpx-player-error-sign-active")) {
       var code = uiErrCode(c);
       if (code === "3001") return "err";
-      // 别的错误可能是下架、权限、地区，换节点救不了：只记日志。错误画面刚出现、错误码还没渲染出来时先不记（不然多一笔 "?"）
-      if (code && UI.errLogged !== code) { UI.errLogged = code; jlog("ui.errsign", { code: code }); }
-    } else UI.errLogged = "";
+      // 别的错误（或读不到错误码）可能是下架、权限、地区，换节点救不了：只记日志。
+      // 错误画面刚出现时错误码常常还没渲染出来：持续 3 秒都读不到数字才记 "?"（不然每次都多一笔 "?"）
+      var now0 = Date.now();
+      if (!UI.errSince) UI.errSince = now0;
+      var lc = code || (now0 - UI.errSince >= 3000 ? "?" : "");
+      if (lc && UI.errLogged !== lc) { UI.errLogged = lc; jlog("ui.errsign", { code: lc }); }
+    } else { UI.errLogged = ""; UI.errSince = 0; }
     return "";
   }
   function uiSample(now) {
@@ -768,14 +777,19 @@
   // 使用者按了暂停（使用者 2026-11-16）：从使用者的暂停操作起、到使用者再按播放为止，全黑备援不计时、不触发。
   // 不能只看 video.paused（B 站重载后影片本来就是暂停）：播放／暂停键、点画面、空白键之后 1 秒内主 video 暂停了，才算使用者按的暂停；
   // 媒体键直接看动作。解除：使用者再按一次这几种操作（这时影片是暂停的，按下去就是要播）、媒体键播放、影片实际在播（readyState > 2）、换影片
-  var userPause = false, toggleOpAt = 0;
+  var userPause = false, toggleOpAt = 0, toggleFromPlaying = false;
   var TOGGLE_SEL = ".bpx-player-ctrl-play,.bpx-player-video-wrap";
   function setUserPause(on, by) {
     if (userPause === !!on) return;
     userPause = !!on;
     jlog("ui.userPause", { on: userPause ? 1 : 0, by: by });
   }
-  function noteToggleOp(at) { toggleOpAt = at || Date.now(); if (userPause) setUserPause(false, "op"); }
+  // 操作当下影片在播才可能是「按暂停」：在暂停（全黑）时按下去是要播，之后播放器自己重设来源发出的 pause 不算使用者的暂停
+  function noteToggleOp(at) {
+    var v = getMainVideo();
+    toggleOpAt = at || Date.now(); toggleFromPlaying = !!v && !v.paused;
+    if (userPause) setUserPause(false, "op");
+  }
   function isTypingTarget(t) {
     if (!t) return false;
     var tag = (t.tagName || "").toLowerCase();
@@ -1219,7 +1233,14 @@
     // 用目前的节点继续播；这支影片不再自动优化（只在记忆体，换影片、重新整理就重来）
     FALLBACK.noMore = true;
     // 重新测速选节点：popup 打开后自己开始手动测速（之后照手动测速的规则：测速期间暂停、套用结果就恢复这支影片的自动优化）
-    if (choice === "retest") { try { window.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" }, "*"); } catch (e) {} }
+    // 全屏时工具列是隐藏的，popup 打不开：先离开全屏（还在这次点击里，可以呼叫）
+    if (choice === "retest") {
+      try {
+        if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } catch (e) {}
+      try { window.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" }, "*"); } catch (e) {}
+    }
   }
 
   // ---------------- 每秒的侦测（点播）----------------
@@ -1258,6 +1279,8 @@
     standbyTick(now);
     var block = rescueBlocked(now);
     var b1 = block || (R && R.src === 1 && !R.aborted ? "testing" : "") || (autoTestRunning && !R ? "install" : "");
+    // 后备模式（ui.missing）的旧判断也有 readyState 0 的规则：使用者按了暂停时同样不计时（见 userPause）
+    if (!b1 && UI.missing && userPause) b1 = "user-pause";
     if (!UI.missing) uiSample(now);
     // 条件刚解除：正卡着的那次从解除的那一刻开始算（冷静期结束、测速结束、回到前景、popup 关掉；不是上一次被挡住的那一秒）。
     // 要在 e1Track 之前，不然这一秒会用被推到上一秒的开始时间算成立
@@ -2647,7 +2670,7 @@
     var o = pendingAutoToast;
     pendingAutoToast = null;
     if (!o) return;
-    try { window.sessionStorage.setItem(SWITCH_TOAST_KEY, JSON.stringify({ t: o.t, n: o.n, auto: 1 })); } catch (e) {}
+    try { window.sessionStorage.setItem(SWITCH_TOAST_KEY, JSON.stringify(o.auto ? { t: o.t, n: o.n, auto: 1 } : { t: o.t })); } catch (e) {}
   }
   (function showPendingSwitchToast() {
     var raw = null, o = null;
@@ -2810,7 +2833,9 @@
     // 暂停当下前方几乎没缓冲 → 缓冲暂停（播放器自己按的）；一播放、换来源就清掉
     v.addEventListener("pause", function () { if (getMainVideo() === v) health.bufPause = !v.ended && hasPlayed(v) && forwardBufferSec(v) < 0.5; });
     // 播放／暂停键、点画面、空白键之后 1 秒内暂停＝使用者按的暂停（全黑备援不计时，见 userPause）
-    v.addEventListener("pause", function () { if (getMainVideo() === v && !v.ended && Date.now() - toggleOpAt < 1000) setUserPause(true, "op"); });
+    v.addEventListener("pause", function () { if (getMainVideo() === v && !v.ended && toggleFromPlaying && Date.now() - toggleOpAt < 1000) setUserPause(true, "op"); });
+    // 影片又开始播放（paused 变 false）：B 站重载后影片本来是暂停的，会播放几乎都是使用者按的（中央的大播放图示、别的控制元件也算）
+    v.addEventListener("play", function () { if (getMainVideo() === v) setUserPause(false, "play"); });
     ["play", "emptied", "loadstart"].forEach(function (ev) {
       v.addEventListener(ev, function () { if (getMainVideo() === v) health.bufPause = false; });
     });

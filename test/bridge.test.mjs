@@ -417,4 +417,20 @@ describe("buttons on the page's notices", () => {
     assert.deepEqual(plain(logged), [{ retest: 1, popup: 0, why: "user gesture" }]);
     env.close();
   });
+  test("without a real user click (forged by a page script) or in a background tab, both are ignored", () => {
+    const env = boot({ autoFallback: true });
+    Object.defineProperty(env.window.navigator, "userActivation", { configurable: true, value: { isActive: false } });
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
+    assert.equal(env.storage.autoFallback, true);
+    assert.equal(env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_OPEN_SPEEDTEST").length, 0);
+    Object.defineProperty(env.window.navigator, "userActivation", { configurable: true, value: { isActive: true } });
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "hidden" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    assert.equal(env.storage.autoFallback, true);
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    assert.equal(env.storage.autoFallback, false, "a real click in the foreground");
+    env.close();
+  });
 });
