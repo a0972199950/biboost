@@ -593,12 +593,21 @@ describe("terminal prompt 're-test' → popup", () => {
     assert.equal(env.storage.speedtestOnPopup.tabId, 7);
     env.close();
   });
-  test("the popup cannot be opened (e.g. Firefox needs a user gesture): the flag is removed and the reason returned", async () => {
+  test("the popup cannot be opened (e.g. Firefox needs a user gesture): the flag stays for a popup opened by hand", async () => {
     const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
     const calls = withAction(env, () => Promise.reject(new Error("openPopup requires a user gesture")));
     env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
     await env.settle(30);
     assert.equal(calls.length, 1);
+    assert.equal(env.storage.speedtestOnPopup.tabId, 7, "kept: opening the popup by hand within a minute still starts the test");
+    env.close();
+  });
+  test("a request from a tab that is not active (forged by a background page) is ignored and does not grab focus", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3, active: false } });
+    const calls = withAction(env, () => Promise.resolve());
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(20);
+    assert.equal(calls.length, 0);
     assert.equal("speedtestOnPopup" in env.storage, false);
     env.close();
   });

@@ -875,4 +875,13 @@ describe("popup opened by the terminal prompt's 're-test' button", () => {
     assert.equal(started(b).length, 0);
     b.close();
   });
+  test("'all countries' still shows the long-test warning first; a hidden test button is never pressed", async () => {
+    const a = await bootFlag({ at: Date.now(), tabId: 7 }, { cdnCountry: "ALL" });
+    assert.equal(started(a).length, 0, "waits for the warning");
+    assert.notEqual(a.window.document.getElementById("allWarn").style.display, "none");
+    a.close();
+    const b = await bootFlag({ at: Date.now(), tabId: 7 }, { videoEnabled: false });
+    assert.equal(started(b).length, 0);
+    b.close();
+  });
 });

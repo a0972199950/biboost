@@ -80,13 +80,16 @@ function loginDone(tabId) {
 }
 
 // 影片上的終態提示按了「重新測速選節點」（bridge 轉來，sender 是那個分頁）：留下 speedtestOnPopup，在那個分頁的視窗打開 popup，
-// popup 讀到就自動開始手動測速。打不開（Firefox 要使用者在擴充自己的介面上操作、其他環境沒有 openPopup）就把標記清掉，回傳原因
+// popup 讀到就自動開始手動測速。打不開（Firefox 要使用者在擴充自己的介面上操作、其他環境沒有 openPopup）就回傳原因。
+// 打不開時標記照樣留著（popup 那邊只認一分鐘內、而且是這個分頁的）：使用者自己點工具列的圖示打開 popup，也會自動開始測速。
+// 分頁不是作用中的（頁面腳本在背景分頁偽造的請求）不理，也不搶視窗焦點
 function openSpeedtestPopup(tab) {
   if (!tab || tab.id == null) return Promise.resolve({ popup: false, why: "no-tab" });
-  if (!chrome.action || typeof chrome.action.openPopup !== "function") return Promise.resolve({ popup: false, why: "no-api" });
+  if (tab.active === false) return Promise.resolve({ popup: false, why: "inactive" });
   return new Promise(function (r) { chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: tab.id } }, r); }).then(function () {
+    if (!chrome.action || typeof chrome.action.openPopup !== "function") return { popup: false, why: "no-api" };
     return new Promise(function (r) {
-      var done = function (ok, why) { if (!ok) chrome.storage.local.remove("speedtestOnPopup"); r({ popup: ok, why: why || "" }); };
+      var done = function (ok, why) { r({ popup: ok, why: why || "" }); };
       var open = function () {
         Promise.resolve().then(function () { return tab.windowId != null ? chrome.action.openPopup({ windowId: tab.windowId }) : chrome.action.openPopup(); })
           .then(function () { done(true); }, function (e) { done(false, String((e && e.message) || e || "error").slice(0, 120)); });
