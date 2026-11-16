@@ -884,4 +884,13 @@ describe("popup opened by the terminal prompt's 're-test' button", () => {
     assert.equal(started(b).length, 0);
     b.close();
   });
+  test("a popup that is already open starts when a new flag arrives (openPopup fails with 'another popup is already open')", async () => {
+    const env = await bootFlag(null);
+    assert.equal(started(env).length, 0);
+    env.chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: 7 } });
+    await env.settle(30);
+    assert.equal(started(env).length, 1);
+    assert.equal("speedtestOnPopup" in env.storage, false);
+    env.close();
+  });
 });

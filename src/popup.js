@@ -1006,8 +1006,12 @@ Promise.all([
 
 // 影片上的終態提示按了「重新測速選節點」：background 留下 speedtestOnPopup（時間與分頁）再打開 popup，
 // popup 看到就自動按一次「測速」（跟使用者自己按一樣：選「全部」時照樣先跳警告）。只認一分鐘內、而且是那個分頁的
+// popup 已經開著時，openPopup 會失敗（Safari 實測：Another popup is already open），但標記照樣寫進來：看到新的標記就直接開始
 var ST_ON_POPUP_MS = 60 * 1000;
+var autoStReady = false; // 設定載入完（按鈕狀態已經畫好）才處理，之前寫進來的由載入完那次處理
+try { chrome.storage.onChanged.addListener(function (ch, area) { if (autoStReady && area === "local" && ch.speedtestOnPopup && ch.speedtestOnPopup.newValue) maybeAutoSpeedtest(); }); } catch (e) {}
 function maybeAutoSpeedtest() {
+  autoStReady = true;
   chrome.storage.local.get("speedtestOnPopup", function (s) {
     var o = s && s.speedtestOnPopup;
     if (!o) return;
