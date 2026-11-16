@@ -414,7 +414,7 @@ describe("buttons on the page's notices", () => {
     env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
     assert.equal(env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_OPEN_SPEEDTEST").length, 1);
     const logged = env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_JOURNAL" && m.entry.k === "ui.term").map((m) => m.entry.d);
-    assert.deepEqual(plain(logged), [{ retest: 1, popup: 0, why: "user gesture" }]);
+    assert.deepEqual(plain(logged), [{ retest: 1, popup: 0, why: "user gesture", tries: 1 }]);
     env.close();
   });
   test("without a real user click (forged by a page script) or in a background tab, both are ignored", () => {

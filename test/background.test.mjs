@@ -611,4 +611,16 @@ describe("terminal prompt 're-test' → popup", () => {
     assert.equal("speedtestOnPopup" in env.storage, false);
     env.close();
   });
+  test("an open popup still closing (Chrome: 'Failed to open popup.') is retried, and the flag is written again for the new popup", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    let n = 0;
+    const calls = withAction(env, () => (++n === 1 ? Promise.reject(new Error("Failed to open popup.")) : Promise.resolve()));
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(20);
+    delete env.storage.speedtestOnPopup; // 关闭中的 popup 读走了标记
+    await env.settle(400);
+    assert.equal(calls.length, 2);
+    assert.equal(env.storage.speedtestOnPopup.tabId, 7, "written again before the retry");
+    env.close();
+  });
 });

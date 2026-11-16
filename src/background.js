@@ -84,21 +84,28 @@ function loginDone(tabId) {
 // Safari 27.2（macOS 27.2）實測 2026-11-16：使用者點了按鈕後從這裡呼叫可以打開；popup 已經開著時回 "Another popup is already open"
 // 打不開時標記照樣留著（popup 那邊只認一分鐘內、而且是這個分頁的）：使用者自己點工具列的圖示打開 popup，也會自動開始測速。
 // 分頁不是作用中的（頁面腳本在背景分頁偽造的請求）不理，也不搶視窗焦點
+// popup 開著時使用者去點頁面上的按鈕：Chrome 會先把那個 popup 關掉，關閉途中 openPopup 會失敗（"Failed to open popup."，Windows 實測），
+// 而且關閉中的 popup 可能已經讀走標記。所以失敗時隔一下重寫標記再開，最多再試兩次（300、800 毫秒後）
+var OPEN_ST_RETRY_MS = [300, 800];
 function openSpeedtestPopup(tab) {
   if (!tab || tab.id == null) return Promise.resolve({ popup: false, why: "no-tab" });
   if (tab.active === false) return Promise.resolve({ popup: false, why: "inactive" });
-  return new Promise(function (r) { chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: tab.id } }, r); }).then(function () {
-    if (!chrome.action || typeof chrome.action.openPopup !== "function") return { popup: false, why: "no-api" };
-    return new Promise(function (r) {
-      var done = function (ok, why) { r({ popup: ok, why: why || "" }); };
-      var open = function () {
-        Promise.resolve().then(function () { return tab.windowId != null ? chrome.action.openPopup({ windowId: tab.windowId }) : chrome.action.openPopup(); })
-          .then(function () { done(true); }, function (e) { done(false, String((e && e.message) || e || "error").slice(0, 120)); });
-      };
-      if (tab.windowId != null && chrome.windows && chrome.windows.update) chrome.windows.update(tab.windowId, { focused: true }, function () { void chrome.runtime.lastError; open(); });
-      else open();
+  function setFlag() { return new Promise(function (r) { chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: tab.id } }, r); }); }
+  function openOnce() {
+    return Promise.resolve().then(function () { return tab.windowId != null ? chrome.action.openPopup({ windowId: tab.windowId }) : chrome.action.openPopup(); })
+      .then(function () { return { popup: true, why: "" }; }, function (e) { return { popup: false, why: String((e && e.message) || e || "error").slice(0, 120) }; });
+  }
+  function attempt(n) {
+    return setFlag().then(openOnce).then(function (res) {
+      if (res.popup || n >= OPEN_ST_RETRY_MS.length) { if (n) res.tries = n + 1; return res; }
+      return new Promise(function (r) { setTimeout(r, OPEN_ST_RETRY_MS[n]); }).then(function () { return attempt(n + 1); });
     });
-  });
+  }
+  if (!chrome.action || typeof chrome.action.openPopup !== "function") return setFlag().then(function () { return { popup: false, why: "no-api" }; });
+  var focus = tab.windowId != null && chrome.windows && chrome.windows.update
+    ? new Promise(function (r) { chrome.windows.update(tab.windowId, { focused: true }, function () { void chrome.runtime.lastError; r(); }); })
+    : Promise.resolve();
+  return focus.then(function () { return attempt(0); });
 }
 
 chrome.runtime.onInstalled.addListener(function (details) {
