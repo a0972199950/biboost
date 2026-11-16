@@ -618,7 +618,7 @@
     if (FALLBACK.noMore) return "no-more";
     if (term) return "prompt";
     // 使用者主动操作后冷却 8 秒（使用者 2026-11-16）：拖进度条、换画质、暂停等造成的卡顿或缓冲过低都不算，8 秒后从那一刻重新开始监听
-    if (userCoolUntil(now) > (now || Date.now())) return "user-op";
+    if (userCoolUntil() > (now || Date.now())) return "user-op";
     if ((now || Date.now()) < FALLBACK.coolUntil) return "cool";
     return "";
   }
@@ -819,7 +819,8 @@
     var wasOngoing = !!stallState.ongoing;
     legacyReset();
     stallState.ongoing = wasOngoing;
-    jlog("fb.hit", { entry: 1, reason: reason, n: info ? info.n : "", sec: info ? Math.round(info.ms / 100) / 10 : "" });
+    // 测不了（没有样本）时每 5 秒会来一次：那种情况下 fb.hit 跟 fb.noSample 一样每支影片只记一次，不然会洗掉日志
+    if (!(e1NoSampleLogged && !sampleUrl())) jlog("fb.hit", { entry: 1, reason: reason, n: info ? info.n : "", sec: info ? Math.round(info.ms / 100) / 10 : "" });
     if (FALLBACK.exhausted) { showTerminal(reason); return true; } // 这支影片候选已用完：直接显示终态，不再测
     var cur = effHost();
     if (R && R.aborted) return false; // 已中止、正在收尾的一轮：等它结束，不升级、不另开
