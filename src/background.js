@@ -80,7 +80,8 @@ function loginDone(tabId) {
 }
 
 // 影片上的終態提示按了「重新測速選節點」（bridge 轉來，sender 是那個分頁）：留下 speedtestOnPopup，在那個分頁的視窗打開 popup，
-// popup 讀到就自動開始手動測速。打不開（Firefox 要使用者在擴充自己的介面上操作、其他環境沒有 openPopup）就回傳原因。
+// popup 讀到就自動開始手動測速。打不開（Firefox 要使用者在擴充自己的介面上操作、popup 已經開著、其他環境沒有 openPopup）就回傳原因。
+// Safari 26（macOS 27.2）實測 2026-11-16：使用者點了按鈕後從這裡呼叫可以打開；popup 已經開著時回 "Another popup is already open"
 // 打不開時標記照樣留著（popup 那邊只認一分鐘內、而且是這個分頁的）：使用者自己點工具列的圖示打開 popup，也會自動開始測速。
 // 分頁不是作用中的（頁面腳本在背景分頁偽造的請求）不理，也不搶視窗焦點
 function openSpeedtestPopup(tab) {
