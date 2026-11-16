@@ -391,10 +391,12 @@ describe("config messages from bridge", () => {
     assert.equal("bogus" in mh.cfg(), false);
     env.close();
   });
-  test("messages pushed by bridge replace the toast strings", () => {
+  test("messages pushed by bridge replace the prompt strings", () => {
     const env = boot({});
-    env.postMessage({ __cdnSwitcher: 1, dir: "messages", payload: { mhToastClose: "Close" } });
-    // no direct getter for MSGS; exercising the path is enough to catch a thrown error
+    env.postMessage({ __cdnSwitcher: 1, dir: "messages", payload: { mhTermText: "All nodes are slow (test)" } });
+    env.window.document.body.innerHTML = '<div class="bpx-player-container"></div>';
+    env.window.__cdnSwitcherSimulateStall("ask");
+    assert.match(env.window.document.getElementById("cdn-switcher-terminal").textContent, /All nodes are slow \(test\)/);
     env.close();
   });
 });

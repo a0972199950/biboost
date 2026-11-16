@@ -370,7 +370,7 @@ describe("entry 1: black screen backup (no prompt at all)", () => {
     assert.ok(b.mh.round(), "treated as entry 1 reaching its threshold");
     b.env.close();
   });
-  test("an action before the wait pushes the start to 8 s after it; actions during the wait do not", () => {
+  test("an action before the wait pushes the start to 8 s after it (8 s cool-down)", () => {
     const b = bootBlack();
     const op = b.clk.now();
     b.mh.noteUserOp("test", op);
@@ -1087,6 +1087,17 @@ describe("user decisions 2026-11-16 (cool-down, silent rescue)", () => {
     assert.equal(b.env.window.document.getElementById("cdn-switcher-toast"), null);
     assert.deepEqual(of(b.posted, "autotest-start"), []);
     assert.deepEqual(of(b.posted, "autotest-progress"), []);
+    b.env.close();
+  });
+});
+
+describe("pre-push smoke test", () => {
+  test("no sample: a stall that keeps triggering logs fb.hit once per video, not every 5 s", () => {
+    const b = boot();
+    b.p = addPlayer(b.env);
+    b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(60000);
+    assert.equal(journal(b.posted, "fb.hit").length, 1);
+    assert.equal(journal(b.posted, "fb.noSample").length, 1);
     b.env.close();
   });
 });
