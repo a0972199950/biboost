@@ -152,8 +152,10 @@ function detectPattern(snap, journal, samples, zone, cfg) {
   var httpN = http.reduce(function (a, e) { return a + (e.n || 1); }, 0);
   if (httpN >= 3) return "hard-" + http[http.length - 1].d.status;
   if (p && d.active && p.rewriteCount > 0 && p.segRewriteCount === 0 && d.lastSegReqAgo == null) return "player-no-request";
-  var hits = journal.filter(function (e) { return e.k === "fb.stall" && e.d && e.d.phase === "hit"; }).length;
+  // 救援觸發：點播是 fb.hit（卡頓救援 v2），直播與點播的後備判斷是 fb.stall phase=hit
+  var hits = journal.filter(function (e) { return e.k === "fb.hit" || (e.k === "fb.stall" && e.d && e.d.phase === "hit"); }).length;
   var switches = journal.filter(function (e) { return e.k === "fb.switch"; }).length;
+  if (journal.some(function (e) { return e.k === "ui.term" && e.d && e.d.phase === "show"; })) return "all-nodes-slow";
   if (hits && !switches) return "stall-no-fallback";
   if (switches >= 2) return "fallback-exhausted";
   var sp = samples.slice(-6).map(function (r) { return r.spd || 0; });
@@ -191,7 +193,12 @@ function buildDiag(data) {
   if (snap) {
     lines.push("[page] " + kv({ snapshotAge: Math.round((now - snap.t) / 1000) + "s", fresh: snap.fresh ? 1 : 0, tab: snap.tab, url: snap.url, type: dg.page && dg.page.type, bvid: dg.page && dg.page.bvid, cid: dg.page && dg.page.cid, epid: dg.page && dg.page.epid, room: dg.page && dg.page.room, player: dg.page && dg.page.player, dash: dg.dash ? 1 : 0, spaNav: dg.spaNav, top: dg.page && dg.page.top }));
     lines.push("[play] " + kv({ src: p.lastSource, rw: p.rewriteCount, seg: p.segRewriteCount, qn: p.lastQn, spd: spdShort(p.speedBps) + (p.speedIdle ? "(idle)" : ""), buf: dg.buf, rs: dg.rs, paused: dg.paused, ct: dg.ct, lat: dg.lastSegMs, lastSegReqAgo: dg.lastSegReqAgo, lastSampleAgo: dg.lastSampleAgo }));
-    lines.push("[fb]   " + kv({ stallSince: dg.stallSince ? Math.round((now - dg.stallSince) / 1000) + "s" : null, stallLimit: dg.stallLimit, rebuf: dg.rebuf, segBusy: dg.segBusy, holdLeft: dg.fb && dg.fb.holdLeft, failed: dg.fb && dg.fb.failed && dg.fb.failed.map(shortHost), asked: dg.fb && dg.fb.asked ? 1 : 0, userStopped: dg.fb && dg.fb.userStopped ? 1 : 0, hookAt: dg.hookAt, playurlBeforeHook: dg.playurlBeforeHook ? 1 : 0, active: dg.active ? 1 : 0 }));
+    var fb = dg.fb || {}, e2 = fb.e2 || {};
+    lines.push("[fb]   " + kv({ stuck: dg.stuck, stalls3m: dg.e1 ? dg.e1.n : null, stallSec3m: dg.e1 ? Math.round(dg.e1.ms / 100) / 10 : null, uiMissing: dg.uiMissing ? 1 : 0,
+      legacyStallSince: dg.stallSince ? Math.round((now - dg.stallSince) / 1000) + "s" : null, legacyLimit: dg.stallLimit,
+      coolLeft: fb.coolLeft, failed: fb.failed && fb.failed.map(shortHost), testing: fb.testing, noMore: fb.noMore ? 1 : 0, exhausted: fb.exhausted ? 1 : 0, manualPause: fb.manualPause ? 1 : 0, noIntervene: fb.noIntervene ? 1 : 0,
+      cont: e2.cont != null ? Math.round(e2.cont / 1000) + "s" : null, e2Locked: e2.locked ? 1 : 0, standby: e2.standby ? shortHost(e2.standby) : null,
+      hookAt: dg.hookAt, playurlBeforeHook: dg.playurlBeforeHook ? 1 : 0, active: dg.active ? 1 : 0 }));
     if (p.lastError) lines.push("[err]  " + p.lastError + (dg.lastErrorAt ? "  (" + Math.round((now - dg.lastErrorAt) / 1000) + "s ago)" : ""));
     if (p.live) lines.push("[live] " + kv({ route: p.live.route, eff: p.live.eff, auto: p.live.auto, cluster: p.live.cluster, protocol: p.live.protocol, orig: p.live.origRoute, active: p.live.activeHost, avail: p.live.avail, pinned: p.live.pinned }));
   } else {

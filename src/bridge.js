@@ -299,6 +299,21 @@
     }
   });
 
+  // popup 的测速页开着（按过手动测速）：MAIN 暂停这个分页的自动优化，测速页关掉时要通知它（speedtest-closed）。
+  // 正常靠长连线断线（见下方 onConnect）；Safari 关 popup 时不一定送 onDisconnect、或测速指令比断线晚到，
+  // 所以另外看心跳：测速页每秒会来问进度（CDN_SWITCHER_GET_SPEEDTEST），超过 5 秒没来就当成关了
+  var ST_POPUP_TIMEOUT_MS = 5000;
+  var stPopupSeenAt = 0, stPopupTimer = null;
+  function stPopupAlive() {
+    stPopupSeenAt = Date.now();
+    if (stPopupTimer) return;
+    stPopupTimer = setInterval(function () { if (Date.now() - stPopupSeenAt > ST_POPUP_TIMEOUT_MS) stPopupClosed(); }, 1000);
+  }
+  function stPopupClosed() {
+    if (stPopupTimer) { clearInterval(stPopupTimer); stPopupTimer = null; }
+    try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-closed" }, "*"); } catch (e) {}
+  }
+
   // 回应 popup 查询 / 测速指令。只由最上层 frame 回应：iPad Safari 送讯息时不能指定 frameId: 0（见 popup.js 的 sendToTop），
   // 会送到所有 frame，iframe 里的 bridge 不能抢着回应
   try {
@@ -318,6 +333,7 @@
         var hosts = Array.isArray(msg.hosts) ? msg.hosts : [];
         speedTestHosts = hosts.slice();
         speedTest = { running: true, results: [], total: hosts.length, error: null, title: speedTest.title, qn: speedTest.qn, avail: null };
+        stPopupAlive();
         journal("ui.speedtest", { phase: "start", kind: "video", hosts: hosts.length });
         try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-run", payload: { hosts: hosts, limits: msg.limits || null } }, "*"); } catch (e) {}
         sendResponse({ ok: true });
@@ -344,6 +360,7 @@
         return true;
       }
       if (msg && msg.type === "CDN_SWITCHER_GET_SPEEDTEST") {
+        if (stPopupTimer) stPopupAlive();
         sendResponse({ speedTest: speedTest });
         return true;
       }
@@ -365,7 +382,7 @@
       port.onDisconnect.addListener(function () {
         speedTest.running = false;
         try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-stop" }, "*"); } catch (e) {}
-        try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-closed" }, "*"); } catch (e) {}
+        stPopupClosed();
       });
     });
   } catch (e) {}
