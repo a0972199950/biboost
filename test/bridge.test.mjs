@@ -168,6 +168,18 @@ describe("autotest-done → storage", () => {
     assert.deepEqual(posted, []);
     env.close();
   });
+  test("speed-test page heartbeat: no progress poll for 5 s after a manual test → the page is told it closed (Safari may not send onDisconnect)", async () => {
+    const env = boot({});
+    const posted = [];
+    env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m.dir); };
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_RUN_SPEEDTEST", hosts: [A] });
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_GET_SPEEDTEST" });
+    await env.settle(1500);
+    assert.ok(!posted.includes("speedtest-closed"));
+    await env.settle(5500);
+    assert.ok(posted.includes("speedtest-closed"));
+    env.close();
+  });
   test("forged install result without a pending test is ignored (only a fresh install sets installTestPending)", () => {
     const env = boot({});
     autotestDone(env, { host: B, from: A, reason: "install" });

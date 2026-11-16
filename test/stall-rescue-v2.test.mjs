@@ -273,11 +273,11 @@ describe("entry 1: user actions", () => {
     const b = bootPlaying();
     const op = b.clk.now();
     b.mh.noteUserOp("test", op);
-    b.clk.add(2000);
+    b.clk.add(1000); // 不要超過 3 秒沒取樣（那會被當成取樣中斷、排除期重算）
     b.p.buff(true); b.mh.uiSample(b.clk.now());
     assert.equal(b.mh.e1.ep.start, op + 8000);
     b.mh.noteUserOp("test", b.clk.now() + 1000); // 卡住之後的操作不延長
-    b.clk.run(6000);
+    b.clk.run(7000);
     assert.equal(b.mh.e1.ep.estAt, 0, "not established before 8 s + 1 s");
     b.clk.run(1000);
     assert.equal(b.mh.e1.ep.estAt, op + 9000);
@@ -661,7 +661,7 @@ describe("terminal prompt", () => {
     assert.ok(b.mh.term(), "countdown paused in the background");
     Object.defineProperty(b.env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
     b.mh.termTick(b.clk.now());
-    b.clk.add(10100); b.mh.termTick(b.clk.now());
+    for (let i = 0; i < 11; i++) { b.clk.add(1000); b.mh.termTick(b.clk.now()); }
     assert.equal(b.mh.term(), null);
     assert.equal(b.mh.FALLBACK.noMore, true);
     b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(30000);
@@ -824,3 +824,130 @@ describe("video change and missing player UI", () => {
     b.env.close();
   });
 });
+
+describe("review round 1", () => {
+  test("a stuck class that is already there when the video changes starts a new stall for the new video", () => {
+    const b = bootPlaying();
+    speedFetch(b.env, {});
+    b.p.load(true); b.mh.uiSample(b.clk.now()); // 自動連播：載入畫面先出現
+    b.clk.run(1000);
+    b.mh.rewriteRoot(playurl(9), "playurl"); // 新影片的 cid 才進來
+    assert.equal(b.mh.e1.ep, null);
+    b.clk.run(1000);
+    assert.ok(b.mh.e1.ep, "the loading screen still showing counts for the new video");
+    b.clk.run(5000);
+    assert.ok(b.mh.round(), "and it triggers");
+    b.env.close();
+  });
+  test("a 0.3 s flash of the class is not a stall, even though the gap until recovery is longer than 1 s", () => {
+    const b = bootPlaying();
+    b.p.buff(true); b.mh.uiSample(b.clk.now());
+    b.clk.add(300); b.p.buff(false); b.mh.uiSample(b.clk.now());
+    playFor(b, 3000);
+    assert.equal(b.mh.e1.ep, null);
+    assert.equal(b.mh.e1Stats(b.clk.now()).n, 0);
+    b.env.close();
+  });
+  test("a stall that starts and ends inside the cool-down is not counted", () => {
+    const b = bootPlaying();
+    b.mh.setLastSegReqAt(b.clk.now());
+    b.mh.applyRescuePick(HW, "test");
+    b.p.load(true); b.mh.uiSample(b.clk.now());
+    b.clk.run(3000);
+    b.p.load(false); b.mh.uiSample(b.clk.now());
+    playFor(b, 3000);
+    playFor(b, 30000);
+    assert.equal(b.mh.e1Stats(b.clk.now()).n, 0);
+    b.env.close();
+  });
+  test("a throttled background tab coming back: the stall counts ~5 s from the return, not 13 s", () => {
+    const b = bootPlaying();
+    speedFetch(b.env, {});
+    const doc = b.env.window.document;
+    Object.defineProperty(doc, "visibilityState", { configurable: true, get: () => "hidden" });
+    b.p.buff(true); b.mh.uiSample(b.clk.now());
+    b.clk.add(60000); b.mh.rescueTick(); // 背景：一分鐘才一次
+    b.clk.add(30000);
+    Object.defineProperty(doc, "visibilityState", { configurable: true, get: () => "visible" });
+    doc.dispatchEvent(new b.env.window.Event("visibilitychange"));
+    b.clk.run(4000);
+    assert.equal(b.mh.round(), null);
+    b.clk.run(1000);
+    assert.ok(b.mh.round());
+    b.env.close();
+  });
+  test("fallback mode (ui.missing): candidates used up while still frozen → terminal prompt", async () => {
+    const b = boot({ autoSpeedHosts: [HOST, HW] });
+    b.mh.rewriteRoot(playurl(), "playurl");
+    speedFetch(b.env, { [HW]: 1000 });
+    const v = b.env.window.document.createElement("video");
+    setVideo(v, { paused: false, currentTime: 10, readyState: 4, buffered: [0, 10.2], played: true, duration: 600 });
+    b.env.window.document.body.appendChild(v);
+    b.clk.run(20000);
+    assert.equal(b.mh.UI.missing, true);
+    await roundEnded(b.env, b.mh);
+    assert.ok(b.mh.term(), "still frozen → prompt, not just 'used up'");
+    b.env.close();
+  });
+  test("with a standby ready, a user seek into unbuffered video (buffer 0) does not switch; paused does not either", () => {
+    const b = bootPlaying();
+    speedFetch(b.env, {});
+    playFor(b, 31000);
+    b.mh.e2.standby = { host: HW, at: b.clk.now() };
+    b.mh.setSegFailAt(b.clk.now());
+    b.mh.noteUserOp("seek", b.clk.now());
+    setVideo(b.p.v, { buffered: [0, b.p.v.currentTime] });
+    b.clk.run(3000);
+    assert.equal(b.mh.autoHost(), null);
+    setVideo(b.p.v, { paused: true });
+    b.clk.run(6000);
+    assert.equal(b.mh.autoHost(), null);
+    b.env.close();
+  });
+  test("typing in a shadow-DOM comment box (composedPath) is not a user action; a held arrow key is logged once", () => {
+    const b = bootPlaying();
+    const d = b.env.window.document;
+    const host = d.createElement("div"); d.body.appendChild(host);
+    const root = host.attachShadow({ mode: "open" });
+    const ta = d.createElement("textarea"); root.appendChild(ta);
+    ta.dispatchEvent(new b.env.window.KeyboardEvent("keydown", { key: " ", bubbles: true, composed: true }));
+    assert.equal(b.mh.userOps().length, 0);
+    for (let i = 0; i < 20; i++) d.body.dispatchEvent(new b.env.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, repeat: i > 0 }));
+    assert.equal(b.mh.userOps().length, 8, "still counted (only the last 8 are kept)");
+    assert.equal(journal(b.posted, "ui.op").length, 1);
+    b.env.close();
+  });
+  test("in backup-URL mode entry 2 does not try to measure 'backup' as a host", async () => {
+    const b = bootPlaying({ cdnHost: "backup" });
+    const asked = speedFetch(b.env, { [HW]: "fast" });
+    playFor(b, 31000);
+    let t = b.p.v.currentTime;
+    b.clk.run(2000, () => { t += 1; setVideo(b.p.v, { currentTime: t, buffered: [0, t + 1] }); });
+    await roundEnded(b.env, b.mh);
+    assert.ok(asked.length > 0, "the candidates were tested");
+    assert.ok(!asked.includes("backup"));
+    b.env.close();
+  });
+  test("a sleep gap does not run the prompt's countdown down", async () => {
+    const b = bootPlaying({ autoSpeedHosts: [HOST] });
+    b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
+    assert.ok(b.mh.term());
+    b.clk.add(600000); b.mh.termTick(b.clk.now());
+    assert.ok(b.mh.term(), "woke up: still asking");
+    b.env.close();
+  });
+  test("'stop intervening' tab: the playurl fetch is not rewritten and a settings change logs no page reload", async () => {
+    const r = boot({}, { session: { "__CDN_SWITCHER_NO_INTERVENE__": "1" } });
+    const body = JSON.stringify(playurl());
+    r.env.fetchHandler = () => ({ ok: true, status: 200, statusText: "", headers: new Map(), text: () => Promise.resolve(body), clone() { return this; } });
+    const resp = await r.env.window.fetch("https://api.bilibili.com/x/player/wbi/playurl?cid=3");
+    const txt = await resp.text();
+    assert.ok(txt.includes(COS) && !txt.includes(HOST), "B站's own hosts are kept");
+    addPlayer(r.env);
+    r.env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    r.env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { enabled: false } });
+    assert.equal(journal(r.posted, "play.state").filter((d) => d.ev === "reload").length, 0, "neither page nor player reload");
+    r.env.close();
+  });
+});
+

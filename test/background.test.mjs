@@ -12,6 +12,13 @@ function boot(storage, extra) {
 }
 
 describe("onInstalled", () => {
+  test("update: \"all countries\" users with the old empty test list get the OTHER list even when the node list did not change", async () => {
+    const env = boot({ cdnMode: "list", cdnCountry: "ALL", autoSpeedHosts: [] });
+    env.onInstalledListeners[0]({ reason: "update", previousVersion: "2.10.0" });
+    await env.settle(80);
+    assert.deepEqual(env.storage.autoSpeedHosts, cdnNodesOf("OTHER"));
+    env.close();
+  });
   test("update without a recorded version backfills installedVersion from previousVersion", () => {
     const env = boot({});
     env.onInstalledListeners[0]({ reason: "update", previousVersion: "1.4.0" });

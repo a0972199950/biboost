@@ -95,6 +95,9 @@ chrome.runtime.onInstalled.addListener(function (details) {
       chrome.storage.local.remove("autoSpeedSwitch");
     });
     whenListReady("update");
+    // 選「全部」的人：舊版寫的是空清單（卡頓時不測），新版改測 OTHER 清單。清單沒有新版本時 syncAutoSpeedHosts 不會跑，
+    // 更新時用手上的清單補一次（跟清單一致就不寫）
+    BBCdnList.load().then(function (l) { if (l && l.data) return syncAutoSpeedHosts(l.data); }).catch(function () {});
   }
   if (details.reason !== "update" || !details.previousVersion) return;
   chrome.storage.local.get("installedVersion", function (items) {

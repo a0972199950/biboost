@@ -441,6 +441,9 @@
     segFailAt = 0;
     e1.eps = []; e1.ep = null; blackReset();
     e2Reset(true);
+    // 卡住 class 可能從前一支一路掛到新影片（自动连播时载入画面先出现、新 cid 才进来）：
+    // 清掉「已在卡」的记忆，下一次取样就会替新影片重新开始算，不然 class 一直在就永远不会再建立卡顿
+    UI.stuck = ""; UI.since = 0;
     UI.missing = false; UI.missingSince = 0; UI.videoSince = 0;
     legacyReset();
   }
@@ -655,7 +658,7 @@
     if (now - UI.missingSince < UI_MISSING_HOLD_MS) return;
     UI.missing = true; UI.stuck = "";
     jlog("ui.missing", { el: miss });
-    legacyReset();
+    legacyReset(); blackReset();
     if (e1.ep) endEp(now, "ui-missing");
   }
 
@@ -664,11 +667,12 @@
   var userOps = []; // 最近几次使用者操作的时间
   var OP_SEL = ".bpx-player-ctrl-play,.bpx-player-video-wrap,.bpx-player-progress-wrap,.bpx-player-shadow-progress-area," +
     ".bpx-player-ctrl-quality,.bpx-player-ctrl-playbackrate,.bpx-player-ctrl-eplist,.bpx-player-ctrl-prev,.bpx-player-ctrl-next";
+  var opLogged = {}; // 日志：同一种操作 2 秒内只记一笔（按住方向键、拖进度条不要洗掉问题回报的日志）
   function noteUserOp(kind, at) {
     at = at || Date.now();
     userOps.push(at);
     if (userOps.length > 8) userOps.shift();
-    if (kind) jlog("ui.op", { k: kind });
+    if (kind && !(opLogged[kind] && at - opLogged[kind] < 2000)) { opLogged[kind] = at; jlog("ui.op", { k: kind }); }
   }
   // t 这个时刻（含）以前最后一次使用者操作；卡住开始之后的操作不延长排除期
   function lastOpBefore(t) { for (var i = userOps.length - 1; i >= 0; i--) if (userOps[i] <= t) return userOps[i]; return 0; }
@@ -686,7 +690,12 @@
     document.addEventListener("pointerdown", onOpPointer, true);
     document.addEventListener("click", onOpPointer, true);
     document.addEventListener("keydown", function (e) {
-      if (!e || isTypingTarget(e.target)) return; // 在留言框、弹幕框打字
+      if (!e) return;
+      // 在留言框、弹幕框打字：B 站留言区在 shadow DOM 里，到 document 时 target 已经换成 shadow host，要看 composedPath 的第一个
+      var t = e.target;
+      try { var cp = typeof e.composedPath === "function" ? e.composedPath() : null; if (cp && cp.length) t = cp[0]; } catch (err) {}
+      if (isTypingTarget(t)) return;
+      if (e.repeat) { if (e.key === "ArrowLeft" || e.key === "ArrowRight") noteUserOp(""); return; } // 按住方向键：照样算操作，但不记日志
       var k = e.key;
       if (k === " " || k === "Spacebar" || k === "ArrowLeft" || k === "ArrowRight") noteUserOp("key");
     }, true);
@@ -711,7 +720,7 @@
     if (e1.ep) { e1.ep.moveFrom = null; return; } // 空档（class 闪烁、播放器小跳）：还是同一次
     if (UI.missing) return;
     var start = excludeStart(now);
-    e1.ep = { start: start, estAt: 0, moveFrom: null, lastCt: null, lastAt: now, kind: kind };
+    e1.ep = { start: start, estAt: 0, moveFrom: null, lastCt: null, lastAt: now, kind: kind, excl: start > now };
     var v = getMainVideo();
     jlog("fb.stall", { phase: "start", kind: kind, excl: start > now ? Math.round((start - now) / 1000) : "", rs: v ? v.readyState : -1, paused: v ? v.paused : "", buf: v ? forwardBufferSec(v).toFixed(1) : "" });
   }
@@ -722,8 +731,9 @@
     if (ep.estAt) e1.eps.push({ start: ep.start, end: Math.max(at, ep.start), estAt: ep.estAt });
     jlog("fb.stall", { phase: "clear", by: why, counted: ep.estAt ? 1 : 0, sec: ep.estAt ? Math.round((Math.max(at, ep.start) - ep.start) / 100) / 10 : "" });
   }
-  // 每秒：这次卡顿结束了没有、成立了没有
-  function e1Track(now, v) {
+  // 每秒：这次卡顿结束了没有、成立了没有。「成立」要当下卡住 class 还在（一闪而过、在空档里过了 1 秒的不算），
+  // 而且这一秒不是「不侦测」（冷静期、测速、背景期间结束的卡顿不算次数）
+  function e1Track(now, v, blocked) {
     var ep = e1.ep;
     if (!ep) return;
     var ct = v ? v.currentTime : null;
@@ -739,7 +749,7 @@
       if (ep.moveFrom != null && now - ep.moveFrom >= E1_RECOVER_MS) { endEp(ep.moveFrom, "resumed"); return; }
     }
     ep.lastCt = ct; ep.lastAt = now;
-    if (!ep.estAt && now - ep.start >= E1_ESTABLISH_MS) ep.estAt = ep.start + E1_ESTABLISH_MS;
+    if (!ep.estAt && !blocked && UI.stuck && now - ep.start >= E1_ESTABLISH_MS) ep.estAt = ep.start + E1_ESTABLISH_MS;
   }
   // 滚动 3 分钟内：成立的次数（看成立时间）与卡顿秒数（只算窗内，含进行中的那次）
   function e1Stats(now) {
@@ -777,14 +787,17 @@
   }
 
   // ---- 入口一达标：救援 ----
-  function stallOngoing() { return !!e1.ep || !!BLACK.base || (UI.missing && stallState.stuckSince != null); }
+  function stallOngoing() { return !!e1.ep || !!BLACK.base || (UI.missing && (stallState.stuckSince != null || !!stallState.ongoing)); }
   function rescue1(reason, info) {
     var now = Date.now();
     e1Reset(now);
+    var wasOngoing = !!stallState.ongoing;
     legacyReset();
+    stallState.ongoing = wasOngoing;
     jlog("fb.hit", { entry: 1, reason: reason, n: info ? info.n : "", sec: info ? Math.round(info.ms / 100) / 10 : "" });
     if (FALLBACK.exhausted) { showTerminal(reason); return true; } // 这支影片候选已用完：直接显示终态，不再测
     var cur = effHost();
+    if (R && R.aborted) return false; // 已中止、正在收尾的一轮：等它结束，不升级、不另开
     if (R && R.src === 2) {
       // 入口二那轮还在跑：不另开一轮，改成入口一触发，目前节点记失败；还在测目前节点就丢掉那个结果
       markFailed(cur, PLAY_FAIL);
@@ -846,8 +859,11 @@
     if (e2.locked && cont && e2.contSince > e2.lockedAt) { e2.locked = false; jlog("fb.e2", { phase: "unlock", by: "cont30" }); }
     if (FALLBACK.exhausted || R || autoTestRunning || !v || nearEndE2(v)) return;
     var low1 = e2.lowSince != null && now - e2.lowSince >= E2_LOW_HOLD_MS;
-    // 缓冲掉到 3 秒以下（不用再满足连续播放 30 秒）：已有预备节点就把目前节点记失败、直接换过去
-    if (low1 && standbyOk(now)) {
+    // 缓冲掉到 3 秒以下（不用再满足连续播放 30 秒）：已有预备节点就把目前节点记失败、直接换过去。
+    // 暂停中、跳转中、使用者操作后 8 秒内不算（拖到还没缓冲的地方，缓冲本来就是 0，不是节点的问题）
+    var lastOp = userOps.length ? userOps[userOps.length - 1] : 0;
+    var userBusy = v.paused || v.seeking || (lastOp && now - lastOp < USER_OP_GRACE_MS);
+    if (low1 && !userBusy && standbyOk(now)) {
       var sb = e2.standby;
       markFailed(effHost(), PLAY_FAIL); e2.standby = null;
       applyRescuePick(sb.host, "standby");
@@ -883,9 +899,11 @@
     if (R || speedTestRunning || autoTestRunning || !sampleUrl()) return false;
     var from = effHost();
     var testable = cands.filter(function (h) { return !!testUrlFor(h); }); // akamai 没有这个档案的专属网址就测不了
-    var hosts = (src === 2 ? [from] : []).concat(testable);
+    // 入口二先测目前的节点；目前不是具名节点（B 站备用URL）就没办法测它，直接测候选
+    var testCur = src === 2 && isHostMode();
+    var hosts = (testCur ? [from] : []).concat(testable);
     if (!hosts.length) return false;
-    if (src === 2 && !testUrlFor(from)) return false;
+    if (testCur && !testUrlFor(from)) return false;
     if (src === 1 && !testable.length) return false;
     var need = currentBitrateBps(), floor = need * RESCUE_HEADROOM;
     var good = need ? Math.max(floor, Math.min(UHD_BPS, need * RESCUE_GOOD_X)) : UHD_BPS;
@@ -900,6 +918,7 @@
     var early = { ttfbMs: RESCUE_TTFB_MS, minBps: floor / 2, checkMs: RESCUE_SLOW_CHECK_MS };
     var watchdog = setTimeout(function () {
       if (r.over) return;
+      if (r.aborted) { end(r.aborted); return; }
       jlog("ui.speedtest", { phase: "timeout", kind: "rescue", tested: r.i });
       speedTestGen++; // 还在测的那个节点回来时自行退出
       if (speedTestAbort) { try { speedTestAbort.abort(); } catch (e) {} }
@@ -912,7 +931,7 @@
       if (R === r) R = null;
       autoTestRunning = false;
       noteLift();
-      if (how !== "replaced") speedTestAbort = null; // 被手动测速取代时 speedTestAbort 已是对方的，不能动
+      if (!speedTestRunning) speedTestAbort = null; // 手动测速已经开始（取代、或按了手动测速中止这一轮）：speedTestAbort 是对方的，不能动
       postAutoTest("autotest-end", { reason: r.src === 1 ? "stall" : "predict" });
       onRoundEnd(r, how, res || null);
     }
@@ -935,7 +954,7 @@
         if (r.gen !== speedTestGen) { interrupted(); return; }
         postAutoTest("autotest-progress", { done: r.i, total: r.hosts.length });
         var ok = !x.error && x.bps > 0;
-        if (src === 2 && idx === 0) {
+        if (testCur && idx === 0) {
           if (r.src === 1) { next(); return; } // 测目前节点的途中被改成入口一触发：丢掉这个结果
           jlog("fb.testCur", { host: shortHost(host), kbps: Math.round(x.bps / 1024), err: x.error || "", ok: ok && x.bps >= r.floor ? 1 : 0 });
           if (ok && x.bps >= r.floor) { finish(false, true); return; } // 目前的节点还可以播：这一轮到此为止
@@ -1046,7 +1065,9 @@
   function termTick(now) {
     if (!term) return;
     termAttach();
-    if (!tabHidden()) term.left -= Math.max(0, now - term.lastAt); // 分页在背景：倒数暂停
+    var dt = now - term.lastAt;
+    // 分页在背景：倒数暂停；电脑睡眠、计时器被节流（中断超过 3 秒）的时间也不算
+    if (!tabHidden() && dt > 0 && dt <= TICK_GAP_MS) term.left -= dt;
     term.lastAt = now;
     term.bar.style.width = Math.max(0, term.left / TERM_MS * 100) + "%";
     if (term.left <= 0) termChoose("continue", "timeout");
@@ -1088,18 +1109,22 @@
     var v = getMainVideo();
     if (gap) {
       // 取样中断（电脑睡眠、分页被节流）：进行中的计时（卡顿、连续播放、全黑、排除期）从现在重新开始
-      if (e1.ep) { e1.ep.start = e1.ep.start > prevTick ? now + USER_OP_GRACE_MS : Math.max(e1.ep.start, now); e1.ep.moveFrom = null; e1.ep.lastCt = null; }
+      if (e1.ep) {
+        var inExcl = e1.ep.excl && !e1.ep.estAt && e1.ep.start > prevTick; // 中断时还在使用者操作的 8 秒排除期内：排除期重新开始
+        e1.ep.start = inExcl ? now + USER_OP_GRACE_MS : Math.max(e1.ep.start, now);
+        e1.ep.moveFrom = null; e1.ep.lastCt = null;
+      }
       if (BLACK.base) BLACK.base = Math.max(BLACK.base, now);
       e2.contSince = null; e2.lowSince = null; e2.lastCt = -1;
       legacyReset();
     }
     uiObserve();
     uiMissingCheck(now, v);
-    if (!UI.missing) { uiSample(now); e1Track(now, v); blackTrack(now, v); }
     termTick(now);
     standbyTick(now);
     var block = rescueBlocked(now);
-    var b1 = block || (R && R.src === 1 ? "testing" : "") || (autoTestRunning && !R ? "install" : "");
+    var b1 = block || (R && R.src === 1 && !R.aborted ? "testing" : "") || (autoTestRunning && !R ? "install" : "");
+    if (!UI.missing) { uiSample(now); e1Track(now, v, !!b1); blackTrack(now, v); }
     // 条件刚解除：正卡着的那次从解除的那一刻开始算（冷静期结束、测速结束、回到前景、popup 关掉；不是上一次被挡住的那一秒）
     if (!b1 && wasBlocked) {
       var at = now;
@@ -1130,7 +1155,8 @@
   var BUFPAUSE_CLEAR_SEC = 3; // 缓冲暂停期间缓冲长回这么多还没继续播 = 是使用者自己按的暂停
   // bufPause：最近一次暂停发生时前方缓冲 < 0.5 秒 → 是缓冲不够时播放器自己按的暂停，之后缓冲长回来也不能当成「使用者主动暂停」
   var health = { bufPause: false };
-  function legacyReset() { stallState.lastTime = -1; stallState.stuckSince = null; stallState.movedAt = 0; }
+  // ongoing：后备模式触发救援后这次卡顿还没恢复（看到走针才清），终态要用它判断「还卡着」
+  function legacyReset() { stallState.lastTime = -1; stallState.stuckSince = null; stallState.movedAt = 0; stallState.ongoing = false; }
   // 使用者主动暂停：暂停、前方还有缓冲，而且不是缓冲不够时播放器自己按的（点播才分；直播维持原样）
   function userPaused(v) {
     if (!IS_LIVE_PAGE && health.bufPause && v.paused && forwardBufferSec(v) >= BUFPAUSE_CLEAR_SEC) health.bufPause = false;
@@ -1171,7 +1197,7 @@
           var noData = !IS_LIVE_PAGE && stallState.stuckSince != null && forwardBufferSec(v) < 3 && now - lastSampleAt > 5000;
           stallState.lastTime = t; stallState.movedAt = now;
           if (noData) return;
-          stallState.stuckSince = null;
+          stallState.stuckSince = null; stallState.ongoing = false;
           return;
         }
         if (IS_LIVE_PAGE) {
@@ -1196,6 +1222,7 @@
     else if (Date.now() - stallState.stuckSince > limit) {
       stallState.stuckSince = null;
       stallState.hit = true;
+      if (!IS_LIVE_PAGE) stallState.ongoing = true;
       var sv = getMainVideo();
       jlog("fb.stall", { phase: "hit", legacy: IS_LIVE_PAGE ? "" : 1, limit: limit / 1000, rs: sv ? sv.readyState : -1, paused: sv ? sv.paused : "", buf: sv ? forwardBufferSec(sv).toFixed(1) : "" });
       if (IS_LIVE_PAGE) maybeLiveFallback(simulating ? "simulated" : "stalled");
@@ -2624,8 +2651,9 @@
     });
     v.addEventListener("loadstart", function () { if (getMainVideo() !== v) return; loadSeekPending = true; loadCt = v.currentTime || 0; knownCt = loadCt; });
     ["emptied", "loadstart"].forEach(function (ev) { v.addEventListener(ev, function () { if (getMainVideo() === v) rs0EventAt = Date.now(); }); });
-    // 连续播放（入口二）：暂停、等资料、跳转都归零
+    // 连续播放（入口二）：暂停、等资料、跳转都归零；跳转后「缓冲不到 3 秒」也重新算
     ["pause", "waiting", "seeking", "emptied", "loadstart"].forEach(function (ev) { v.addEventListener(ev, function () { if (getMainVideo() === v) e2Break(); }); });
+    v.addEventListener("seeking", function () { if (getMainVideo() === v) e2.lowSince = null; });
     // 暂停当下前方几乎没缓冲 → 缓冲暂停（播放器自己按的）；一播放、换来源就清掉
     v.addEventListener("pause", function () { if (getMainVideo() === v) health.bufPause = !v.ended && hasPlayed(v) && forwardBufferSec(v) < 0.5; });
     ["play", "emptied", "loadstart"].forEach(function (ev) {
@@ -2662,6 +2690,7 @@
     legacyReset();
     holdTimers(now);
     noteLift();
+    lastTickAt = now; // 背景期间计时器被节流，下一秒不要当成「取样中断」再把排除期重算一次
     e2.contSince = null; e2.lowSince = null; e2.lastCt = -1;
     maybeScheduleAutoTest();
   }
