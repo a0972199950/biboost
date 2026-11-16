@@ -60,7 +60,6 @@
   // DEFAULT_MSGS 是 bridge 尚未推送前的保底文案（繁中，与 _locales/zh_TW 一致）。
   var MSGS_KEY = "__CDN_SWITCHER_MSGS__";
   var DEFAULT_MSGS = {
-    mhToastAutoSwitched: "目前 CDN 速度不佳，已自動切換至備援節點 {host}",
     mhTermText: "所有節點都不流暢，你可以繼續觀看，或是關閉擴充介入回到B站預設",
     mhTermContinue: "繼續觀看",
     mhTermDisable: "關閉介入",
@@ -545,6 +544,7 @@
     applyAutoHost(null);
   }
 
+  // 救援在背景默默进行，没有任何提示（使用者 2026-11-16）：看得到的只有 popup 的「这个分页暂时改用了 xxx」与终态提示。
   // 救援选出的节点：只在这个分页覆写（autoHost），不写进设定 —— 设定是使用者自己的选择，救援是不得已才发生的；
   // 其他分页、之后开的分页照样用设定里的节点，不会被重载（回报 #46 #47：一个分页换节点，正在看的分页跟着重载）。
   // 选到的正是用户设定的节点（目前在用覆写）就取消覆写
@@ -553,7 +553,6 @@
     debug.lastError = "auto-fallback(" + reason + "): " + from + " -> " + pick;
     var fv = getMainVideo();
     jlog("fb.switch", { reason: reason, from: shortHost(from), to: shortHost(pick), buf: fv ? forwardBufferSec(fv).toFixed(1) : "-" });
-    showToast(MSGS.mhToastAutoSwitched.replace("{host}", pick));
     applyAutoHost(pick === cfg.cdnHost ? null : pick); // onNodeSwitched 给 30 秒冷静期
   }
 
@@ -618,6 +617,8 @@
     if (FALLBACK.manualPause || speedTestRunning) return "manual-test";
     if (FALLBACK.noMore) return "no-more";
     if (term) return "prompt";
+    // 使用者主动操作后冷却 8 秒（使用者 2026-11-16）：拖进度条、换画质、暂停等造成的卡顿或缓冲过低都不算，8 秒后从那一刻重新开始监听
+    if (userCoolUntil(now) > (now || Date.now())) return "user-op";
     if ((now || Date.now()) < FALLBACK.coolUntil) return "cool";
     return "";
   }
@@ -698,6 +699,7 @@
   }
   // t 这个时刻（含）以前最后一次使用者操作；卡住开始之后的操作不延长排除期
   function lastOpBefore(t) { for (var i = userOps.length - 1; i >= 0; i--) if (userOps[i] <= t) return userOps[i]; return 0; }
+  function userCoolUntil() { var op = userOps.length ? userOps[userOps.length - 1] : 0; return op ? op + USER_OP_GRACE_MS : 0; }
   function excludeStart(t) { var op = lastOpBefore(t); return op && t - op < USER_OP_GRACE_MS ? op + USER_OP_GRACE_MS : t; }
   function isTypingTarget(t) {
     if (!t) return false;
@@ -827,8 +829,6 @@
       R.src = 1; R.reason = reason;
       jlog("fb.upgrade", { from: R.kind, cur: R.measuring === R.from ? 1 : 0 });
       if (R.measuring === R.from && speedTestAbort) { try { speedTestAbort.abort(); } catch (e) {} }
-      postAutoTest("autotest-start", { reason: "stall", total: R.hosts.length, maxMs: Math.max(1000, R.deadline - now) });
-      postAutoTest("autotest-progress", { done: R.i });
       return true;
     }
     if (R || autoTestRunning) return false; // 别的测速（安装后那次）还在跑：等它
@@ -951,7 +951,6 @@
     var r = R = { src: src, reason: reason, kind: kind, trig: trig, from: from, forKey: mediaKey, forPath: location.pathname, hadPlayer: !!window.player,
       floor: floor, good: good, hosts: hosts, i: 0, measuring: null, results: [], best: null, gen: ++speedTestGen, over: false, aborted: "", deadline: Date.now() + maxMs };
     autoTestRunning = true;
-    postAutoTest("autotest-start", { reason: src === 1 ? "stall" : "predict", total: hosts.length, maxMs: maxMs });
     jlog("fb.optimize", { entry: src, kind: kind, reason: reason, from: shortHost(from), n: testable.length, needKbps: floor ? Math.round(floor / 1024) : "", goodKbps: Math.round(good / 1024) });
     var early = { ttfbMs: RESCUE_TTFB_MS, minBps: floor / 2, checkMs: RESCUE_SLOW_CHECK_MS };
     var watchdog = setTimeout(function () {
@@ -970,7 +969,6 @@
       autoTestRunning = false;
       noteLift();
       if (!speedTestRunning) speedTestAbort = null; // 手动测速已经开始（取代、或按了手动测速中止这一轮）：speedTestAbort 是对方的，不能动
-      postAutoTest("autotest-end", { reason: r.src === 1 ? "stall" : "predict" });
       onRoundEnd(r, how, res || null);
     }
     function interrupted() { end(r.aborted || "replaced"); }
@@ -990,7 +988,6 @@
         r.measuring = null;
         if (r.over) return;
         if (r.gen !== speedTestGen) { interrupted(); return; }
-        postAutoTest("autotest-progress", { done: r.i, total: r.hosts.length });
         var ok = !x.error && x.bps > 0;
         if (testCur && idx === 0) {
           if (r.src === 1) { next(); return; } // 测目前节点的途中被改成入口一触发：丢掉这个结果
@@ -1019,8 +1016,11 @@
     if (how !== "done" || !res) { jlog("fb.drop", { reason: how }); return; }
     checkVideoKey();
     // 套用前再检查一次：换了影片、换了页、播放器暂时不在（SPA 换页会拆掉重建，player.reload() 不能用）、节点被使用者换掉、或现在不该救援
+    var blocked = rescueBlocked(now);
+    // 使用者操作后的冷却中：入口二的结果留作预备节点（目前节点不记失败），入口一的结果不套用
+    var userCool = blocked === "user-op";
     var drop = r.forKey != null && mediaKey !== r.forKey ? "next-video" : location.pathname !== r.forPath ? "page-changed"
-      : r.hadPlayer && !window.player ? "player-gone" : effHost() !== r.from ? "node-changed" : rescueBlocked(now);
+      : r.hadPlayer && !window.player ? "player-gone" : effHost() !== r.from ? "node-changed" : (userCool && r.src === 2 ? "" : blocked);
     if (drop) { jlog("fb.drop", { reason: drop, pick: res.pick ? shortHost(res.pick) : "" }); return; }
     // 不到 floor 或被放弃的记失败 1 分钟；≥ floor 没选上的不记
     res.results.forEach(function (x) {
@@ -1034,8 +1034,8 @@
     if (res.pick) {
       if (r.src === 1) { applyRescuePick(res.pick, r.reason); return; }
       // 入口二：缓冲掉到 3 秒以下才换；缓冲还够，最近 20 秒仍有分段失败就留作预备节点，没有就丢掉
-      if (buf < E2_LOW_SEC && e2SwitchOk(v, now)) { markFailed(r.from, PLAY_FAIL); applyRescuePick(res.pick, r.reason); return; }
-      if (buf < E2_LOW_SEC) { e2.standby = { host: res.pick, at: now }; jlog("fb.standby", { phase: "set", host: shortHost(res.pick), why: "user-busy" }); return; }
+      if (buf < E2_LOW_SEC && !userCool && e2SwitchOk(v, now)) { markFailed(r.from, PLAY_FAIL); applyRescuePick(res.pick, r.reason); return; }
+      if (buf < E2_LOW_SEC || userCool) { e2.standby = { host: res.pick, at: now }; jlog("fb.standby", { phase: "set", host: shortHost(res.pick), why: "user-busy" }); return; }
       if (segFailAt && now - segFailAt < E2_FAIL_RECENT_MS) { e2.standby = { host: res.pick, at: now }; jlog("fb.standby", { phase: "set", host: shortHost(res.pick), buf: buf.toFixed(1) }); }
       else jlog("fb.discard", { pick: shortHost(res.pick), buf: buf.toFixed(1) });
       return;
@@ -1170,6 +1170,8 @@
     if (!b1 && wasBlocked) {
       var at = now;
       if (FALLBACK.coolUntil > prevTick && FALLBACK.coolUntil <= now) at = FALLBACK.coolUntil;
+      var uc = userCoolUntil();
+      if (uc > prevTick && uc <= now) at = Math.max(at === now ? 0 : at, uc);
       if (liftAt >= prevTick && liftAt <= now) at = Math.max(at === now ? 0 : at, liftAt);
       holdTimers(at);
     }

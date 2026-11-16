@@ -305,6 +305,16 @@ describe("user actions", () => {
     assert.deepEqual(env.storage.autoSpeedHosts, nodesOf("OTHER"));
     env.close();
   });
+  test("the optimizing overlay shows only for the install test, never for a stall rescue", async () => {
+    const env = await boot({});
+    const p = env.internals("popup");
+    const el = env.window.document.getElementById("optimizing");
+    p.renderOptimizing({ running: true, reason: "stall", total: 5, done: 2 });
+    assert.equal(el.classList.contains("show"), false);
+    p.renderOptimizing({ running: true, reason: "install", total: 5, done: 2 });
+    assert.equal(el.classList.contains("show"), true);
+    env.close();
+  });
   test("the optimizing overlay has no stop button any more", async () => {
     const env = await boot({});
     assert.equal(env.window.document.getElementById("optStop"), null);

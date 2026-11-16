@@ -152,9 +152,6 @@
   "cdnNameBackupUrl": {
     "message": "백업 URL"
   },
-  "mhToastAutoSwitched": {
-    "message": "현재 CDN이 느려서 백업 노드 {host}(으)로 자동 전환했습니다"
-  },
   "mhTermText": {
     "message": "모든 노드가 원활하게 재생되지 않습니다. 계속 시청하거나, 확장 프로그램의 개입을 끄고 bilibili 기본값으로 돌아갈 수 있습니다."
   },

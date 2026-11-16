@@ -13,11 +13,11 @@
     {
       "type": "fix",
       "text": {
-        "zh_TW": "卡頓改看播放器畫面判斷，番劇頁卡住也抓得到、地區限制不再誤判；所有節點都不流暢時改跳出提示，可以繼續觀看或關閉擴充介入（拿掉「中斷優化」按鈕）",
-        "zh_CN": "卡顿改看播放器画面判断，番剧页卡住也能发现、地区限制不再误判；所有节点都不流畅时改弹出提示，可以继续观看或关闭扩展介入（移除「中断优化」按钮）",
-        "en": "Stalls are now detected from the player's own screen, so frozen anime pages are caught and region-locked videos are no longer misread; when no node plays smoothly, a prompt lets you keep watching or stop the extension from intervening (the \"Stop\" button is gone)",
-        "ja": "再生の停止をプレーヤーの画面から判定するように。アニメページの停止も検出でき、地域制限を誤判定しなくなりました。どのノードもスムーズでないときは、視聴を続けるか拡張機能の介入をやめるかを選ぶ案内を表示します（「中断」ボタンは廃止）",
-        "ko": "재생 멈춤을 플레이어 화면으로 판단해요. 애니 페이지의 멈춤도 잡아내고 지역 제한을 잘못 판단하지 않아요. 모든 노드가 원활하지 않으면 계속 시청할지 확장 프로그램의 개입을 끌지 고르는 안내가 떠요(「중단」 버튼은 없어졌어요)"
+        "zh_TW": "卡頓改看播放器畫面判斷，番劇頁卡住也抓得到、地區限制不再誤判；換節點在背景默默進行，不再跳提示或擋住 popup；所有節點都不流暢時才跳出提示，可以繼續觀看或關閉擴充介入",
+        "zh_CN": "卡顿改看播放器画面判断，番剧页卡住也能发现、地区限制不再误判；换节点在后台默默进行，不再弹提示或挡住 popup；所有节点都不流畅时才弹出提示，可以继续观看或关闭扩展介入",
+        "en": "Stalls are now detected from the player's own screen, so frozen anime pages are caught and region-locked videos are no longer misread; node switching happens quietly in the background without pop-ups or blocking the popup; only when no node plays smoothly does a prompt let you keep watching or stop the extension from intervening",
+        "ja": "再生の停止をプレーヤーの画面から判定するように。アニメページの停止も検出でき、地域制限を誤判定しなくなりました。ノードの切り替えはバックグラウンドで静かに行い、通知やポップアップの遮りはありません。どのノードもスムーズでないときだけ、視聴を続けるか拡張機能の介入をやめるかを選ぶ案内を表示します",
+        "ko": "재생 멈춤을 플레이어 화면으로 판단해요. 애니 페이지의 멈춤도 잡아내고 지역 제한을 잘못 판단하지 않아요. 노드 전환은 백그라운드에서 조용히 진행되고 알림이나 팝업 가림이 없어요. 모든 노드가 원활하지 않을 때만 계속 시청할지 확장 프로그램의 개입을 끌지 고르는 안내가 떠요"
       }
     }
   ],
