@@ -307,7 +307,13 @@
   function stPopupAlive() {
     stPopupSeenAt = Date.now();
     if (stPopupTimer) return;
-    stPopupTimer = setInterval(function () { if (Date.now() - stPopupSeenAt > ST_POPUP_TIMEOUT_MS) stPopupClosed(); }, 1000);
+    stPopupTimer = setInterval(function () { if (Date.now() - stPopupSeenAt > ST_POPUP_TIMEOUT_MS) stPopupGone(); }, 1000);
+  }
+  // 测速页关了（心跳逾时或长连线断线）：跟 onDisconnect 一样中止手动测速，再通知 MAIN 恢复自动优化
+  function stPopupGone() {
+    speedTest.running = false;
+    try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-stop" }, "*"); } catch (e) {}
+    stPopupClosed();
   }
   function stPopupClosed() {
     if (stPopupTimer) { clearInterval(stPopupTimer); stPopupTimer = null; }
@@ -379,11 +385,7 @@
   try {
     chrome.runtime.onConnect.addListener(function (port) {
       if (!isTopFrame || !port || port.name !== "cdn-switcher-speedtest") return;
-      port.onDisconnect.addListener(function () {
-        speedTest.running = false;
-        try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-stop" }, "*"); } catch (e) {}
-        stPopupClosed();
-      });
+      port.onDisconnect.addListener(stPopupGone);
     });
   } catch (e) {}
 

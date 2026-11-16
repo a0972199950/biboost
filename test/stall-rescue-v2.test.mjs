@@ -917,15 +917,16 @@ describe("review round 1", () => {
     assert.equal(journal(b.posted, "ui.op").length, 1);
     b.env.close();
   });
-  test("in backup-URL mode entry 2 does not try to measure 'backup' as a host", async () => {
+  test("in backup-URL mode entry 2 first measures the node the player is really fetching from (never 'backup')", async () => {
     const b = bootPlaying({ cdnHost: "backup" });
-    const asked = speedFetch(b.env, { [HW]: "fast" });
+    const asked = speedFetch(b.env, { [ALI]: "fast", [HW]: "fast" });
+    b.mh.noteSegment(`https://${ALI}/upgcxcode/1/2/3/v80.m4s`);
     playFor(b, 31000);
     let t = b.p.v.currentTime;
     b.clk.run(2000, () => { t += 1; setVideo(b.p.v, { currentTime: t, buffered: [0, t + 1] }); });
     await roundEnded(b.env, b.mh);
-    assert.ok(asked.length > 0, "the candidates were tested");
-    assert.ok(!asked.includes("backup"));
+    assert.deepEqual(asked, [ALI], "the real current node first; it is fine → no switch");
+    assert.equal(b.mh.autoHost(), null);
     b.env.close();
   });
   test("a sleep gap does not run the prompt's countdown down", async () => {
@@ -948,6 +949,93 @@ describe("review round 1", () => {
     r.env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { enabled: false } });
     assert.equal(journal(r.posted, "play.state").filter((d) => d.ev === "reload").length, 0, "neither page nor player reload");
     r.env.close();
+  });
+});
+
+describe("review round 2", () => {
+  test("a background test that ends while the user is dragging (buffer 0): no switch, kept as a standby; the current node is not marked", async () => {
+    const b = bootPlaying();
+    speedFetch(b.env, { [HOST]: 1000, [HW]: "fast" });
+    playFor(b, 31000);
+    b.mh.onSegFailure("http-503");
+    playFor(b, 1000);
+    assert.equal(b.mh.round().kind, "bg");
+    b.mh.noteUserOp("seek", b.clk.now());
+    setVideo(b.p.v, { buffered: [0, b.p.v.currentTime] });
+    await roundEnded(b.env, b.mh);
+    assert.equal(b.mh.autoHost(), null);
+    assert.equal(b.mh.isFailed(HOST), false);
+    assert.equal(b.mh.e2.standby.host, HW);
+    b.env.close();
+  });
+  test("a full-page reload by the rescue carries this video's failed nodes and the cool-down", () => {
+    const carry = JSON.stringify({ host: HW, page: "/video/BV1xx411c7mD?p=", failed: [HOST], cool: Date.now() + 20000 });
+    const b = boot({}, { session: { "__CDN_SWITCHER_AUTO__": carry } });
+    b.mh.rewriteRoot(playurl(), "playurl");
+    assert.equal(b.mh.autoHost(), HW);
+    assert.equal(b.mh.isFailed(HOST), true);
+    assert.ok(b.mh.FALLBACK.coolUntil > b.clk.now());
+    b.env.close();
+    const other = JSON.stringify({ host: HW, page: "/video/BVother?p=", failed: [HOST], cool: Date.now() + 20000 });
+    const c = boot({}, { session: { "__CDN_SWITCHER_AUTO__": other } });
+    c.mh.rewriteRoot(playurl(), "playurl");
+    assert.equal(c.mh.isFailed(HOST), false, "another page: nothing carried");
+    c.env.close();
+  });
+  test("learning the first cid is not a video change: a rescue already running and the failed marks stay", () => {
+    const b = boot();
+    addPlayer(b.env);
+    b.mh.markFailed(HOST, Infinity);
+    b.mh.rewriteRoot(playurl(), "playurl"); // 第一次知道 cid
+    assert.equal(b.mh.isFailed(HOST), true);
+    b.env.close();
+  });
+  test("entry 2 with no candidates at all locks instead of retrying (and logging) every 10 s", () => {
+    const b = bootPlaying({ cdnHost: "backup", autoSpeedHosts: [] });
+    playFor(b, 31000);
+    let t = b.p.v.currentTime;
+    b.clk.run(2000, () => { t += 1; setVideo(b.p.v, { currentTime: t, buffered: [0, t + 1] }); });
+    assert.equal(b.mh.e2.locked, true);
+    b.env.close();
+  });
+  test("an expired sample URL counts as 'cannot test': no prompt, no marks", () => {
+    const b = boot();
+    b.p = addPlayer(b.env);
+    const pu = playurl();
+    const past = Math.floor(Date.now() / 1000) - 60;
+    pu.data.dash.video[0].baseUrl = pu.data.dash.video[0].baseUrl.replace(/deadline=\d+/, "deadline=" + past);
+    b.mh.rewriteRoot(pu, "playurl");
+    b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
+    assert.equal(b.mh.round(), null);
+    assert.equal(b.mh.term(), null);
+    assert.equal(b.mh.isFailed(HOST), false);
+    b.env.close();
+  });
+  test("a main-video error event on a video page only logs, never rescues", () => {
+    const b = bootPlaying();
+    speedFetch(b.env, {});
+    b.p.v.dispatchEvent(new b.env.window.Event("error"));
+    b.clk.run(2000);
+    assert.equal(b.mh.round(), null);
+    assert.equal(b.mh.isFailed(HOST), false);
+    assert.ok(journal(b.posted, "play.error").length >= 1);
+    b.env.close();
+  });
+  test("the install optimization running: no stall counting; afterwards it counts from the end of that test", async () => {
+    const b = bootPlaying({ installTestPending: true, autoSpeedHosts: [HOST, HW] });
+    speedFetch(b.env, { [HOST]: "fast", [HW]: "fast" });
+    assert.equal(b.mh.runAutoSpeedTest([HOST, HW], "install"), true);
+    b.p.buff(true); b.mh.uiSample(b.clk.now());
+    b.clk.run(10000);
+    assert.equal(b.mh.e1Stats(b.clk.now()).ms, 0);
+    for (let i = 0; i < 300 && !of(b.posted, "autotest-end").length; i++) await b.env.settle(10);
+    assert.equal(of(b.posted, "autotest-end").length, 1, "the install test ended");
+    b.clk.run(4000);
+    assert.equal(b.mh.round(), null, "counts from the end of the install test");
+    b.clk.run(2000);
+    assert.ok(b.mh.round());
+    b.mh.abortRescue("test"); await b.env.settle(30);
+    b.env.close();
   });
 });
 
