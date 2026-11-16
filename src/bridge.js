@@ -110,7 +110,7 @@
   // 开局推一次；使用者在 popup 切换语言（uiMsgs 变更）时会再推一次。
   var MSGS_KEY = "__CDN_SWITCHER_MSGS__";
   var MSG_KEYS = [
-    "mhToastAutoSwitched", "mhToastAllFailed", "mhToastReloadBackup", "mhToastClose",
+    "mhToastAutoSwitched", "mhTermText", "mhTermContinue", "mhTermDisable",
     "mhCdnTargetOriginal", "mhCdnTargetBackup", "mhToastLiveFallback", "mhToastSwitched",
     "liveRouteOv", "liveRouteOvB", "liveRouteCn", "liveRouteCnB"
   ];
@@ -198,7 +198,8 @@
     if (d.dir === "debug") { latestDebug = d.payload || null; if (isTopFrame && latestDebug) maybeStoreSnapshot(latestDebug); return; }
     if (d.dir === "journal" && d.payload && isTopFrame) { toBackground({ type: "CDN_SWITCHER_JOURNAL", entry: d.payload }); return; }
     if (d.dir === "sample" && d.payload && isTopFrame) { toBackground({ type: "CDN_SWITCHER_SAMPLE", row: d.payload }); return; }
-    // 自动优化节点（main-hook 的 reason "install"／"stall"）：进度给 popup 显示「当前节点速度不佳，优化中」；
+    // 自动优化节点（main-hook 的 reason "install"：安装后那次；"stall"：入口一的救援；"predict"：入口二，popup 不显示）：
+    // 进度给 popup 显示「当前节点速度不佳，优化中」；
     // 安装后那次一开始就把旗标清掉，之后不论结果都不再测
     if (d.dir === "autotest-start" && d.payload) {
       var maxMs = Number(d.payload.maxMs);
@@ -335,11 +336,6 @@
         sendResponse({ ok: true });
         return true;
       }
-      if (msg && msg.type === "CDN_SWITCHER_STOP_AUTOTEST") {
-        try { window.postMessage({ __cdnSwitcher: 1, dir: "autotest-stop" }, "*"); } catch (e) {}
-        sendResponse({ ok: true });
-        return true;
-      }
       if (msg && msg.type === "CDN_SWITCHER_STOP_SPEEDTEST") {
         if (speedTest.running) journal("ui.speedtest", { phase: "stop" });
         speedTest.running = false;
@@ -361,13 +357,15 @@
   } catch (e) {}
 
   // popup 开一条 "cdn-switcher-speedtest" 长连线来标记「测速页开着」；不论是按返回主动断线、
-  // 还是直接关掉 popup（浏览器自动断线），content script 都会收到 onDisconnect → 立刻中止测速
+  // 还是直接关掉 popup（浏览器自动断线），content script 都会收到 onDisconnect → 立刻中止测速，
+  // 并通知 MAIN 测速页关了（speedtest-closed）：按下手动测速后暂停的自动优化从这时恢复
   try {
     chrome.runtime.onConnect.addListener(function (port) {
       if (!isTopFrame || !port || port.name !== "cdn-switcher-speedtest") return;
       port.onDisconnect.addListener(function () {
         speedTest.running = false;
         try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-stop" }, "*"); } catch (e) {}
+        try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-closed" }, "*"); } catch (e) {}
       });
     });
   } catch (e) {}

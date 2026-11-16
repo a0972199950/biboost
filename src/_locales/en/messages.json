@@ -21,7 +21,7 @@
     "message": "Auto-optimize node when slow"
   },
   "autoFallbackHint": {
-    "message": "When a video freezes or fails to load, the nodes in your current list are speed-tested in the background and a fast enough one is picked; if it still freezes, bilibili's original node is used. Live streams switch to the international route. On an unstable connection (e.g. weak Wi-Fi) it may keep switching, so turn it off."
+    "message": "When a video freezes or fails to load, the nodes in your current list are speed-tested in the background and this tab switches to a fast enough one; if none is fast enough, a prompt lets you keep watching or stop the extension from intervening. Live streams switch to the international route. On an unstable connection (e.g. weak Wi-Fi) it may keep switching, so turn it off."
   },
   "cdnHostRowLabel": {
     "message": "CDN node"
@@ -155,14 +155,14 @@
   "mhToastAutoSwitched": {
     "message": "Current CDN is slow; switched to backup node {host}"
   },
-  "mhToastAllFailed": {
-    "message": "Playback isn't smooth on either the current CDN or the backup node"
+  "mhTermText": {
+    "message": "None of the nodes play smoothly. You can keep watching, or stop the extension from intervening and go back to bilibili's default."
   },
-  "mhToastReloadBackup": {
-    "message": "Reload and switch to Backup URL"
+  "mhTermContinue": {
+    "message": "Keep watching"
   },
-  "mhToastClose": {
-    "message": "Close"
+  "mhTermDisable": {
+    "message": "Stop intervening"
   },
   "mhCdnTargetOriginal": {
     "message": "Original (no override)"
@@ -517,9 +517,6 @@
   },
   "optimizingTitle": {
     "message": "Current node is slow, optimizing..."
-  },
-  "optimizingStop": {
-    "message": "Stop"
   },
   "listFailTitle": {
     "message": "Sorry, the node list couldn't be loaded"
