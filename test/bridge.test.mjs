@@ -154,6 +154,20 @@ describe("autotest-done → storage", () => {
     assert.equal(resp.ok, true);
     env.close();
   });
+  test("closing the speed-test page (port disconnect) stops the test and tells the page the popup's test is over; the removed stop-optimization message does nothing", () => {
+    const env = boot({});
+    const posted = [];
+    env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m.dir); };
+    let onDisc = null;
+    const port = { name: "cdn-switcher-speedtest", onDisconnect: { addListener: (fn) => { onDisc = fn; } } };
+    env.onConnectListeners.forEach((fn) => fn(port));
+    onDisc();
+    assert.deepEqual(posted, ["speedtest-stop", "speedtest-closed"]);
+    posted.length = 0;
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_STOP_AUTOTEST" });
+    assert.deepEqual(posted, []);
+    env.close();
+  });
   test("forged install result without a pending test is ignored (only a fresh install sets installTestPending)", () => {
     const env = boot({});
     autotestDone(env, { host: B, from: A, reason: "install" });

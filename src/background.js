@@ -172,11 +172,11 @@ function afterList(res) {
     return new Promise(function (r) { chrome.storage.local.remove("cdnListPending", r); }).then(function () { return selectCountry(pending); });
   }).then(function () { if (res.changed) return syncAutoSpeedHosts(res.data); });
 }
-// 新清單：用國家清單（沒選「全部」）的人，卡頓時要測的節點換成新清單裡該國的節點。目前使用的節點（cdnHost）不動
+// 新清單：用國家清單的人，卡頓時要測的節點換成新清單裡該國的節點（選「全部」的換成 OTHER 清單）。目前使用的節點（cdnHost）不動
 function syncAutoSpeedHosts(data) {
   return storageGet(["cdnMode", "cdnCountry", "autoSpeedHosts"]).then(function (items) {
-    if (items.cdnMode === "custom" || !items.cdnCountry || items.cdnCountry === "ALL") return;
-    var hosts = BBCdnList.countryHosts(data, items.cdnCountry);
+    if (items.cdnMode === "custom" || !items.cdnCountry) return;
+    var hosts = BBCdnList.countryHosts(data, items.cdnCountry === "ALL" ? "OTHER" : items.cdnCountry); // 選「全部」：卡頓時測 OTHER 清單
     if (!hosts.length || (items.autoSpeedHosts || []).join("|") === hosts.join("|")) return;
     return new Promise(function (r) { chrome.storage.local.set({ autoSpeedHosts: hosts }, r); });
   });

@@ -296,6 +296,20 @@ describe("automatic country selection (first run)", () => {
 });
 
 describe("user actions", () => {
+  test("\"all countries\" makes the rescue test the OTHER list (not an empty list)", async () => {
+    const env = await boot({ cdnMode: "list", cdnHost: DEFAULT_HOST, cdnCountry: "TW" });
+    const p = env.internals("popup");
+    p.els.countrySelect.value = "ALL";
+    p.els.countrySelect.dispatchEvent(new env.window.Event("change"));
+    assert.equal(env.storage.cdnCountry, "ALL");
+    assert.deepEqual(env.storage.autoSpeedHosts, nodesOf("OTHER"));
+    env.close();
+  });
+  test("the optimizing overlay has no stop button any more", async () => {
+    const env = await boot({});
+    assert.equal(env.window.document.getElementById("optStop"), null);
+    env.close();
+  });
   test("changing the country switches to its first node and resets speed order", async () => {
     const env = await boot({ cdnMode: "list", cdnHost: DEFAULT_HOST, cdnCountry: "TW", sortBySpeed: true, speedOrder: { video: ["a"], live: [] } });
     const p = env.internals("popup");

@@ -21,7 +21,7 @@
     "message": "速度不佳時自動優化節點"
   },
   "autoFallbackHint": {
-    "message": "影片卡住或載入失敗時，先在背景測速目前清單的節點，換到夠快的那個；還是卡才改用 B 站原始節點。直播則改用國際線路。網路本身不穩（如 Wi-Fi 訊號弱）時可能頻繁切換，建議關閉。"
+    "message": "影片卡住或載入失敗時，在背景測速目前清單的節點，只在這個分頁換到夠快的那個；都不夠快時會跳出提示，讓你選擇繼續觀看或關閉介入。直播則改用國際線路。網路本身不穩（如 Wi-Fi 訊號弱）時可能頻繁切換，建議關閉。"
   },
   "cdnHostRowLabel": {
     "message": "CDN 節點"
@@ -155,14 +155,14 @@
   "mhToastAutoSwitched": {
     "message": "目前 CDN 速度不佳，已自動切換至備援節點 {host}"
   },
-  "mhToastAllFailed": {
-    "message": "目前 CDN 與備援節點皆無法順利播放"
+  "mhTermText": {
+    "message": "所有節點都不流暢，你可以繼續觀看，或是關閉擴充介入回到B站預設"
   },
-  "mhToastReloadBackup": {
-    "message": "重載並切換至備用URL"
+  "mhTermContinue": {
+    "message": "繼續觀看"
   },
-  "mhToastClose": {
-    "message": "關閉"
+  "mhTermDisable": {
+    "message": "關閉介入"
   },
   "mhCdnTargetOriginal": {
     "message": "原始（不覆寫）"
@@ -517,9 +517,6 @@
   },
   "optimizingTitle": {
     "message": "當前節點速度不佳，優化中..."
-  },
-  "optimizingStop": {
-    "message": "中斷優化"
   },
   "listFailTitle": {
     "message": "抱歉，節點清單載入失敗"

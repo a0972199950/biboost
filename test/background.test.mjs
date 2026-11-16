@@ -332,13 +332,13 @@ describe("node list from the server", () => {
     assert.ok(env.alarms.cdnListRetry);
     env.close();
   });
-  test("a new list refreshes autoSpeedHosts for country-list users only; the current node stays", async () => {
+  test("a new list refreshes autoSpeedHosts for country-list users (\"all countries\" gets the OTHER list); the current node stays", async () => {
     const d = JSON.parse(JSON.stringify(CDN_FIXTURE));
     d.countries.find((c) => c.code === "TW").nodes = ["test-tw-03.bilivideo.com", "test-tw-01.bilivideo.com"];
     const jws = await signCdnList(d, 2);
     const cases = [
       [{ cdnMode: "list", cdnCountry: "TW", cdnHost: "test-tw-02.bilivideo.com", autoSpeedHosts: ["old"] }, ["test-tw-03.bilivideo.com", "test-tw-01.bilivideo.com"]],
-      [{ cdnMode: "list", cdnCountry: "ALL", autoSpeedHosts: [] }, []],
+      [{ cdnMode: "list", cdnCountry: "ALL", autoSpeedHosts: [] }, d.countries.find((c) => c.code === "OTHER").nodes],
       [{ cdnMode: "custom", cdnCountry: "TW", autoSpeedHosts: ["mine.bilivideo.com"] }, ["mine.bilivideo.com"]],
     ];
     for (const [storage, expected] of cases) {

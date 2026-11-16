@@ -99,7 +99,7 @@ document.documentElement.lang = uiLanguage();
   ["liveRouteRowLabel", "liveRouteRowLabel"],
   ["sortBySpeedLabel", "sortBySpeedLabel"], ["sortBySpeedHint", "sortBySpeedHint"],
   ["hvLabel", "hvLabel"], ["hvOldLabel", "hvOld"], ["hvNewLabel", "hvNew"], ["hvHintChange", "hvHintChange"], ["hvHintUse", "hvHintUse"], ["hvHintWarn", "hvHintWarn"],
-  ["optTitle", "optimizingTitle"], ["optStop", "optimizingStop"],
+  ["optTitle", "optimizingTitle"],
   ["stVideoLimitTitle", "stVideoLimitTitle"], ["stVideoLimitHint", "stVideoLimitHint"], ["stVideoMbLabel", "stVideoMbLabel"],
   ["stVideoSecLabel", "stVideoSecLabel"], ["stVideoSecUnit", "unitSec"], ["stVideoReset", "resetDefault"], ["stVideoPresetLabel", "stPresetLabel"],
   ["stLiveLimitTitle", "stLiveLimitTitle"], ["stLiveLimitHint", "stLiveLimitHint"], ["stLiveRunsLabel", "stLiveRunsLabel"],
@@ -711,12 +711,11 @@ function applyCountry(code) {
   selectCdnValue(cdnSelectValue);
   saveAutoSpeedHosts();
 }
-// 自動優化要測的節點跟著國家走；選「全部」時不測（約 300 個節點，背景測不完）：
-// 寫入空清單讓 content script 不測，卡頓時直接退回 B 站原始節點
+// 自動優化要測的節點跟著國家走；選「全部」時改用「其他地區」（OTHER）清單（約 300 個節點，背景測不完）
 var savedAutoSpeedHosts = "";
+function autoHostsFor(code) { return countryHosts(code === COUNTRY_ALL ? COUNTRY_FALLBACK : code); }
 function saveAutoSpeedHosts() {
-  var isAll = cdnMode === "list" && countrySel === COUNTRY_ALL;
-  var hosts = isAll ? [] : activeHosts();
+  var hosts = cdnMode === "custom" ? activeHosts() : autoHostsFor(countrySel);
   var sig = hosts.join("|");
   if (sig === savedAutoSpeedHosts) return;
   savedAutoSpeedHosts = sig;
@@ -736,8 +735,8 @@ els.countrySelect.addEventListener("change", function () {
   countryAutoPending = false; // 使用者自己選了，偵測結果晚到也不要蓋掉
   var patch = { cdnCountry: code, countryAutoDone: true };
   useCountryFirstNode(code, patch); // 國家選單只在清單模式顯示，切國家就直接換成該國第一個節點
-  // 自動測速要測的清單跟國家一起寫（「全部」300 個測不完，不測）：安裝後的優化還沒跑的話，測的就是新國家的清單
-  patch.autoSpeedHosts = code === COUNTRY_ALL ? [] : countryHosts(code);
+  // 自動測速要測的清單跟國家一起寫（「全部」300 個測不完，改測 OTHER 清單）：安裝後的優化還沒跑的話，測的就是新國家的清單
+  patch.autoSpeedHosts = autoHostsFor(code);
   savedAutoSpeedHosts = patch.autoSpeedHosts.join("|");
   save(patch);
   applyCountry(code);
@@ -780,7 +779,7 @@ function autoSelectCountry(cfg) {
     // in the dropdown. Users on the custom list keep their node.
     if (cdnMode !== "custom") {
       useCountryFirstNode(target, patch);
-      patch.autoSpeedHosts = target === COUNTRY_ALL ? [] : countryHosts(target);
+      patch.autoSpeedHosts = autoHostsFor(target);
       savedAutoSpeedHosts = patch.autoSpeedHosts.join("|");
     }
     save(patch);
@@ -1053,7 +1052,7 @@ els.modeList.addEventListener("change", function () {
     // 從自訂切回清單：改用該國第一個節點
     cdnMode = "list";
     useCountryFirstNode(countrySel, patch);
-    patch.autoSpeedHosts = countrySel === COUNTRY_ALL ? [] : countryHosts(countrySel);
+    patch.autoSpeedHosts = autoHostsFor(countrySel);
     savedAutoSpeedHosts = patch.autoSpeedHosts.join("|");
   }
   currentCdnHost = cdnSelectValue;
@@ -1488,14 +1487,13 @@ function pollDebug() {
 pollDebug();
 
 // -------- 安裝後第一支影片的優化：目前分頁回報「正在跑」才顯示「優化中」遮罩與剩餘節點數；手動測速不顯示 --------
-// 安裝後那次只會發生一次，沒有「中斷」；卡頓時那次（reason "stall"）可以中斷。最長顯示時間由 bridge 把關（超過 maxMs 就回報已結束）。
+// 安裝後那次與卡頓救援（reason "stall"）都沒有「中斷」，不想要優化就去進階設定關掉；入口二的預測（"predict"）不顯示。最長顯示時間由 bridge 把關（超過 maxMs 就回報已結束）。
 // 第一個測的是目前的節點：它夠快就直接結束、什麼都不顯示；測完它（done ≥ 1）還在跑 = 它不夠快，才顯示「當前節點速度不佳，優化中」
 var optEl = document.getElementById("optimizing");
 var optShown = false, optLastCount = null;
 function renderOptimizing(st) {
   var on = !!(st && st.running && (st.reason === "install" || st.reason === "stall") && st.done >= 1);
   if (on) {
-    optStopRow.style.display = st.reason === "stall" ? "" : "none";
     var total = st.total || 0, done = Math.min(st.done || 0, total), left = total - done;
     var cnt = document.getElementById("optCount");
     if (left !== optLastCount) {
@@ -1510,15 +1508,6 @@ function renderOptimizing(st) {
   optShown = on;
   optEl.classList.toggle("show", on);
 }
-var optStopRow = document.getElementById("optStopRow");
-// 中斷：這一輪作廢、節點維持原樣（這支影片不會再自動測速；之後還卡會直接問要不要切到 B 站原始網址）
-document.getElementById("optStop").addEventListener("click", function () {
-  renderOptimizing(null);
-  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-    if (!tabs || !tabs[0]) return;
-    sendToTop(tabs[0].id, { type: "CDN_SWITCHER_STOP_AUTOTEST" }, function () { void chrome.runtime.lastError; });
-  });
-});
 
 // -------- 手动测速：切到独立页面，逐节点显示等待中/测试中/结果；离开页面就中止 --------
 var SPEEDTEST_ERR_KEYS = {
