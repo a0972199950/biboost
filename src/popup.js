@@ -1001,7 +1001,26 @@ Promise.all([
   journalReady = true;
   autoSelectCountry(cfg);
   refreshZoneIfStale(arr[1]);
+  maybeAutoSpeedtest();
 });
+
+// 影片上的終態提示按了「重新測速選節點」：background 留下 speedtestOnPopup（時間與分頁）再打開 popup，
+// popup 看到就自動按一次「測速」（跟使用者自己按一樣：選「全部」時照樣先跳警告）。只認一分鐘內、而且是那個分頁的
+var ST_ON_POPUP_MS = 60 * 1000;
+function maybeAutoSpeedtest() {
+  chrome.storage.local.get("speedtestOnPopup", function (s) {
+    var o = s && s.speedtestOnPopup;
+    if (!o) return;
+    chrome.storage.local.remove("speedtestOnPopup");
+    if (!(Date.now() - o.at <= ST_ON_POPUP_MS)) return;
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (!tabs || !tabs[0] || tabs[0].id !== o.tabId) return;
+      if (els.speedtestBtn.disabled || els.speedtestBtn.parentNode.style.display === "none") return;
+      journalUi("ui.speedtest", { phase: "auto-open", by: "terminal" });
+      els.speedtestBtn.click();
+    });
+  });
+}
 
 // 节点清单载入失败（第一次安装就连不上伺服器）：关不掉的遮罩，「重试」＋每 10 秒自动重试（交给 background 拿，拿到它会接着依 IP 选国家）。
 // 拿到就重新载入 popup，照常显示

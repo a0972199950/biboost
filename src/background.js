@@ -79,6 +79,24 @@ function loginDone(tabId) {
   });
 }
 
+// 影片上的終態提示按了「重新測速選節點」（bridge 轉來，sender 是那個分頁）：留下 speedtestOnPopup，在那個分頁的視窗打開 popup，
+// popup 讀到就自動開始手動測速。打不開（Firefox 要使用者在擴充自己的介面上操作、其他環境沒有 openPopup）就把標記清掉，回傳原因
+function openSpeedtestPopup(tab) {
+  if (!tab || tab.id == null) return Promise.resolve({ popup: false, why: "no-tab" });
+  if (!chrome.action || typeof chrome.action.openPopup !== "function") return Promise.resolve({ popup: false, why: "no-api" });
+  return new Promise(function (r) { chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: tab.id } }, r); }).then(function () {
+    return new Promise(function (r) {
+      var done = function (ok, why) { if (!ok) chrome.storage.local.remove("speedtestOnPopup"); r({ popup: ok, why: why || "" }); };
+      var open = function () {
+        Promise.resolve().then(function () { return tab.windowId != null ? chrome.action.openPopup({ windowId: tab.windowId }) : chrome.action.openPopup(); })
+          .then(function () { done(true); }, function (e) { done(false, String((e && e.message) || e || "error").slice(0, 120)); });
+      };
+      if (tab.windowId != null && chrome.windows && chrome.windows.update) chrome.windows.update(tab.windowId, { focused: true }, function () { void chrome.runtime.lastError; open(); });
+      else open();
+    });
+  });
+}
+
 chrome.runtime.onInstalled.addListener(function (details) {
   if (details.reason === "install") {
     chrome.storage.local.set({ installedAt: Date.now(), installTestPending: true });
@@ -435,6 +453,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (msg.type === "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW") { openAnnouncementWindow(msg.id); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_HANDOFF_URL" && /^macappstore:/.test(msg.url || "")) { openHandoffUrl(msg.url); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_LOGIN_DONE") { loginDone(sender && sender.tab ? sender.tab.id : null).then(function (ok) { sendResponse({ popup: ok }); }); return true; }
+  if (msg.type === "CDN_SWITCHER_OPEN_SPEEDTEST") { openSpeedtestPopup(sender && sender.tab).then(sendResponse); return true; }
   if (msg.type === "CDN_SWITCHER_WELCOME_DONE") { finishWelcome(msg.windowId); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_REPORT_WINDOW") { openReportWindow(msg.tab != null ? msg.tab : tabId); sendResponse({ ok: true }); return true; }
 });

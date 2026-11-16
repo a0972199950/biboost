@@ -21,7 +21,7 @@
     "message": "速度不佳时自动优化节点"
   },
   "autoFallbackHint": {
-    "message": "视频卡住或加载失败时，在后台测速当前列表的节点，只在这个标签页换到够快的那个；都不够快时会弹出提示，让你选择继续观看或关闭介入。直播则改用国际线路。网络本身不稳（如 Wi-Fi 信号弱）时可能频繁切换，建议关闭。"
+    "message": "视频卡住或加载失败时，在后台测速当前列表的节点，只在这个标签页换到够快的那个；都不够快时会弹出提示，让你选择继续观看、重新测速或关闭介入。直播则改用国际线路。网络本身不稳（如 Wi-Fi 信号弱）时可能频繁切换，建议关闭。"
   },
   "cdnHostRowLabel": {
     "message": "CDN 节点"
@@ -160,6 +160,18 @@
   },
   "mhTermDisable": {
     "message": "关闭介入"
+  },
+  "mhTermRetest": {
+    "message": "重新测速选节点"
+  },
+  "mhToastAutoSwitched": {
+    "message": "[节点网速不佳自动优化] 切换到 {host}"
+  },
+  "mhToastTooFrequent": {
+    "message": "如觉得切换过于频繁，请关闭自动优化"
+  },
+  "mhToastDisableAuto": {
+    "message": "关闭优化"
   },
   "mhCdnTargetOriginal": {
     "message": "原始（不覆盖）"

@@ -845,3 +845,34 @@ describe("a tab using a rescue-picked node (per-tab override)", () => {
     env.close();
   });
 });
+
+// 影片上的終態提示按了「重新測速選節點」：background 留下 speedtestOnPopup 再打開 popup，popup 自動開始手動測速
+describe("popup opened by the terminal prompt's 're-test' button", () => {
+  async function bootFlag(flag, extra = {}) {
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, cdnMode: "list", cdnCountry: "TW", cdnHost: DEFAULT_HOST, speedtestOnPopup: flag, ...extra },
+      tabs: [{ id: 7, url: "https://www.bilibili.com/video/BV1xx411c7mD", status: "complete" }],
+      tabResponder: () => ({ ok: true }) });
+    env.chrome.tabs.get = (id, cb) => cb({ id, url: "https://www.bilibili.com/video/BV1xx411c7mD", status: "complete" });
+    env.fetchHandler = () => { throw new TypeError("Failed to fetch"); };
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "popup.js"].forEach((f) => env.load(f));
+    await env.settle(30);
+    return env;
+  }
+  const started = (env) => env.tabMessages.filter((m) => m.tabId === 7 && m.msg.type === "CDN_SWITCHER_RUN_SPEEDTEST");
+  test("a fresh flag for this tab starts the manual test with the current list and is cleared", async () => {
+    const env = await bootFlag({ at: Date.now(), tabId: 7 });
+    assert.equal(started(env).length, 1);
+    assert.ok(started(env)[0].msg.hosts.length > 0);
+    assert.equal("speedtestOnPopup" in env.storage, false);
+    env.close();
+  });
+  test("an old flag, or one for another tab, is cleared without testing", async () => {
+    const a = await bootFlag({ at: Date.now() - 120000, tabId: 7 });
+    assert.equal(started(a).length, 0);
+    assert.equal("speedtestOnPopup" in a.storage, false);
+    a.close();
+    const b = await bootFlag({ at: Date.now(), tabId: 8 });
+    assert.equal(started(b).length, 0);
+    b.close();
+  });
+});
