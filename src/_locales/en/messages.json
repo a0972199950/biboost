@@ -152,9 +152,6 @@
   "cdnNameBackupUrl": {
     "message": "Backup URL"
   },
-  "mhToastAutoSwitched": {
-    "message": "Current CDN is slow; switched to backup node {host}"
-  },
   "mhTermText": {
     "message": "None of the nodes play smoothly. You can keep watching, or stop the extension from intervening and go back to bilibili's default."
   },

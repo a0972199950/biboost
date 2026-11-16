@@ -152,9 +152,6 @@
   "cdnNameBackupUrl": {
     "message": "備用URL"
   },
-  "mhToastAutoSwitched": {
-    "message": "目前 CDN 速度不佳，已自動切換至備援節點 {host}"
-  },
   "mhTermText": {
     "message": "所有節點都不流暢，你可以繼續觀看，或是關閉擴充介入回到B站預設"
   },

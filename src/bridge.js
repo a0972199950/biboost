@@ -110,7 +110,7 @@
   // 开局推一次；使用者在 popup 切换语言（uiMsgs 变更）时会再推一次。
   var MSGS_KEY = "__CDN_SWITCHER_MSGS__";
   var MSG_KEYS = [
-    "mhToastAutoSwitched", "mhTermText", "mhTermContinue", "mhTermDisable",
+    "mhTermText", "mhTermContinue", "mhTermDisable",
     "mhCdnTargetOriginal", "mhCdnTargetBackup", "mhToastLiveFallback", "mhToastSwitched",
     "liveRouteOv", "liveRouteOvB", "liveRouteCn", "liveRouteCnB"
   ];
@@ -198,8 +198,7 @@
     if (d.dir === "debug") { latestDebug = d.payload || null; if (isTopFrame && latestDebug) maybeStoreSnapshot(latestDebug); return; }
     if (d.dir === "journal" && d.payload && isTopFrame) { toBackground({ type: "CDN_SWITCHER_JOURNAL", entry: d.payload }); return; }
     if (d.dir === "sample" && d.payload && isTopFrame) { toBackground({ type: "CDN_SWITCHER_SAMPLE", row: d.payload }); return; }
-    // 自动优化节点（main-hook 的 reason "install"：安装后那次；"stall"：入口一的救援；"predict"：入口二，popup 不显示）：
-    // 进度给 popup 显示「当前节点速度不佳，优化中」；
+    // 安装后那次自动优化节点（main-hook 的 reason "install"）：进度给 popup 显示「当前节点速度不佳，优化中」（卡顿救援没有任何 UI，不送这些讯息）；
     // 安装后那次一开始就把旗标清掉，之后不论结果都不再测
     if (d.dir === "autotest-start" && d.payload) {
       var maxMs = Number(d.payload.maxMs);

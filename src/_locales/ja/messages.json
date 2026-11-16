@@ -152,9 +152,6 @@
   "cdnNameBackupUrl": {
     "message": "バックアップ URL"
   },
-  "mhToastAutoSwitched": {
-    "message": "現在の CDN が遅いため、バックアップノード {host} に自動で切り替えました"
-  },
   "mhTermText": {
     "message": "どのノードもスムーズに再生できません。このまま視聴を続けるか、拡張機能の介入をやめて bilibili のデフォルトに戻せます。"
   },

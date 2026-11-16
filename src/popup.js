@@ -1487,12 +1487,12 @@ function pollDebug() {
 pollDebug();
 
 // -------- 安裝後第一支影片的優化：目前分頁回報「正在跑」才顯示「優化中」遮罩與剩餘節點數；手動測速不顯示 --------
-// 安裝後那次與卡頓救援（reason "stall"）都沒有「中斷」，不想要優化就去進階設定關掉；入口二的預測（"predict"）不顯示。最長顯示時間由 bridge 把關（超過 maxMs 就回報已結束）。
+// 只有安裝後那次顯示（沒有「中斷」）；卡頓救援在背景默默進行，沒有任何 UI。最長顯示時間由 bridge 把關（超過 maxMs 就回報已結束）。
 // 第一個測的是目前的節點：它夠快就直接結束、什麼都不顯示；測完它（done ≥ 1）還在跑 = 它不夠快，才顯示「當前節點速度不佳，優化中」
 var optEl = document.getElementById("optimizing");
 var optShown = false, optLastCount = null;
 function renderOptimizing(st) {
-  var on = !!(st && st.running && (st.reason === "install" || st.reason === "stall") && st.done >= 1);
+  var on = !!(st && st.running && st.reason === "install" && st.done >= 1); // 卡頓救援在背景默默進行，不顯示遮罩（使用者 2026-11-16）
   if (on) {
     var total = st.total || 0, done = Math.min(st.done || 0, total), left = total - done;
     var cnt = document.getElementById("optCount");
@@ -2644,7 +2644,7 @@ function addFakeCountry() {
 // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
 if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
   globalThis.__BCS_TEST__.register("popup", {
-    els: els, DEFAULTS: DEFAULTS, t: t, uiLangCode: uiLangCode, localized: localized, cdnDisplayName: cdnDisplayName,
+    els: els, DEFAULTS: DEFAULTS, t: t, uiLangCode: uiLangCode, renderOptimizing: renderOptimizing, localized: localized, cdnDisplayName: cdnDisplayName,
     normHost: normHost, parseVer: parseVer, cmpVer: cmpVer, changelogText: changelogText, clampLimit: clampLimit, inferPreset: inferPreset,
     showListFail: showListFail, findCountry: findCountry, validCountry: validCountry, countryHosts: countryHosts, activeHosts: activeHosts, visibleCdnOptions: visibleCdnOptions,
     detectCountry: detectCountry, countryByDial: countryByDial, refreshZoneIfStale: refreshZoneIfStale, autoSelectCountry: autoSelectCountry,

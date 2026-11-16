@@ -276,11 +276,25 @@ describe("entry 1: user actions", () => {
     b.clk.add(1000); // 不要超過 3 秒沒取樣（那會被當成取樣中斷、排除期重算）
     b.p.buff(true); b.mh.uiSample(b.clk.now());
     assert.equal(b.mh.e1.ep.start, op + 8000);
-    b.mh.noteUserOp("test", b.clk.now() + 1000); // 卡住之後的操作不延長
     b.clk.run(7000);
     assert.equal(b.mh.e1.ep.estAt, 0, "not established before 8 s + 1 s");
     b.clk.run(1000);
     assert.equal(b.mh.e1.ep.estAt, op + 9000);
+    b.env.close();
+  });
+  test("cool-down: any action, even after the stall began, pauses everything for 8 s from that action (user 2026-11-16)", () => {
+    const b = bootPlaying();
+    speedFetch(b.env, {});
+    b.p.buff(true); b.mh.uiSample(b.clk.now());
+    b.clk.run(3000);
+    b.mh.noteUserOp("test", b.clk.now()); // 卡住 3 秒時使用者又點了一下
+    assert.equal(b.mh.rescueBlocked(b.clk.now()), "user-op");
+    b.clk.run(7000);
+    assert.equal(b.mh.round(), null);
+    b.clk.run(5000);
+    assert.equal(b.mh.round(), null, "counts from the end of the cool-down");
+    b.clk.run(2000);
+    assert.ok(b.mh.round());
     b.env.close();
   });
   test("a seek that recovers within 8 s is never counted", () => {
@@ -365,7 +379,6 @@ describe("entry 1: black screen backup (no prompt at all)", () => {
     b.mh.noteSegReq(b.clk.now());
     b.mh.rescueTick();
     assert.equal(b.mh.BLACK.base, op + 8000);
-    b.mh.noteUserOp("test", b.clk.now() + 500);
     b.clk.run(14000);
     assert.equal(b.mh.round(), null);
     b.clk.run(1000);
@@ -1035,6 +1048,45 @@ describe("review round 2", () => {
     b.clk.run(2000);
     assert.ok(b.mh.round());
     b.mh.abortRescue("test"); await b.env.settle(30);
+    b.env.close();
+  });
+});
+
+describe("user decisions 2026-11-16 (cool-down, silent rescue)", () => {
+  test("an entry-2 result that arrives during the cool-down is kept as a standby; the current node is not marked", async () => {
+    const b = bootPlaying();
+    speedFetch(b.env, { [HOST]: 1000, [HW]: "fast" });
+    playFor(b, 31000);
+    let t = b.p.v.currentTime;
+    b.clk.run(2000, () => { t += 1; setVideo(b.p.v, { currentTime: t, buffered: [0, t + 1] }); });
+    assert.equal(b.mh.round().src, 2);
+    b.mh.noteUserOp("test", b.clk.now());
+    await roundEnded(b.env, b.mh);
+    assert.equal(b.mh.autoHost(), null);
+    assert.equal(b.mh.isFailed(HOST), false);
+    assert.equal(b.mh.e2.standby.host, HW);
+    b.env.close();
+  });
+  test("an entry-1 result that arrives during the cool-down is not applied", async () => {
+    const b = bootPlaying();
+    speedFetch(b.env, { [HW]: "fast" });
+    b.env.fetchHandler = ((orig) => (u, i) => new Promise((r) => setTimeout(() => r(orig(u, i)), 40)))(b.env.fetchHandler);
+    b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
+    assert.ok(b.mh.round());
+    b.mh.noteUserOp("test", b.clk.now());
+    await roundEnded(b.env, b.mh);
+    assert.equal(b.mh.autoHost(), null);
+    b.env.close();
+  });
+  test("the rescue is silent: no toast on the page, no 'optimizing' messages for the popup", async () => {
+    const b = bootPlaying();
+    speedFetch(b.env, { [HW]: "fast" });
+    b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
+    await roundEnded(b.env, b.mh);
+    assert.equal(b.mh.autoHost(), HW);
+    assert.equal(b.env.window.document.getElementById("cdn-switcher-toast"), null);
+    assert.deepEqual(of(b.posted, "autotest-start"), []);
+    assert.deepEqual(of(b.posted, "autotest-progress"), []);
     b.env.close();
   });
 });
