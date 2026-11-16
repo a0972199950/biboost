@@ -401,8 +401,11 @@ describe("no node list yet", () => {
 });
 
 describe("buttons on the page's notices", () => {
+  // 真的点了扩充自己的提示按钮（isTrusted）：jsdom 造不出来，用 test seam 记下
+  const realClick = (env) => env.internals("bridge").markOwnClick();
   test("'turn off' on the frequent-switch notice turns auto-optimize off globally", () => {
     const env = boot({ autoFallback: true });
+    realClick(env);
     env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
     assert.equal(env.storage.autoFallback, false);
     env.close();
@@ -410,25 +413,30 @@ describe("buttons on the page's notices", () => {
   test("'re-test' asks the background to open the popup, at most once per 10 s, and logs whether it opened", () => {
     const env = boot({});
     env.chrome.runtime.onMessage.addListener((msg, sender, respond) => { if (msg.type === "CDN_SWITCHER_OPEN_SPEEDTEST") { respond({ popup: false, why: "user gesture" }); return true; } });
+    realClick(env);
     env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
     env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
     assert.equal(env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_OPEN_SPEEDTEST").length, 1);
-    const logged = env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_JOURNAL" && m.entry.k === "ui.term").map((m) => m.entry.d);
+    const logged = env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_JOURNAL" && m.entry.k === "ui.term" && !m.entry.d.rejected).map((m) => m.entry.d);
     assert.deepEqual(plain(logged), [{ retest: 1, popup: 0, why: "user gesture", tries: 1 }]);
     env.close();
   });
-  test("without a real user click (forged by a page script) or in a background tab, both are ignored", () => {
+  test("forged by a page script (no real click on our own button, or a synthetic click on it) or in a background tab: ignored", () => {
     const env = boot({ autoFallback: true });
-    Object.defineProperty(env.window.navigator, "userActivation", { configurable: true, value: { isActive: false } });
     env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
     env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
     assert.equal(env.storage.autoFallback, true);
     assert.equal(env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_OPEN_SPEEDTEST").length, 0);
-    Object.defineProperty(env.window.navigator, "userActivation", { configurable: true, value: { isActive: true } });
-    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "hidden" });
+    const d = env.window.document, box = d.createElement("div"); box.id = "cdn-switcher-terminal";
+    const btn = d.createElement("button"); box.appendChild(btn); d.body.appendChild(box);
+    btn.dispatchEvent(new env.window.MouseEvent("click", { bubbles: true })); // isTrusted false
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    assert.equal(env.storage.autoFallback, true, "a script's synthetic click does not count");
+    realClick(env);
+    Object.defineProperty(d, "visibilityState", { configurable: true, get: () => "hidden" });
     env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
     assert.equal(env.storage.autoFallback, true);
-    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
+    Object.defineProperty(d, "visibilityState", { configurable: true, get: () => "visible" });
     env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
     assert.equal(env.storage.autoFallback, false, "a real click in the foreground");
     env.close();

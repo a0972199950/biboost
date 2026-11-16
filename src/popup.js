@@ -1006,19 +1006,32 @@ Promise.all([
 
 // 影片上的終態提示按了「重新測速選節點」：background 留下 speedtestOnPopup（時間與分頁）再打開 popup，
 // popup 看到就自動按一次「測速」（跟使用者自己按一樣：選「全部」時照樣先跳警告）。只認一分鐘內、而且是那個分頁的
-// popup 已經開著時，openPopup 會失敗（Safari 實測：Another popup is already open），但標記照樣寫進來：看到新的標記就直接開始
-var ST_ON_POPUP_MS = 60 * 1000;
+// popup 已經開著時（Safari 點頁面不會關 popup），openPopup 會失敗，但標記照樣寫進來：看到新的標記就開始。
+// 標記帶 id（每次點擊一個，background 重試沿用同一個）：同一個 id 只處理一次。
+// 收到變更後等一下再處理、而且 popup 還看得到才處理：Chrome 點頁面時會先把開著的 popup 關掉，關閉中的 popup 不能把標記讀走
+var ST_ON_POPUP_MS = 60 * 1000, ST_CHANGE_SETTLE_MS = 400;
 var autoStReady = false; // 設定載入完（按鈕狀態已經畫好）才處理，之前寫進來的由載入完那次處理
-try { chrome.storage.onChanged.addListener(function (ch, area) { if (autoStReady && area === "local" && ch.speedtestOnPopup && ch.speedtestOnPopup.newValue) maybeAutoSpeedtest(); }); } catch (e) {}
+var autoStSeen = {};
+try {
+  chrome.storage.onChanged.addListener(function (ch, area) {
+    if (!autoStReady || area !== "local" || !ch.speedtestOnPopup || !ch.speedtestOnPopup.newValue) return;
+    setTimeout(function () { if (document.visibilityState === "visible") maybeAutoSpeedtest(); }, ST_CHANGE_SETTLE_MS);
+  });
+} catch (e) {}
 function maybeAutoSpeedtest() {
   autoStReady = true;
   chrome.storage.local.get("speedtestOnPopup", function (s) {
     var o = s && s.speedtestOnPopup;
     if (!o) return;
-    chrome.storage.local.remove("speedtestOnPopup");
-    if (!(Date.now() - o.at <= ST_ON_POPUP_MS)) return;
+    if (!(Date.now() - o.at <= ST_ON_POPUP_MS)) { chrome.storage.local.remove("speedtestOnPopup"); return; }
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      // 不是這個視窗的分頁：留給那個視窗的 popup（或使用者等一下自己打開的 popup），過期自然失效
       if (!tabs || !tabs[0] || tabs[0].id !== o.tabId) return;
+      chrome.storage.local.remove("speedtestOnPopup");
+      var id = o.id || String(o.at);
+      if (autoStSeen[id]) return;
+      autoStSeen[id] = 1;
+      if (speedtestTabId === o.tabId) return; // 已經在這個分頁的測速頁：不要清掉結果重測
       if (els.speedtestBtn.disabled || els.speedtestBtn.parentNode.style.display === "none") return;
       journalUi("ui.speedtest", { phase: "auto-open", by: "terminal" });
       els.speedtestBtn.click();
@@ -2219,7 +2232,8 @@ function showSpeedtestView(tabId, mode) {
   els.stList.textContent = "";
   setStNoticeMode(true);
   stAwaitStart = true;
-  // 开一个长连线：popup 关闭或按返回时会自动/主动断线，content script 收到 onDisconnect 就中止测速
+  // 开一个长连线：popup 关闭或按返回时会自动/主动断线，content script 收到 onDisconnect 就中止测速。旧的那条先断掉（不然会一直留着）
+  if (speedtestPort) { try { speedtestPort.disconnect(); } catch (e) {} }
   speedtestPort = connectTop(tabId, "cdn-switcher-speedtest");
 }
 

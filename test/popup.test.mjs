@@ -866,13 +866,14 @@ describe("popup opened by the terminal prompt's 're-test' button", () => {
     assert.equal("speedtestOnPopup" in env.storage, false);
     env.close();
   });
-  test("an old flag, or one for another tab, is cleared without testing", async () => {
+  test("an old flag is cleared without testing; one for another tab does not start a test", async () => {
     const a = await bootFlag({ at: Date.now() - 120000, tabId: 7 });
     assert.equal(started(a).length, 0);
     assert.equal("speedtestOnPopup" in a.storage, false);
     a.close();
     const b = await bootFlag({ at: Date.now(), tabId: 8 });
     assert.equal(started(b).length, 0);
+    assert.equal(b.storage.speedtestOnPopup.tabId, 8, "another tab's flag stays");
     b.close();
   });
   test("'all countries' still shows the long-test warning first; a hidden test button is never pressed", async () => {
@@ -884,13 +885,40 @@ describe("popup opened by the terminal prompt's 're-test' button", () => {
     assert.equal(started(b).length, 0);
     b.close();
   });
-  test("a popup that is already open starts when a new flag arrives (openPopup fails with 'another popup is already open')", async () => {
+  test("a popup that is already open starts when a new flag arrives (Safari: 'another popup is already open'); the same click id only once", async () => {
     const env = await bootFlag(null);
     assert.equal(started(env).length, 0);
-    env.chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: 7 } });
-    await env.settle(30);
+    const flag = { at: Date.now(), tabId: 7, id: "c1" };
+    env.chrome.storage.local.set({ speedtestOnPopup: flag });
+    await env.settle(500);
     assert.equal(started(env).length, 1);
     assert.equal("speedtestOnPopup" in env.storage, false);
+    // background 重试会用同一个 id 再写两次：不能再测
+    env.chrome.storage.local.set({ speedtestOnPopup: { ...flag, at: Date.now() } });
+    env.chrome.storage.local.set({ speedtestOnPopup: { ...flag, at: Date.now() } });
+    await env.settle(500);
+    assert.equal(started(env).length, 1);
+    env.close();
+  });
+  test("already on this tab's test page: a new click does not wipe the results; a closing popup (hidden) does not take the flag", async () => {
+    const env = await bootFlag({ at: Date.now(), tabId: 7, id: "c1" });
+    assert.equal(started(env).length, 1);
+    env.chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: 7, id: "c2" } });
+    await env.settle(500);
+    assert.equal(started(env).length, 1);
+    env.close();
+    const c = await bootFlag(null);
+    Object.defineProperty(c.window.document, "visibilityState", { configurable: true, get: () => "hidden" });
+    c.chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: 7, id: "c3" } });
+    await c.settle(500);
+    assert.equal(started(c).length, 0);
+    assert.equal(c.storage.speedtestOnPopup.id, "c3", "left for the new popup");
+    c.close();
+  });
+  test("a flag for another window's tab is left alone (that popup, or one opened by hand, takes it)", async () => {
+    const env = await bootFlag({ at: Date.now(), tabId: 8, id: "c1" });
+    assert.equal(started(env).length, 0);
+    assert.equal(env.storage.speedtestOnPopup.tabId, 8);
     env.close();
   });
 });

@@ -30,15 +30,19 @@
 
   var latestDebug = null;
   var openStAt = 0; // 最近一次请 background 打开 popup 测速的时间
-  // 使用者刚刚在这个页面上点了东西（transient activation：同一个 frame 的 MAIN 与 ISOLATED world 共用，页面脚本伪造不了），而且分页在前景。
-  // 浏览器没有 userActivation（Safari 16.3 以前）时只看前景
+  // 使用者刚刚真的点了擴充自己的提示按钮（终态提示、换节点提示）：ISOLATED world 在 capture 阶段记下 isTrusted 的点击，
+  // 页面脚本造不出 isTrusted 的事件，也碰不到这个变数。只看 userActivation 不够：使用者点了播放器任何地方，5 秒内页面脚本都能冒用
+  var ownClickAt = 0;
+  try {
+    document.addEventListener("click", function (ev) {
+      var t = ev && ev.target;
+      if (ev.isTrusted && t && t.closest && t.closest("#cdn-switcher-terminal button,#cdn-switcher-toast button")) ownClickAt = Date.now();
+    }, true);
+  } catch (e) {}
   function userGesture() {
-    try {
-      if (document.visibilityState !== "visible") return false;
-      var ua = navigator.userActivation;
-      return !ua || !!ua.isActive;
-    } catch (e) { return false; }
+    try { return document.visibilityState === "visible" && Date.now() - ownClickAt < 1500; } catch (e) { return false; }
   }
+
   var isTopFrame = window.top === window;
 
   // ---- 問題回報：日誌／採樣／快照 → background（單一寫入者，寫進 storage.session）----
@@ -423,7 +427,8 @@
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
     globalThis.__BCS_TEST__.register("bridge", {
       IMPORT_RE: IMPORT_RE, importFromHash: importFromHash, DEFAULTS: DEFAULTS,
-      speedTest: function () { return speedTest; }, latestDebug: function () { return latestDebug; }, latestAutoTest: function () { return latestAutoTest; }
+      speedTest: function () { return speedTest; }, latestDebug: function () { return latestDebug; }, latestAutoTest: function () { return latestAutoTest; },
+      markOwnClick: function () { ownClickAt = Date.now(); } // jsdom 造不出 isTrusted 的点击
     });
   }
 })();

@@ -295,9 +295,11 @@
       fixed ? "top:15%" : "top:24px",
       "left:50%", "transform:translateX(-50%)", "z-index:2147483646",
       // 放不下就讓按钮换到下一行：手机版页面（m.bilibili.com）播放器很窄，不换行时文字会被挤成一行一两个字、「关闭」被切掉
-      "display:flex", "flex-wrap:wrap", "align-items:center", "gap:8px 10px", "max-width:85%", "box-sizing:border-box",
+      // width:max-content：绝对定位又 left:50% 时，不指定宽度只会有容器的一半宽（窄播放器上会被挤成好几行、盖满画面）
+      "display:flex", "flex-wrap:wrap", "align-items:center", "gap:8px 10px", "width:max-content", "max-width:85%", "box-sizing:border-box",
       "font:13px/1.6 " + TOAST_FONT, "color:#fff",
-      "background:rgba(0,0,0,.78)", "padding:8px " + (closable ? "30px" : "14px") + " 8px 14px", "border-radius:8px",
+      // 淡淡的边框：全黑画面上（B 站重载后、错误画面）黑色半透明底看不出框
+      "background:rgba(0,0,0,.78)", "border:1px solid rgba(255,255,255,.22)", "padding:8px " + (closable ? "30px" : "14px") + " 8px 14px", "border-radius:8px",
       "box-shadow:0 2px 10px rgba(0,0,0,.35)", "opacity:1", "transition:opacity .4s",
       (hasButton ? "pointer-events:auto" : "pointer-events:none")
     ].join(";");
@@ -1186,8 +1188,9 @@
     // 位置与外观跟换节点提示（cdn-switcher-toast）一样（使用者 2026-11-16）：播放器中间上方、深色底框；z-index 用最大值，压过 B 站的载入图示
     el.style.cssText = ["position:absolute", "top:24px", "left:50%", "transform:translateX(-50%)", "z-index:2147483647",
       "box-sizing:border-box", "max-width:85%", "width:440px", "padding:8px 30px 8px 14px", "border-radius:8px",
-      "background:rgba(0,0,0,.78)", "color:#fff", "font:13px/1.6 " + TOAST_FONT, "box-shadow:0 2px 10px rgba(0,0,0,.35)",
-      "pointer-events:auto", "text-align:left"].join(";");
+      "background:rgba(0,0,0,.78)", "border:1px solid rgba(255,255,255,.22)", "color:#fff", "font:13px/1.6 " + TOAST_FONT, "box-shadow:0 2px 10px rgba(0,0,0,.35)",
+      // 窄播放器（手机版页面）放不下时可以捲动，最下面那排按钮才按得到
+      "max-height:calc(100% - 32px)", "overflow:auto", "pointer-events:auto", "text-align:left"].join(";");
     var txt = document.createElement("div");
     txt.textContent = MSGS.mhTermText;
     el.appendChild(txt);
