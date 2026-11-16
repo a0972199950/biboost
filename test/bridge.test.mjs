@@ -178,6 +178,8 @@ describe("autotest-done → storage", () => {
     assert.ok(!posted.includes("speedtest-closed"));
     await env.settle(5500);
     assert.ok(posted.includes("speedtest-closed"));
+    assert.ok(posted.includes("speedtest-stop"), "the manual test is stopped too");
+    assert.equal(env.internals("bridge").speedTest().running, false);
     env.close();
   });
   test("forged install result without a pending test is ignored (only a fresh install sets installTestPending)", () => {
