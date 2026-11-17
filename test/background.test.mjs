@@ -149,7 +149,8 @@ describe("country selection in the background", () => {
   test("SELECT_COUNTRY message from bridge runs a retry", async () => {
     const env = withZone({ installTestPending: true }, 65);
     env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_SELECT_COUNTRY" });
-    await env.settle(50);
+    // 機器忙的時候固定等 50 ms 不夠（偶發失敗）：等到寫進去為止，最多 3 秒
+    for (let i = 0; i < 300 && env.storage.cdnCountry === undefined; i++) await env.settle(10);
     assert.equal(env.storage.cdnCountry, "SG");
     env.close();
   });
@@ -186,7 +187,7 @@ describe("importCustomHosts", () => {
     const env = boot({});
     let resp;
     env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_IMPORT_CUSTOM", hosts: [A] }, (r) => { resp = r; });
-    await env.settle();
+    for (let i = 0; i < 300 && resp === undefined; i++) await env.settle(10); // 機器忙的時候固定等 10 ms 不夠（偶發失敗）
     assert.equal(env.storage.customHosts.length, 1);
     env.close();
   });

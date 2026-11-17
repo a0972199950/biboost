@@ -553,6 +553,13 @@
     });
     return out;
   }
+  // 有测速样本时，扣掉这支影片测不了的候选（akamai 没有这个档案的专属网址）：那些节点这支影片换过去也测不了，
+  // 扣完没有候选＝候选用完（进终态），不是「拿不到测速样本」。还没有样本时没办法判断，原样交给 startRound（它会当成测不了）
+  function hasSample() { var s = sampleUrl(); return !!s && !isExpiredUrl(s); }
+  function testableCands(cands) {
+    if (!hasSample()) return cands;
+    return cands.filter(function (h) { return !!testUrlFor(h); });
+  }
 
   // 记下 playurl 给的候选 host：滤掉 PCDN（mcdn，品质不稳）；带端口的 host 过不了
   // CDN_HOST_RE 的 $ 锚定，顺带被排除（分段差替也不适用带端口的节点）
@@ -951,9 +958,9 @@
     if (R || autoTestRunning) return false; // 别的测速（安装后那次）还在跑：等它
     var sb = standbyOk(now) ? e2.standby : null;
     if (sb) { markFailed(cur, PLAY_FAIL); e2.standby = null; applyRescuePick(sb.host, reason + "-standby"); return true; }
-    var cands = listCands();
-    if (!cands.length) { markFailed(cur, PLAY_FAIL); jlog("fb.noCand", { entry: 1 }); terminalOrExhaust(reason); return true; }
-    // 一个都测不了（没有样本、候选都没有可测的网址）：当成这一轮逾时没测完 —— 不换、不记失败、不进终态，下次触发再试
+    var all = listCands(), cands = testableCands(all);
+    if (!cands.length) { markFailed(cur, PLAY_FAIL); jlog("fb.noCand", { entry: 1, untestable: all.length }); terminalOrExhaust(reason); return true; }
+    // 还拿不到测速样本（还没解析到 playurl、也没抓过分段，或样本签名过期）：当成这一轮逾时没测完 —— 不换、不记失败、不进终态，下次触发再试
     if (!startRound(1, reason, "rescue", "", cands)) {
       if (!e1NoSampleLogged) { e1NoSampleLogged = true; jlog("fb.noSample", { entry: 1 }); } // 每支影片只记一次，不然每 5 秒一笔会洗掉日志
       return false;
