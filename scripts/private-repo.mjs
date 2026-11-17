@@ -21,6 +21,8 @@ const BRANCH = "main";
 // 只進私人 repo 的路徑（公開 repo 的 .gitignore 要擋掉同一批）
 const PRIVATE_PATHS = [
   ".claude", // skill、本機設定與其他 Claude Code 檔案
+  "CLAUDE.md", // 專案說明與 agent 規範（給 Claude Code 讀）
+  "agent.md",
   "promotions",
   "research",
   "spec",
