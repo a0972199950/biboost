@@ -24,7 +24,11 @@ function zoneOf(dial) { return { code: 0, data: { addr: "1.2.3.4", isp: "ISP", p
 
 describe("pure helpers", () => {
   let env, p;
-  before(async () => { env = await boot(); p = env.internals("popup"); });
+  before(async () => {
+    env = await boot(); p = env.internals("popup");
+    // 節點清單是非同步載入的（驗章）：機器忙的時候 20 ms 不夠，等到清單進來（最多 3 秒），不然下面查國家／節點名稱的會偶發失敗
+    for (let i = 0; i < 300 && !p.state().cdnCountries.length; i++) await env.settle(10);
+  });
   after(() => env.close());
 
   test("normHost", () => {

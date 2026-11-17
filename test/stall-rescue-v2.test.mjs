@@ -1356,3 +1356,160 @@ describe("spec update after acceptance (2026-11-16)", () => {
     b.env.close();
   });
 });
+
+// 精準測速：每個節點讀一次就給 rate（bytes/s）× 1 秒的資料，同時把時鐘撥快 1 秒 → 算出來的速度就是 rate（只差真實經過的幾毫秒）
+function rateFetch(b, rates) {
+  const asked = [];
+  b.env.fetchHandler = (url) => {
+    const host = new URL(url).host;
+    asked.push(host);
+    const rate = rates[host];
+    if (rate === undefined) return new Promise(() => {});
+    let sent = false;
+    return { ok: true, status: 206, body: { getReader: () => ({ cancel() {},
+      read: () => sent ? Promise.resolve({ done: true })
+        : new Promise((r) => setTimeout(() => { sent = true; b.clk.add(1000); r({ done: false, value: { length: rate } }); }, 5))
+    }) } };
+  };
+  return asked;
+}
+function stall5s(b) { b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000); }
+const AKAM = "upos-hz-mirrorakam.akamaized.net";
+
+describe("regression check from Windows (2026-11-17)", () => {
+  test("candidates this video cannot test (akamai without its own URL) are left out; none left = used up → terminal, not 'no sample' every 5 s", () => {
+    const b = bootPlaying({ autoSpeedHosts: [HOST, AKAM] });
+    const asked = speedFetch(b.env, {});
+    stall5s(b);
+    assert.equal(b.mh.round(), null, "nothing to test");
+    assert.ok(b.mh.term(), "still stuck → terminal");
+    assert.equal(b.mh.isFailed(HOST), true);
+    assert.deepEqual(journal(b.posted, "fb.noSample"), []);
+    assert.equal(journal(b.posted, "fb.noCand")[0].untestable, 1);
+    assert.deepEqual(asked, []);
+    b.env.close();
+  });
+  test("an untestable akamai node is skipped and the rest are still tested", async () => {
+    const b = bootPlaying({ autoSpeedHosts: [HOST, AKAM, HW] });
+    const asked = speedFetch(b.env, { [HW]: "fast" });
+    stall5s(b);
+    await roundEnded(b.env, b.mh);
+    assert.deepEqual(asked, [HW]);
+    assert.equal(b.mh.autoHost(), HW);
+    b.env.close();
+  });
+  test("no sample yet with an akamai-only list is still 'cannot test' (not used up)", () => {
+    const b = boot({ autoSpeedHosts: [HOST, AKAM] });
+    b.p = addPlayer(b.env);
+    stall5s(b);
+    assert.equal(b.mh.term(), null);
+    assert.equal(b.mh.isFailed(HOST), false);
+    assert.ok(journal(b.posted, "fb.noSample").length >= 1);
+    b.env.close();
+  });
+
+  test("high bitrate (40 Mbps): a node above 25 Mbps but below floor neither ends the test early nor gets picked", async () => {
+    const b = boot({ autoSpeedHosts: [HOST, HW, COS] });
+    b.p = addPlayer(b.env);
+    b.mh.rewriteRoot(playurl(3, 40e6), "playurl");
+    b.mh.trackVideoEvents(); b.mh.rescueTick();
+    // 碼率 5 MB/s → floor 7.5 MB/s；good＝max(floor, min(25 Mbps, 2×碼率))＝floor
+    const asked = rateFetch(b, { [HW]: 5e6, [COS]: 9e6 });
+    stall5s(b);
+    const r = b.mh.round();
+    assert.equal(r.floor, 7.5e6);
+    assert.equal(r.good, 7.5e6, "good is never below floor");
+    await roundEnded(b.env, b.mh);
+    assert.deepEqual(asked, [HW, COS], "5 MB/s (40 Mbps > 25 Mbps) did not stop the test");
+    assert.equal(b.mh.autoHost(), COS);
+    assert.equal(b.mh.isFailed(HW), true, "below floor → marked");
+    b.env.close();
+  });
+  test("high bitrate: if the only candidate is above 25 Mbps but below floor, nothing is picked (terminal)", async () => {
+    const b = boot({ autoSpeedHosts: [HOST, HW] });
+    b.p = addPlayer(b.env);
+    b.mh.rewriteRoot(playurl(3, 40e6), "playurl");
+    b.mh.trackVideoEvents(); b.mh.rescueTick();
+    rateFetch(b, { [HW]: 5e6 });
+    stall5s(b);
+    await roundEnded(b.env, b.mh);
+    assert.equal(b.mh.autoHost(), null);
+    assert.ok(b.mh.term());
+    b.env.close();
+  });
+
+  test("no bitrate: floor 0, good 25 Mbps; nothing reaches good → the fastest, and the slower one that held up is not marked", async () => {
+    const b = boot({ autoSpeedHosts: [HOST, HW, COS] });
+    b.p = addPlayer(b.env);
+    const pu = playurl(); delete pu.data.dash.video[0].bandwidth;
+    b.mh.rewriteRoot(pu, "playurl");
+    b.mh.trackVideoEvents(); b.mh.rescueTick();
+    const asked = rateFetch(b, { [HW]: 1e6, [COS]: 2e6 });
+    stall5s(b);
+    assert.equal(b.mh.round().floor, 0);
+    assert.equal(b.mh.round().good, 25e6 / 8);
+    await roundEnded(b.env, b.mh);
+    assert.deepEqual(asked, [HW, COS]);
+    assert.equal(b.mh.autoHost(), COS);
+    assert.equal(b.mh.isFailed(HW), false);
+    b.env.close();
+  });
+  test("with a bitrate, nothing reaches good → the fastest one ≥ floor; ≥ floor but not picked is not marked, below floor is", async () => {
+    // 800 kbps → floor 150 kB/s、good 200 kB/s
+    const b = bootPlaying({ autoSpeedHosts: [HOST, ALI, HW, COS] });
+    const asked = rateFetch(b, { [ALI]: 100000, [HW]: 165000, [COS]: 185000 });
+    stall5s(b);
+    await roundEnded(b.env, b.mh);
+    assert.deepEqual(asked, [ALI, HW, COS], "none reached good → all tested");
+    assert.equal(b.mh.autoHost(), COS);
+    assert.equal(b.mh.isFailed(ALI), true, "below floor");
+    assert.equal(b.mh.isFailed(HW), false, "held up, just not the fastest");
+    b.env.close();
+  });
+
+  test("the first config push on page load (no segment requested yet) gives no 30 s cool-down: a dead node is rescued after ~5 s", () => {
+    const b = bootPlaying();
+    speedFetch(b.env, {});
+    assert.equal(b.mh.lastSegReqAt(), 0);
+    b.env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.ok(b.mh.FALLBACK.coolUntil <= b.clk.now(), "no cool-down");
+    stall5s(b);
+    assert.ok(b.mh.round(), "rescue started at 5 s");
+    b.env.close();
+  });
+
+  test("install flag on but an empty list: the rescue is not blocked; candidates used up → terminal", () => {
+    const b = bootPlaying({ installTestPending: true, autoSpeedHosts: [] });
+    speedFetch(b.env, {});
+    assert.equal(b.mh.rescueBlocked(b.clk.now()), "");
+    stall5s(b);
+    assert.ok(b.mh.term());
+    b.env.close();
+  });
+  test("another tab ran the install test and the flag is cleared through config: this tab can rescue", () => {
+    const b = bootPlaying({ installTestPending: true });
+    speedFetch(b.env, {});
+    stall5s(b);
+    assert.equal(b.mh.round(), null, "blocked while the flag is on");
+    b.env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { installTestPending: false } });
+    assert.equal(b.mh.rescueBlocked(b.clk.now()), "");
+    // 一直卡著的這次從解除那一刻（下一秒的偵測）開始算 5 秒
+    b.clk.run(5000);
+    assert.equal(b.mh.round(), null);
+    b.clk.run(1000);
+    assert.ok(b.mh.round(), "rescue started");
+    b.env.close();
+  });
+
+  test("backup-URL mode is rescued too (user 2026-11-17): stuck → this tab switches to a list node, the setting stays 'backup'", async () => {
+    const b = bootPlaying({ cdnHost: "backup" });
+    speedFetch(b.env, { [HW]: "fast" });
+    stall5s(b);
+    assert.ok(b.mh.round(), "rescue started");
+    await roundEnded(b.env, b.mh);
+    assert.equal(b.mh.autoHost(), HW);
+    assert.equal(b.mh.cfg().cdnHost, "backup");
+    assert.deepEqual(of(b.posted, "autotest-done"), []);
+    b.env.close();
+  });
+});

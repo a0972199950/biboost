@@ -950,3 +950,128 @@ describe("per-tab rescue override lifetime", () => {
     env.close();
   });
 });
+
+// 從 master（3610818）搬回來的舊測試：v2 改寫時跟著舊函式一起刪掉，但行為還在
+describe("restored from master: node change on a stalled tab (#41, #33)", () => {
+  test("the player paused itself on an empty buffer → not idle: the new node is applied with a reload", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, currentTime: 168 }); // 播過、前方沒有緩衝
+    assert.equal(mh.mainVideoIdle(), false);
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.ok(env.window.sessionStorage.getItem("__CDN_SWITCHER_SWITCH_TOAST__").includes(COS), "a reload was queued");
+    env.close();
+  });
+  test("never played yet → still idle (no reload that would start playback, #33)", () => {
+    const env = boot({});
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: true, currentTime: 120, played: false });
+    assert.equal(mh.mainVideoIdle(), true);
+    env.close();
+  });
+  test("the player reset its video after failing segments (ct 0, played empty) → not idle: a node change reloads", () => {
+    const env = boot({ autoFallback: false });
+    const mh = env.internals("main-hook");
+    const calls = [];
+    env.window.player = { reload: () => calls.push("reload"), getCurrentTime: () => 0, seek() {} };
+    addVideo(env, { paused: true, currentTime: 0, played: false });
+    mh.setLastSegFailAt(Date.now() - 5000);
+    assert.equal(mh.mainVideoIdle(), false);
+    env.postMessage({ __cdnSwitcher: 1, dir: "config", payload: { cdnHost: COS } });
+    assert.deepEqual(calls, ["reload"]);
+    mh.setLastSegFailAt(Date.now() - 61000);
+    assert.equal(mh.mainVideoIdle(), true, "an old failure no longer counts");
+    env.close();
+  });
+});
+
+describe("restored from master: rescue speed test helpers", () => {
+  test("a rate above 1× raises the speed the current quality needs", () => {
+    const env = boot({ autoSpeedHosts: [HOST, COS] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl({}, 800000), "playurl");
+    const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
+    assert.equal(mh.currentBitrateBps(), 100000);
+    setVideo(v, { playbackRate: 2 });
+    assert.equal(mh.currentBitrateBps(), 200000);
+    env.close();
+  });
+  test("rescue speed test gives up early: no headers within the TTFB limit, or far below the needed speed", async () => {
+    const env = boot({ autoSpeedHosts: [HOST] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    env.fetchHandler = () => new Promise(() => {}); // 連 header 都不回
+    let t = Date.now();
+    let r = await mh.measureHost(COS, { ttfbMs: 80 });
+    assert.equal(r.error, "slow-ttfb");
+    assert.ok(Date.now() - t < 1000);
+    // 細水長流：每 20 ms 給 100 bytes
+    env.fetchHandler = () => ({ ok: true, status: 200, body: { getReader: () => ({ cancel() {},
+      read: () => new Promise((res) => setTimeout(() => res({ done: false, value: { length: 100 } }), 20)) }) } });
+    t = Date.now();
+    r = await mh.measureHost(COS, { minBps: 1e6, checkMs: 150 });
+    assert.equal(r.error, "too-slow");
+    assert.ok(Date.now() - t < 1000);
+    env.close();
+  });
+});
+
+describe("restored from master: the player's own pause on an empty buffer is not the user's pause", () => {
+  test("a pause that happens with < 0.5 s ahead is the player's own buffering pause, even after the buffer grows back a little", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
+    mh.trackVideoEvents();
+    setVideo(v, { paused: true });
+    v.dispatchEvent(new env.window.Event("pause")); // 緩衝只剩 0.2 秒時暫停
+    assert.equal(mh.health.bufPause, true);
+    setVideo(v, { buffered: [0, 12] }); // 攢回 2 秒（播放器還在攢）
+    assert.equal(mh.mainVideoIdle(), false, "a node change would reload it");
+    mh.legacyCheckStall(""); mh.legacyCheckStall("");
+    assert.notEqual(mh.stallState.stuckSince, null, "counts as stuck");
+    setVideo(v, { buffered: [0, 13.5] }); // 攢回 3.5 秒還停著 → 是使用者按的暫停（播放器自己的會繼續）
+    assert.equal(mh.mainVideoIdle(), true, "a user pause after all");
+    assert.equal(mh.health.bufPause, false);
+    setVideo(v, { buffered: [0, 10.2] }); // 回到剛暫停的狀態，重做一次：這次 play 事件清掉
+    v.dispatchEvent(new env.window.Event("pause"));
+    setVideo(v, { buffered: [0, 12] });
+    v.dispatchEvent(new env.window.Event("play"));
+    assert.equal(mh.health.bufPause, false);
+    // 對照：使用者在有緩衝時按暫停
+    setVideo(v, { paused: true, buffered: [0, 40] });
+    v.dispatchEvent(new env.window.Event("pause"));
+    assert.equal(mh.health.bufPause, false);
+    assert.equal(mh.mainVideoIdle(), true);
+    env.close();
+  });
+  test("a user pause right when the buffer ran low, then the buffer refills: not a stall", () => {
+    const env = boot({ autoSpeedHosts: [] });
+    const mh = env.internals("main-hook");
+    mh.rewriteRoot(playurl(), "playurl");
+    const v = addVideo(env, { paused: false, currentTime: 10, buffered: [0, 10.2] });
+    mh.trackVideoEvents();
+    setVideo(v, { paused: true });
+    v.dispatchEvent(new env.window.Event("pause")); // 緩衝只剩 0.2 秒時按暫停
+    assert.equal(mh.health.bufPause, true);
+    setVideo(v, { buffered: [0, 14] }); // 緩衝回到 4 秒還停著：是使用者的暫停
+    for (let i = 0; i < 3; i++) mh.legacyCheckStall("");
+    assert.equal(mh.health.bufPause, false);
+    assert.equal(mh.stallState.stuckSince, null, "not counted as stuck");
+    assert.equal(mh.isFailed(HOST), false, "no rescue over the user's pause");
+    env.close();
+  });
+});
+
+describe("live pages", () => {
+  test("the every-second tick runs the old detection on a live page (not only a direct call)", () => {
+    const env = boot({ liveRoute: "cn" }, "https://live.bilibili.com/12345");
+    const mh = env.internals("main-hook");
+    addVideo(env, { paused: false, readyState: 0, currentTime: 0, played: false });
+    mh.setLastSegReqAt(Date.now());
+    mh.rescueTick(); mh.rescueTick();
+    assert.notEqual(mh.stallState.stuckSince, null);
+    assert.equal(mh.stallState.limit, 8000);
+    env.close();
+  });
+});

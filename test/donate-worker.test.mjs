@@ -23,6 +23,9 @@ describe("report worker: donate", () => {
     const env = createEnv({ htmlFile: "donate.html", url: "chrome-extension://bcs-test/donate.html" });
     ["i18n.js", "common.js", "donate.js"].forEach((f) => env.load(f));
     await env.settle(30);
+    // 等初始化跑完（排行榜載入或失敗）再關頁面：機器忙的時候還在跑的 promise 會碰到已關閉的 document（偶發失敗）
+    const bd = env.internals("donate").board;
+    for (let i = 0; i < 300 && !bd.loaded && !bd.failed; i++) await env.settle(10);
     const ext = env.internals("donate").CURRENCIES;
     for (const [code, c] of Object.entries(ext)) {
       assert.equal(checkInput({ ...ok, currency: code, amount: c.min }), "", code);
