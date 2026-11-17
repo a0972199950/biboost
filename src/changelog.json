@@ -1,26 +1,5 @@
 {
-  "unreleased": [
-    {
-      "type": "fix",
-      "text": {
-        "zh_TW": "卡頓時自動換的節點只套用在卡住的那個分頁，不再改掉你選的節點，其他分頁也不會跟著重新載入；背景分頁不會再自動換節點",
-        "zh_CN": "卡顿时自动换的节点只套用在卡住的那个标签页，不再改掉你选的节点，其他标签页也不会跟着重新加载；后台标签页不会再自动换节点",
-        "en": "When playback stalls, the auto-picked node now applies only to that tab: your chosen node stays, other tabs are no longer reloaded, and background tabs never switch nodes on their own",
-        "ja": "再生が止まったときに自動で選んだノードは、そのタブだけに適用されるように。選んだノードは変わらず、他のタブが再読み込みされることもありません。バックグラウンドのタブが勝手にノードを切り替えることもなくなりました",
-        "ko": "재생이 멈췄을 때 자동으로 고른 노드는 그 탭에만 적용돼요. 직접 고른 노드는 그대로이고, 다른 탭이 다시 불러와지지 않으며, 백그라운드 탭이 스스로 노드를 바꾸지도 않아요"
-      }
-    },
-    {
-      "type": "fix",
-      "text": {
-        "zh_TW": "卡頓改看播放器畫面判斷，番劇頁卡住也抓得到、地區限制不再誤判；測速在背景默默進行、不再擋住 popup，換了節點才在影片上提示；所有節點都不流暢時跳出提示，可以繼續觀看、重新測速或關閉擴充介入",
-        "zh_CN": "卡顿改看播放器画面判断，番剧页卡住也能发现、地区限制不再误判；测速在后台默默进行、不再挡住 popup，换了节点才在视频上提示；所有节点都不流畅时弹出提示，可以继续观看、重新测速或关闭扩展介入",
-        "en": "Stalls are now detected from the player's own screen, so frozen anime pages are caught and region-locked videos are no longer misread; speed tests run quietly in the background without blocking the popup, and a notice appears on the video only after a node is switched; when no node plays smoothly, a prompt lets you keep watching, re-test, or stop the extension from intervening",
-        "ja": "再生の停止をプレーヤーの画面から判定するように。アニメページの停止も検出でき、地域制限を誤判定しなくなりました。速度テストはバックグラウンドで静かに行い、ポップアップを遮りません。ノードを切り替えたときだけ動画上でお知らせします。どのノードもスムーズでないときは、視聴を続ける・再テストする・拡張機能の介入をやめるを選べる案内を表示します",
-        "ko": "재생 멈춤을 플레이어 화면으로 판단해요. 애니 페이지의 멈춤도 잡아내고 지역 제한을 잘못 판단하지 않아요. 속도 측정은 백그라운드에서 조용히 진행되어 팝업을 가리지 않고, 노드를 바꿨을 때만 영상 위에 알려 줘요. 모든 노드가 원활하지 않으면 계속 시청, 다시 측정, 확장 프로그램 개입 끄기 중에서 고르는 안내가 떠요"
-      }
-    }
-  ],
+  "unreleased": [],
   "releases": [
     {
       "version": "2.10.0",
