@@ -31,6 +31,10 @@ const PRIVATE_PATHS = [
   "store",
   "admin", // 後台畫面（Vite＋React；本機 npm run admin、雲端打包到 biboost.app/admin）
   "src/private", // 擴充的私人模組（不打包，見 scripts/build.mjs）
+  // 公開前檢查的工具（pre-push 與 package.json 會呼叫；別人 clone 下來沒有也不影響建置）
+  "scripts/sensitive-check.mjs",
+  "scripts/gh-safe.mjs",
+  "scripts/setup-hooks.mjs",
   // 本機憑證
   ".env.local",
   "tools/report-worker/.dev.vars",

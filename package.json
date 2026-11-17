@@ -33,7 +33,7 @@
     "private:setup": "node scripts/private-repo.mjs setup",
     "private:push": "node scripts/private-repo.mjs push",
     "private:pull": "node scripts/private-repo.mjs pull",
-    "prepare": "git config core.hooksPath .githooks || exit 0",
+    "prepare": "node scripts/setup-hooks.mjs || exit 0",
     "worker:deploy": "wrangler deploy --config tools/report-worker/wrangler.toml",
     "worker:deploy:staging": "wrangler deploy --config tools/report-worker/wrangler.toml --env staging",
     "worker:dev": "wrangler dev --config tools/report-worker/wrangler.toml",

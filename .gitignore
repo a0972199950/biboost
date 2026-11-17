@@ -35,6 +35,8 @@ spec/
 
 # 發版產物（npm run package；/release 會上傳到 GitHub Release）
 release/
+# Safari 的本機測試建置（npm run build:safari；不進版控）
+dist/*.app/
 
 # Cloudflare Worker 本機密鑰 / 暫存
 tools/report-worker/.dev.vars
@@ -70,6 +72,11 @@ tools/translate-worker/.wrangler/
 
 # 私人模組：只進私人 repo，也不打包
 /src/private/
+
+# 本機工具，只進私人 repo
+/scripts/sensitive-check.mjs
+/scripts/gh-safe.mjs
+/scripts/setup-hooks.mjs
 
 # 節點清單（伺服器下發，scripts/cdn-list.mjs）：本機工作檔、每次發布重建的靜態網站內容
 /.cdn-list/
