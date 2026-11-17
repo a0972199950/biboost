@@ -2433,20 +2433,6 @@
       100% { transform: scale(1); opacity: 1; }
     }
 
-    .optStopRow {
-      margin-top: 14px;
-    }
-
-    .optStopRow button.linkBtn {
-      padding: 0;
-      border: 0;
-      background: none;
-      font: inherit;
-      font-size: 12px;
-      color: var(--muted);
-      text-decoration: underline;
-      cursor: pointer;
-    }
 
     /* 節點清單載入失敗：蓋在整個 popup 上、關不掉的遮罩（見 popup.js showListFail）。拿到清單前擴充不啟用；
        每 10 秒自動重試，拿到就重新載入 popup。動畫：擴充圖示頂端兩角長出一雙緊閉成 > < 的眼睛，快速連鞠三個躬（對不起對不起對不起）、汗往兩邊噴，旁邊是斷線的雲 */
@@ -2851,6 +2837,7 @@
         </button>
         <div class="cdnSelectList" id="cdnSelectList"></div>
       </div>
+      <div class="hint" id="autoHostHint" style="display:none"></div>
       <div class="hint" id="countryHint"></div>
       <div id="customAddBox" style="display:none">
         <div class="autoDetectCard">
@@ -3474,7 +3461,6 @@
       <div class="optTitle" id="optTitle"></div>
       <!-- 剩餘節點數「10...」：數字每減一跳一下，後面的點 0 → 3 個循環 -->
       <div class="optCountRow"><span class="optCount" id="optCount">10</span><span class="optDots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
-      <div class="optStopRow" id="optStopRow" style="display:none"><button type="button" class="linkBtn" id="optStop"></button></div>
     </div>
   </div>
 

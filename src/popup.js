@@ -99,7 +99,7 @@ document.documentElement.lang = uiLanguage();
   ["liveRouteRowLabel", "liveRouteRowLabel"],
   ["sortBySpeedLabel", "sortBySpeedLabel"], ["sortBySpeedHint", "sortBySpeedHint"],
   ["hvLabel", "hvLabel"], ["hvOldLabel", "hvOld"], ["hvNewLabel", "hvNew"], ["hvHintChange", "hvHintChange"], ["hvHintUse", "hvHintUse"], ["hvHintWarn", "hvHintWarn"],
-  ["optTitle", "optimizingTitle"], ["optStop", "optimizingStop"],
+  ["optTitle", "optimizingTitle"],
   ["stVideoLimitTitle", "stVideoLimitTitle"], ["stVideoLimitHint", "stVideoLimitHint"], ["stVideoMbLabel", "stVideoMbLabel"],
   ["stVideoSecLabel", "stVideoSecLabel"], ["stVideoSecUnit", "unitSec"], ["stVideoReset", "resetDefault"], ["stVideoPresetLabel", "stPresetLabel"],
   ["stLiveLimitTitle", "stLiveLimitTitle"], ["stLiveLimitHint", "stLiveLimitHint"], ["stLiveRunsLabel", "stLiveRunsLabel"],
@@ -711,12 +711,11 @@ function applyCountry(code) {
   selectCdnValue(cdnSelectValue);
   saveAutoSpeedHosts();
 }
-// 自動優化要測的節點跟著國家走；選「全部」時不測（約 300 個節點，背景測不完）：
-// 寫入空清單讓 content script 不測，卡頓時直接退回 B 站原始節點
+// 自動優化要測的節點跟著國家走；選「全部」時改用「其他地區」（OTHER）清單（約 300 個節點，背景測不完）
 var savedAutoSpeedHosts = "";
+function autoHostsFor(code) { return countryHosts(code === COUNTRY_ALL ? COUNTRY_FALLBACK : code); }
 function saveAutoSpeedHosts() {
-  var isAll = cdnMode === "list" && countrySel === COUNTRY_ALL;
-  var hosts = isAll ? [] : activeHosts();
+  var hosts = cdnMode === "custom" ? activeHosts() : autoHostsFor(countrySel);
   var sig = hosts.join("|");
   if (sig === savedAutoSpeedHosts) return;
   savedAutoSpeedHosts = sig;
@@ -736,8 +735,8 @@ els.countrySelect.addEventListener("change", function () {
   countryAutoPending = false; // 使用者自己選了，偵測結果晚到也不要蓋掉
   var patch = { cdnCountry: code, countryAutoDone: true };
   useCountryFirstNode(code, patch); // 國家選單只在清單模式顯示，切國家就直接換成該國第一個節點
-  // 自動測速要測的清單跟國家一起寫（「全部」300 個測不完，不測）：安裝後的優化還沒跑的話，測的就是新國家的清單
-  patch.autoSpeedHosts = code === COUNTRY_ALL ? [] : countryHosts(code);
+  // 自動測速要測的清單跟國家一起寫（「全部」300 個測不完，改測 OTHER 清單）：安裝後的優化還沒跑的話，測的就是新國家的清單
+  patch.autoSpeedHosts = autoHostsFor(code);
   savedAutoSpeedHosts = patch.autoSpeedHosts.join("|");
   save(patch);
   applyCountry(code);
@@ -780,7 +779,7 @@ function autoSelectCountry(cfg) {
     // in the dropdown. Users on the custom list keep their node.
     if (cdnMode !== "custom") {
       useCountryFirstNode(target, patch);
-      patch.autoSpeedHosts = target === COUNTRY_ALL ? [] : countryHosts(target);
+      patch.autoSpeedHosts = autoHostsFor(target);
       savedAutoSpeedHosts = patch.autoSpeedHosts.join("|");
     }
     save(patch);
@@ -839,7 +838,7 @@ function buildCdnSelectList(options) {
     }
     row.addEventListener("click", function () {
       closeCdnSelect();
-      if (o.value === cdnSelectValue) return;
+      if (o.value === cdnSelectValue) { if (tabAutoHost) clearTabAutoHost(); return; } // 这个分页暂用救援节点：点自己的节点＝换回来
       selectCdnValue(o.value);
       currentCdnHost = o.value;
       save({ videoEnabled: true, cdnHost: o.value, installTestPending: false }); // 使用者自己選了，安裝後的優化取消
@@ -1002,7 +1001,43 @@ Promise.all([
   journalReady = true;
   autoSelectCountry(cfg);
   refreshZoneIfStale(arr[1]);
+  maybeAutoSpeedtest();
 });
+
+// 影片上的終態提示按了「重新測速選節點」：background 留下 speedtestOnPopup（時間與分頁）再打開 popup，
+// popup 看到就自動按一次「測速」（跟使用者自己按一樣：選「全部」時照樣先跳警告）。只認一分鐘內、而且是那個分頁的
+// popup 已經開著時（Safari 點頁面不會關 popup），openPopup 會失敗，但標記照樣寫進來：看到新的標記就開始。
+// 標記帶 id（每次點擊一個，background 重試沿用同一個）：同一個 id 只處理一次。
+// 收到變更後等一下再處理、而且 popup 還看得到才處理：Chrome 點頁面時會先把開著的 popup 關掉，關閉中的 popup 不能把標記讀走
+var ST_ON_POPUP_MS = 60 * 1000, ST_CHANGE_SETTLE_MS = 400;
+var autoStReady = false; // 設定載入完（按鈕狀態已經畫好）才處理，之前寫進來的由載入完那次處理
+var autoStSeen = {};
+try {
+  chrome.storage.onChanged.addListener(function (ch, area) {
+    if (!autoStReady || area !== "local" || !ch.speedtestOnPopup || !ch.speedtestOnPopup.newValue) return;
+    setTimeout(function () { if (document.visibilityState === "visible") maybeAutoSpeedtest(); }, ST_CHANGE_SETTLE_MS);
+  });
+} catch (e) {}
+function maybeAutoSpeedtest() {
+  autoStReady = true;
+  chrome.storage.local.get("speedtestOnPopup", function (s) {
+    var o = s && s.speedtestOnPopup;
+    if (!o) return;
+    if (!(Date.now() - o.at <= ST_ON_POPUP_MS)) { chrome.storage.local.remove("speedtestOnPopup"); return; }
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      // 不是這個視窗的分頁：留給那個視窗的 popup（或使用者等一下自己打開的 popup），過期自然失效
+      if (!tabs || !tabs[0] || tabs[0].id !== o.tabId) return;
+      chrome.storage.local.remove("speedtestOnPopup");
+      var id = o.id || String(o.at);
+      if (autoStSeen[id]) return;
+      autoStSeen[id] = 1;
+      if (speedtestTabId === o.tabId) return; // 已經在這個分頁的測速頁：不要清掉結果重測
+      if (els.speedtestBtn.disabled || els.speedtestBtn.parentNode.style.display === "none") return;
+      journalUi("ui.speedtest", { phase: "auto-open", by: "terminal" });
+      els.speedtestBtn.click();
+    });
+  });
+}
 
 // 节点清单载入失败（第一次安装就连不上伺服器）：关不掉的遮罩，「重试」＋每 10 秒自动重试（交给 background 拿，拿到它会接着依 IP 选国家）。
 // 拿到就重新载入 popup，照常显示
@@ -1053,7 +1088,7 @@ els.modeList.addEventListener("change", function () {
     // 從自訂切回清單：改用該國第一個節點
     cdnMode = "list";
     useCountryFirstNode(countrySel, patch);
-    patch.autoSpeedHosts = countrySel === COUNTRY_ALL ? [] : countryHosts(countrySel);
+    patch.autoSpeedHosts = autoHostsFor(countrySel);
     savedAutoSpeedHosts = patch.autoSpeedHosts.join("|");
   }
   currentCdnHost = cdnSelectValue;
@@ -1443,6 +1478,24 @@ document.getElementById("staleReloadBtn").addEventListener("click", function () 
   });
 });
 
+// -------- 这个分页卡顿时被自动换了节点（只在这个分页，设定不变）：在节点选单下方说明，点自己选的节点可以换回来 --------
+var tabAutoHost = null;
+function setTabAutoHost(h) {
+  tabAutoHost = h || null;
+  var el = document.getElementById("autoHostHint");
+  if (!el) return;
+  if (!tabAutoHost) { el.style.display = "none"; el.textContent = ""; return; }
+  var name = tabAutoHost === "backup" ? t("mhCdnTargetBackup") : String(tabAutoHost).replace(/\.bilivideo\.(com|cn)$/i, "");
+  el.textContent = t("autoHostHint").replace("{host}", name);
+  el.style.display = "block";
+}
+function clearTabAutoHost() {
+  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    if (tabs && tabs[0]) sendToTop(tabs[0].id, { type: "CDN_SWITCHER_CLEAR_AUTO" }, function () { void chrome.runtime.lastError; });
+  });
+  setTabAutoHost(null);
+}
+
 function pollDebug() {
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
     if (!tabs || !tabs[0]) return;
@@ -1454,6 +1507,7 @@ function pollDebug() {
         setStale(maybeStale && debugMissCount >= 2);
         renderDebug(null);
         renderOptimizing(null);
+        setTabAutoHost(null);
         // 第一次聯絡不上就立刻再確認一次，不等下一秒的輪詢：popup 一打開就能顯示提示，不會晚一秒才把下面的內容往下推
         if (maybeStale && debugMissCount === 1) pollDebug();
         return;
@@ -1462,20 +1516,20 @@ function pollDebug() {
       setStale(false);
       renderDebug(resp && resp.debug);
       renderOptimizing(resp && resp.autoTest);
+      setTabAutoHost(resp && resp.debug && !resp.debug.live && resp.debug.autoHost);
     });
   });
 }
 pollDebug();
 
 // -------- 安裝後第一支影片的優化：目前分頁回報「正在跑」才顯示「優化中」遮罩與剩餘節點數；手動測速不顯示 --------
-// 安裝後那次只會發生一次，沒有「中斷」；卡頓時那次（reason "stall"）可以中斷。最長顯示時間由 bridge 把關（超過 maxMs 就回報已結束）。
+// 只有安裝後那次顯示（沒有「中斷」）；卡頓救援在背景默默進行，沒有任何 UI。最長顯示時間由 bridge 把關（超過 maxMs 就回報已結束）。
 // 第一個測的是目前的節點：它夠快就直接結束、什麼都不顯示；測完它（done ≥ 1）還在跑 = 它不夠快，才顯示「當前節點速度不佳，優化中」
 var optEl = document.getElementById("optimizing");
 var optShown = false, optLastCount = null;
 function renderOptimizing(st) {
-  var on = !!(st && st.running && (st.reason === "install" || st.reason === "stall") && st.done >= 1);
+  var on = !!(st && st.running && st.reason === "install" && st.done >= 1); // 卡頓救援在背景默默進行，不顯示遮罩（使用者 2026-11-16）
   if (on) {
-    optStopRow.style.display = st.reason === "stall" ? "" : "none";
     var total = st.total || 0, done = Math.min(st.done || 0, total), left = total - done;
     var cnt = document.getElementById("optCount");
     if (left !== optLastCount) {
@@ -1490,15 +1544,6 @@ function renderOptimizing(st) {
   optShown = on;
   optEl.classList.toggle("show", on);
 }
-var optStopRow = document.getElementById("optStopRow");
-// 中斷：這一輪作廢、節點維持原樣（這支影片不會再自動測速；之後還卡會直接問要不要切到 B 站原始網址）
-document.getElementById("optStop").addEventListener("click", function () {
-  renderOptimizing(null);
-  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-    if (!tabs || !tabs[0]) return;
-    sendToTop(tabs[0].id, { type: "CDN_SWITCHER_STOP_AUTOTEST" }, function () { void chrome.runtime.lastError; });
-  });
-});
 
 // -------- 手动测速：切到独立页面，逐节点显示等待中/测试中/结果；离开页面就中止 --------
 var SPEEDTEST_ERR_KEYS = {
@@ -2140,7 +2185,8 @@ function renderSpeedtest(st) {
 
 // 测速页点一下节点列即直接切换：写回目前那份节点（国家清单／自订节点列表）的选择并存档，主画面下次打开会同步显示
 function applySpeedtestHost(host) {
-  if (activeHosts().indexOf(host) < 0 || (videoOn && host === currentCdnHost)) return;
+  if (activeHosts().indexOf(host) < 0) return;
+  if (videoOn && host === currentCdnHost) { if (tabAutoHost) clearTabAutoHost(); return; }
   currentCdnHost = host;
   videoOn = true;
   (cdnMode === "custom" ? els.modeCustom : els.modeList).checked = true;
@@ -2186,7 +2232,8 @@ function showSpeedtestView(tabId, mode) {
   els.stList.textContent = "";
   setStNoticeMode(true);
   stAwaitStart = true;
-  // 开一个长连线：popup 关闭或按返回时会自动/主动断线，content script 收到 onDisconnect 就中止测速
+  // 开一个长连线：popup 关闭或按返回时会自动/主动断线，content script 收到 onDisconnect 就中止测速。旧的那条先断掉（不然会一直留着）
+  if (speedtestPort) { try { speedtestPort.disconnect(); } catch (e) {} }
   speedtestPort = connectTop(tabId, "cdn-switcher-speedtest");
 }
 
@@ -2634,7 +2681,7 @@ function addFakeCountry() {
 // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
 if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
   globalThis.__BCS_TEST__.register("popup", {
-    els: els, DEFAULTS: DEFAULTS, t: t, uiLangCode: uiLangCode, localized: localized, cdnDisplayName: cdnDisplayName,
+    els: els, DEFAULTS: DEFAULTS, t: t, uiLangCode: uiLangCode, renderOptimizing: renderOptimizing, localized: localized, cdnDisplayName: cdnDisplayName,
     normHost: normHost, parseVer: parseVer, cmpVer: cmpVer, changelogText: changelogText, clampLimit: clampLimit, inferPreset: inferPreset,
     showListFail: showListFail, findCountry: findCountry, validCountry: validCountry, countryHosts: countryHosts, activeHosts: activeHosts, visibleCdnOptions: visibleCdnOptions,
     detectCountry: detectCountry, countryByDial: countryByDial, refreshZoneIfStale: refreshZoneIfStale, autoSelectCountry: autoSelectCountry,

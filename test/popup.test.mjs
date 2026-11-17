@@ -24,7 +24,11 @@ function zoneOf(dial) { return { code: 0, data: { addr: "1.2.3.4", isp: "ISP", p
 
 describe("pure helpers", () => {
   let env, p;
-  before(async () => { env = await boot(); p = env.internals("popup"); });
+  before(async () => {
+    env = await boot(); p = env.internals("popup");
+    // 節點清單是非同步載入的（驗章）：機器忙的時候 20 ms 不夠，等到清單進來（最多 3 秒），不然下面查國家／節點名稱的會偶發失敗
+    for (let i = 0; i < 300 && !p.state().cdnCountries.length; i++) await env.settle(10);
+  });
   after(() => env.close());
 
   test("normHost", () => {
@@ -296,6 +300,30 @@ describe("automatic country selection (first run)", () => {
 });
 
 describe("user actions", () => {
+  test("\"all countries\" makes the rescue test the OTHER list (not an empty list)", async () => {
+    const env = await boot({ cdnMode: "list", cdnHost: DEFAULT_HOST, cdnCountry: "TW" });
+    const p = env.internals("popup");
+    p.els.countrySelect.value = "ALL";
+    p.els.countrySelect.dispatchEvent(new env.window.Event("change"));
+    assert.equal(env.storage.cdnCountry, "ALL");
+    assert.deepEqual(env.storage.autoSpeedHosts, nodesOf("OTHER"));
+    env.close();
+  });
+  test("the optimizing overlay shows only for the install test, never for a stall rescue", async () => {
+    const env = await boot({});
+    const p = env.internals("popup");
+    const el = env.window.document.getElementById("optimizing");
+    p.renderOptimizing({ running: true, reason: "stall", total: 5, done: 2 });
+    assert.equal(el.classList.contains("show"), false);
+    p.renderOptimizing({ running: true, reason: "install", total: 5, done: 2 });
+    assert.equal(el.classList.contains("show"), true);
+    env.close();
+  });
+  test("the optimizing overlay has no stop button any more", async () => {
+    const env = await boot({});
+    assert.equal(env.window.document.getElementById("optStop"), null);
+    env.close();
+  });
   test("changing the country switches to its first node and resets speed order", async () => {
     const env = await boot({ cdnMode: "list", cdnHost: DEFAULT_HOST, cdnCountry: "TW", sortBySpeed: true, speedOrder: { video: ["a"], live: [] } });
     const p = env.internals("popup");
@@ -782,6 +810,119 @@ describe("advanced settings: old / new homepage switch", () => {
     const js = readFileSync(new URL("../src/popup.js", import.meta.url), "utf8");
     const reset = js.slice(js.indexOf("function resetAllSettings"), js.indexOf("function resetAllSettings") + 900);
     assert.doesNotMatch(reset, /homeVersion/);
+    env.close();
+  });
+});
+
+// 救援只在卡住的分頁覆寫節點、不改設定：popup 要說明這個分頁暫用哪個節點，點使用者自己的節點可以換回來
+describe("a tab using a rescue-picked node (per-tab override)", () => {
+  const HW = "upos-sz-mirrorhw.bilivideo.com";
+  async function bootWithTab(autoHost) {
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, cdnMode: "list", cdnHost: DEFAULT_HOST },
+      tabs: [{ id: 7, url: "https://www.bilibili.com/video/BV1xx411c7mD", status: "complete" }],
+      tabResponder: (msg) => (msg.type === "CDN_SWITCHER_GET_DEBUG" ? { debug: { enabled: true, cdnHost: DEFAULT_HOST, autoHost }, autoTest: null } : { ok: true }) });
+    env.fetchHandler = () => { throw new TypeError("Failed to fetch"); };
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "popup.js"].forEach((f) => env.load(f));
+    await env.settle(20);
+    return env;
+  }
+  test("the hint says which node this tab is using; clicking the user's own node switches this tab back without touching the settings", async () => {
+    const env = await bootWithTab(HW);
+    const hint = env.window.document.getElementById("autoHostHint");
+    assert.equal(hint.style.display, "block");
+    assert.ok(hint.textContent.includes("upos-sz-mirrorhw"), hint.textContent);
+    assert.ok(!hint.textContent.includes(".bilivideo.com"));
+    const p = env.internals("popup");
+    const own = Array.from(p.els.cdnSelectList.children).find((r) => r.dataset.value === DEFAULT_HOST);
+    own.click();
+    assert.ok(env.tabMessages.some((m) => m.msg.type === "CDN_SWITCHER_CLEAR_AUTO"), "asks the tab to drop its override");
+    assert.equal(env.storage.cdnHost, DEFAULT_HOST);
+    assert.equal(hint.style.display, "none");
+    env.close();
+  });
+  test("no override: no hint, and clicking the current node does nothing", async () => {
+    const env = await bootWithTab(null);
+    assert.equal(env.window.document.getElementById("autoHostHint").style.display, "none");
+    const p = env.internals("popup");
+    Array.from(p.els.cdnSelectList.children).find((r) => r.dataset.value === DEFAULT_HOST).click();
+    assert.equal(env.tabMessages.some((m) => m.msg.type === "CDN_SWITCHER_CLEAR_AUTO"), false);
+    env.close();
+  });
+});
+
+// 影片上的終態提示按了「重新測速選節點」：background 留下 speedtestOnPopup 再打開 popup，popup 自動開始手動測速
+describe("popup opened by the terminal prompt's 're-test' button", () => {
+  async function bootFlag(flag, extra = {}) {
+    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, cdnMode: "list", cdnCountry: "TW", cdnHost: DEFAULT_HOST, speedtestOnPopup: flag, ...extra },
+      tabs: [{ id: 7, url: "https://www.bilibili.com/video/BV1xx411c7mD", status: "complete" }],
+      tabResponder: () => ({ ok: true }) });
+    env.chrome.tabs.get = (id, cb) => cb({ id, url: "https://www.bilibili.com/video/BV1xx411c7mD", status: "complete" });
+    env.fetchHandler = () => { throw new TypeError("Failed to fetch"); };
+    ["theme.js", "i18n.js", "common.js", "lottery-text.js", "features.js", "cdn-list.js", "popup.js"].forEach((f) => env.load(f));
+    await env.settle(30);
+    return env;
+  }
+  const started = (env) => env.tabMessages.filter((m) => m.tabId === 7 && m.msg.type === "CDN_SWITCHER_RUN_SPEEDTEST");
+  test("a fresh flag for this tab starts the manual test with the current list and is cleared", async () => {
+    const env = await bootFlag({ at: Date.now(), tabId: 7 });
+    assert.equal(started(env).length, 1);
+    assert.ok(started(env)[0].msg.hosts.length > 0);
+    assert.equal("speedtestOnPopup" in env.storage, false);
+    env.close();
+  });
+  test("an old flag is cleared without testing; one for another tab does not start a test", async () => {
+    const a = await bootFlag({ at: Date.now() - 120000, tabId: 7 });
+    assert.equal(started(a).length, 0);
+    assert.equal("speedtestOnPopup" in a.storage, false);
+    a.close();
+    const b = await bootFlag({ at: Date.now(), tabId: 8 });
+    assert.equal(started(b).length, 0);
+    assert.equal(b.storage.speedtestOnPopup.tabId, 8, "another tab's flag stays");
+    b.close();
+  });
+  test("'all countries' still shows the long-test warning first; a hidden test button is never pressed", async () => {
+    const a = await bootFlag({ at: Date.now(), tabId: 7 }, { cdnCountry: "ALL" });
+    assert.equal(started(a).length, 0, "waits for the warning");
+    assert.notEqual(a.window.document.getElementById("allWarn").style.display, "none");
+    a.close();
+    const b = await bootFlag({ at: Date.now(), tabId: 7 }, { videoEnabled: false });
+    assert.equal(started(b).length, 0);
+    b.close();
+  });
+  test("a popup that is already open starts when a new flag arrives (Safari: 'another popup is already open'); the same click id only once", async () => {
+    const env = await bootFlag(null);
+    assert.equal(started(env).length, 0);
+    const flag = { at: Date.now(), tabId: 7, id: "c1" };
+    env.chrome.storage.local.set({ speedtestOnPopup: flag });
+    await env.settle(500);
+    assert.equal(started(env).length, 1);
+    assert.equal("speedtestOnPopup" in env.storage, false);
+    // background 重试会用同一个 id 再写两次：不能再测
+    env.chrome.storage.local.set({ speedtestOnPopup: { ...flag, at: Date.now() } });
+    env.chrome.storage.local.set({ speedtestOnPopup: { ...flag, at: Date.now() } });
+    await env.settle(500);
+    assert.equal(started(env).length, 1);
+    env.close();
+  });
+  test("already on this tab's test page: a new click does not wipe the results; a closing popup (hidden) does not take the flag", async () => {
+    const env = await bootFlag({ at: Date.now(), tabId: 7, id: "c1" });
+    assert.equal(started(env).length, 1);
+    env.chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: 7, id: "c2" } });
+    await env.settle(500);
+    assert.equal(started(env).length, 1);
+    env.close();
+    const c = await bootFlag(null);
+    Object.defineProperty(c.window.document, "visibilityState", { configurable: true, get: () => "hidden" });
+    c.chrome.storage.local.set({ speedtestOnPopup: { at: Date.now(), tabId: 7, id: "c3" } });
+    await c.settle(500);
+    assert.equal(started(c).length, 0);
+    assert.equal(c.storage.speedtestOnPopup.id, "c3", "left for the new popup");
+    c.close();
+  });
+  test("a flag for another window's tab is left alone (that popup, or one opened by hand, takes it)", async () => {
+    const env = await bootFlag({ at: Date.now(), tabId: 8, id: "c1" });
+    assert.equal(started(env).length, 0);
+    assert.equal(env.storage.speedtestOnPopup.tabId, 8);
     env.close();
   });
 });

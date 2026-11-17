@@ -21,7 +21,7 @@
     "message": "速度不佳时自动优化节点"
   },
   "autoFallbackHint": {
-    "message": "视频卡住或加载失败时，先在后台测速当前列表的节点，换到够快的那个；还是卡才改用 B 站原始节点。直播则改用国际线路。网络本身不稳（如 Wi-Fi 信号弱）时可能频繁切换，建议关闭。"
+    "message": "视频卡住或加载失败时，在后台测速当前列表的节点，只在这个标签页换到够快的那个；都不够快时会弹出提示，让你选择继续观看、重新测速或关闭介入。直播则改用国际线路。网络本身不稳（如 Wi-Fi 信号弱）时可能频繁切换，建议关闭。"
   },
   "cdnHostRowLabel": {
     "message": "CDN 节点"
@@ -152,17 +152,26 @@
   "cdnNameBackupUrl": {
     "message": "备用URL"
   },
+  "mhTermText": {
+    "message": "所有节点都不流畅，你可以继续观看，或是关闭扩展介入回到B站默认"
+  },
+  "mhTermContinue": {
+    "message": "继续观看"
+  },
+  "mhTermDisable": {
+    "message": "关闭介入"
+  },
+  "mhTermRetest": {
+    "message": "重新测速选节点"
+  },
   "mhToastAutoSwitched": {
-    "message": "当前 CDN 速度不佳，已自动切换至备用节点 {host}"
+    "message": "[节点网速不佳自动优化] 切换到 {host}"
   },
-  "mhToastAllFailed": {
-    "message": "当前 CDN 与备用节点均无法流畅播放"
+  "mhToastTooFrequent": {
+    "message": "如觉得切换过于频繁，请关闭自动优化"
   },
-  "mhToastReloadBackup": {
-    "message": "重新加载并切换至备用URL"
-  },
-  "mhToastClose": {
-    "message": "关闭"
+  "mhToastDisableAuto": {
+    "message": "关闭优化"
   },
   "mhCdnTargetOriginal": {
     "message": "原始（不覆盖）"
@@ -470,6 +479,9 @@
   "customDelTitle": {
     "message": "从列表移除"
   },
+  "autoHostHint": {
+    "message": "这个标签页卡顿时自动改用了 {host}，只影响这个标签页。点你选的节点可以换回来"
+  },
   "customClearTitle": {
     "message": "清空自定义节点列表？"
   },
@@ -514,9 +526,6 @@
   },
   "optimizingTitle": {
     "message": "当前节点速度不佳，优化中..."
-  },
-  "optimizingStop": {
-    "message": "中断优化"
   },
   "listFailTitle": {
     "message": "抱歉，节点列表加载失败"

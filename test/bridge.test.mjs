@@ -38,11 +38,10 @@ describe("autotest-done → storage", () => {
     assert.equal(env.storage.cdnHost, A);
     env.close();
   });
-  test("stall optimization applies with the switch on (the default)", () => {
+  test("a stall result is never written to the settings (the rescue applies in its own tab only), even with the switch on", () => {
     const env = boot({});
     autotestDone(env, { host: B, from: A, reason: "stall" });
-    assert.equal(env.storage.cdnHost, B);
-    assert.equal("videoEnabled" in env.storage, false, "only cdnHost is written");
+    assert.equal(env.storage.cdnHost, A);
     env.close();
   });
   test("install test applies regardless of the switch — but only after a real pending test armed it", () => {
@@ -54,6 +53,133 @@ describe("autotest-done → storage", () => {
     assert.equal("videoEnabled" in env.storage, false, "never forced from a page message");
     autotestDone(env, { host: A, from: B, reason: "install" });
     assert.equal(env.storage.cdnHost, B, "arming is single-use");
+    env.close();
+  });
+  const hideTab = (env) => Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "hidden" });
+  test("install test dropped because the tab went hidden (autotest-end rerun): the flag goes back to storage and this frame is disarmed", () => {
+    const env = boot({ installTestPending: true });
+    hideTab(env);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    assert.equal(env.storage.installTestPending, false);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true, "any foreground tab can take it over");
+    autotestDone(env, { host: B, from: A, reason: "install" });
+    assert.equal(env.storage.cdnHost, A, "disarmed: a late or forged result is not applied");
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } }); // 補測
+    autotestDone(env, { host: B, from: A, reason: "install" });
+    assert.equal(env.storage.cdnHost, B);
+    env.close();
+  });
+  // 審查 F5：autotest-end 晚到、分頁已經切回前景：測的期間進過背景，照樣把旗標還回去
+  test("the tab went hidden during the install test but is visible again when the late rerun arrives: still handed back", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    hideTab(env); env.window.document.dispatchEvent(new env.window.Event("visibilitychange"));
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
+    env.window.document.dispatchEvent(new env.window.Event("visibilitychange"));
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true);
+    env.close();
+  });
+  test("the next install test in this frame does not inherit the previous one's hidden spell", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    hideTab(env); env.window.document.dispatchEvent(new env.window.Event("visibilitychange"));
+    Object.defineProperty(env.window.document, "visibilityState", { configurable: true, get: () => "visible" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } }); // 前景補測
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } }); // 前景時的 rerun = 偽造
+    assert.equal(env.storage.installTestPending, false);
+    env.close();
+  });
+  test("picture-in-picture during the install test counts as background for the hand-back", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    Object.defineProperty(env.window.document, "pictureInPictureElement", { configurable: true, get: () => ({}) });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, true);
+    env.close();
+  });
+  test("a forged rerun without a real armed test does not create a pending test", () => {
+    const env = boot({});
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, undefined);
+    env.close();
+  });
+  test("a rerun while the tab is visible is forged (a real one only comes from a hidden tab): ignored, but it still disarms", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, false, "not handed back: rescue in every tab would stay off otherwise");
+    env.close();
+  });
+  test("rerun after the user changed the mode (same node, e.g. list → custom) is not handed back either", () => {
+    const env = boot({ installTestPending: true, cdnMode: "list" });
+    hideTab(env);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.chrome.storage.local.set({ cdnMode: "custom" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, false);
+    env.close();
+  });
+  test("rerun after the user picked a node themselves during the test: the flag is not given back (their choice cancels the install optimization)", () => {
+    const env = boot({ installTestPending: true });
+    hideTab(env);
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.chrome.storage.local.set({ cdnHost: B, installTestPending: false }); // popup 選節點
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } });
+    assert.equal(env.storage.installTestPending, false);
+    assert.equal(env.storage.cdnHost, B);
+    env.close();
+  });
+  test("an install test that ended normally without a new pick disarms: a later forged rerun or result does nothing", () => {
+    const env = boot({ installTestPending: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-start", payload: { reason: "install", total: 2 } });
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install" } }); // 目前節點就達標：沒有 autotest-done
+    env.postMessage({ __cdnSwitcher: 1, dir: "autotest-end", payload: { reason: "install", rerun: 1 } }); // 之後偽造
+    assert.equal(env.storage.installTestPending, false);
+    autotestDone(env, { host: B, from: A, reason: "install" });
+    assert.equal(env.storage.cdnHost, A);
+    env.close();
+  });
+  test("CDN_SWITCHER_CLEAR_AUTO from the popup is relayed to the page as auto-clear", () => {
+    const env = boot({});
+    const posted = [];
+    env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m.dir); };
+    let resp;
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_CLEAR_AUTO" }, (r) => { resp = r; });
+    assert.deepEqual(posted, ["auto-clear"]);
+    assert.equal(resp.ok, true);
+    env.close();
+  });
+  test("closing the speed-test page (port disconnect) stops the test and tells the page the popup's test is over; the removed stop-optimization message does nothing", () => {
+    const env = boot({});
+    const posted = [];
+    env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m.dir); };
+    let onDisc = null;
+    const port = { name: "cdn-switcher-speedtest", onDisconnect: { addListener: (fn) => { onDisc = fn; } } };
+    env.onConnectListeners.forEach((fn) => fn(port));
+    onDisc();
+    assert.deepEqual(posted, ["speedtest-stop", "speedtest-closed"]);
+    posted.length = 0;
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_STOP_AUTOTEST" });
+    assert.deepEqual(posted, []);
+    env.close();
+  });
+  test("speed-test page heartbeat: no progress poll for 5 s after a manual test → the page is told it closed (Safari may not send onDisconnect)", async () => {
+    const env = boot({});
+    const posted = [];
+    env.window.postMessage = (m) => { if (m && m.__cdnSwitcher === 1) posted.push(m.dir); };
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_RUN_SPEEDTEST", hosts: [A] });
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_GET_SPEEDTEST" });
+    await env.settle(1500);
+    assert.ok(!posted.includes("speedtest-closed"));
+    await env.settle(5500);
+    assert.ok(posted.includes("speedtest-closed"));
+    assert.ok(posted.includes("speedtest-stop"), "the manual test is stopped too");
+    assert.equal(env.internals("bridge").speedTest().running, false);
     env.close();
   });
   test("forged install result without a pending test is ignored (only a fresh install sets installTestPending)", () => {
@@ -270,6 +396,49 @@ describe("no node list yet", () => {
     const cfg = JSON.parse(env.window.localStorage.getItem("__CDN_SWITCHER_CFG__"));
     assert.equal(cfg.enabled, true);
     assert.equal(cfg.cdnHost, env.storage.cdnListMeta.defaultHost);
+    env.close();
+  });
+});
+
+describe("buttons on the page's notices", () => {
+  // 真的点了扩充自己的提示按钮（isTrusted）：jsdom 造不出来，用 test seam 记下
+  const realClick = (env) => env.internals("bridge").markOwnClick();
+  test("'turn off' on the frequent-switch notice turns auto-optimize off globally", () => {
+    const env = boot({ autoFallback: true });
+    realClick(env);
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    assert.equal(env.storage.autoFallback, false);
+    env.close();
+  });
+  test("'re-test' asks the background to open the popup, at most once per 10 s, and logs whether it opened", () => {
+    const env = boot({});
+    env.chrome.runtime.onMessage.addListener((msg, sender, respond) => { if (msg.type === "CDN_SWITCHER_OPEN_SPEEDTEST") { respond({ popup: false, why: "user gesture" }); return true; } });
+    realClick(env);
+    env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
+    assert.equal(env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_OPEN_SPEEDTEST").length, 1);
+    const logged = env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_JOURNAL" && m.entry.k === "ui.term" && !m.entry.d.rejected).map((m) => m.entry.d);
+    assert.deepEqual(plain(logged), [{ retest: 1, popup: 0, why: "user gesture", tries: 1 }]);
+    env.close();
+  });
+  test("forged by a page script (no real click on our own button, or a synthetic click on it) or in a background tab: ignored", () => {
+    const env = boot({ autoFallback: true });
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "open-speedtest" });
+    assert.equal(env.storage.autoFallback, true);
+    assert.equal(env.runtimeMessages.filter((m) => m.type === "CDN_SWITCHER_OPEN_SPEEDTEST").length, 0);
+    const d = env.window.document, box = d.createElement("div"); box.id = "cdn-switcher-terminal";
+    const btn = d.createElement("button"); box.appendChild(btn); d.body.appendChild(box);
+    btn.dispatchEvent(new env.window.MouseEvent("click", { bubbles: true })); // isTrusted false
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    assert.equal(env.storage.autoFallback, true, "a script's synthetic click does not count");
+    realClick(env);
+    Object.defineProperty(d, "visibilityState", { configurable: true, get: () => "hidden" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    assert.equal(env.storage.autoFallback, true);
+    Object.defineProperty(d, "visibilityState", { configurable: true, get: () => "visible" });
+    env.postMessage({ __cdnSwitcher: 1, dir: "auto-fallback-off" });
+    assert.equal(env.storage.autoFallback, false, "a real click in the foreground");
     env.close();
   });
 });

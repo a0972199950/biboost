@@ -16,6 +16,10 @@ async function boot({ storage = {}, board = { ok: true, items: [] }, query = "" 
   };
   ["i18n.js", "common.js", "donate.js"].forEach((f) => env.load(f));
   await env.settle(30);
+  // 機器忙的時候 30 ms 不夠：初始化（算 pid、抓排行榜）還沒跑完測試就關掉頁面，之後的 promise 碰到已關閉的 document 會偶發失敗。
+  // 等排行榜載入（或失敗）為止，最多 3 秒
+  const bd = env.internals("donate").board;
+  for (let i = 0; i < 300 && !bd.loaded && !bd.failed; i++) await env.settle(10);
   return env;
 }
 const item = (pid, usd, extra) => ({ pid, name: pid.toUpperCase(), avatar: { style: 1 }, usd, count: 1, ...extra });

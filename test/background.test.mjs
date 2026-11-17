@@ -12,6 +12,13 @@ function boot(storage, extra) {
 }
 
 describe("onInstalled", () => {
+  test("update: \"all countries\" users with the old empty test list get the OTHER list even when the node list did not change", async () => {
+    const env = boot({ cdnMode: "list", cdnCountry: "ALL", autoSpeedHosts: [] });
+    env.onInstalledListeners[0]({ reason: "update", previousVersion: "2.10.0" });
+    await env.settle(80);
+    assert.deepEqual(env.storage.autoSpeedHosts, cdnNodesOf("OTHER"));
+    env.close();
+  });
   test("update without a recorded version backfills installedVersion from previousVersion", () => {
     const env = boot({});
     env.onInstalledListeners[0]({ reason: "update", previousVersion: "1.4.0" });
@@ -142,7 +149,8 @@ describe("country selection in the background", () => {
   test("SELECT_COUNTRY message from bridge runs a retry", async () => {
     const env = withZone({ installTestPending: true }, 65);
     env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_SELECT_COUNTRY" });
-    await env.settle(50);
+    // 機器忙的時候固定等 50 ms 不夠（偶發失敗）：等到寫進去為止，最多 3 秒
+    for (let i = 0; i < 300 && env.storage.cdnCountry === undefined; i++) await env.settle(10);
     assert.equal(env.storage.cdnCountry, "SG");
     env.close();
   });
@@ -179,7 +187,7 @@ describe("importCustomHosts", () => {
     const env = boot({});
     let resp;
     env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_IMPORT_CUSTOM", hosts: [A] }, (r) => { resp = r; });
-    await env.settle();
+    for (let i = 0; i < 300 && resp === undefined; i++) await env.settle(10); // 機器忙的時候固定等 10 ms 不夠（偶發失敗）
     assert.equal(env.storage.customHosts.length, 1);
     env.close();
   });
@@ -332,13 +340,13 @@ describe("node list from the server", () => {
     assert.ok(env.alarms.cdnListRetry);
     env.close();
   });
-  test("a new list refreshes autoSpeedHosts for country-list users only; the current node stays", async () => {
+  test("a new list refreshes autoSpeedHosts for country-list users (\"all countries\" gets the OTHER list); the current node stays", async () => {
     const d = JSON.parse(JSON.stringify(CDN_FIXTURE));
     d.countries.find((c) => c.code === "TW").nodes = ["test-tw-03.bilivideo.com", "test-tw-01.bilivideo.com"];
     const jws = await signCdnList(d, 2);
     const cases = [
       [{ cdnMode: "list", cdnCountry: "TW", cdnHost: "test-tw-02.bilivideo.com", autoSpeedHosts: ["old"] }, ["test-tw-03.bilivideo.com", "test-tw-01.bilivideo.com"]],
-      [{ cdnMode: "list", cdnCountry: "ALL", autoSpeedHosts: [] }, []],
+      [{ cdnMode: "list", cdnCountry: "ALL", autoSpeedHosts: [] }, d.countries.find((c) => c.code === "OTHER").nodes],
       [{ cdnMode: "custom", cdnCountry: "TW", autoSpeedHosts: ["mine.bilivideo.com"] }, ["mine.bilivideo.com"]],
     ];
     for (const [storage, expected] of cases) {
@@ -566,6 +574,82 @@ describe("home version switch (cookies)", () => {
     assert.equal(r.pref, "new");
     assert.equal(r.state, "new");
     assert.equal(env.cookieJar.default_sites, DS_NEW);
+    env.close();
+  });
+});
+
+describe("terminal prompt 're-test' → popup", () => {
+  function withAction(env, openPopup) {
+    const calls = [];
+    env.chrome.action = { openPopup: (o) => { calls.push(o); return openPopup(o); } };
+    env.chrome.windows = { update: (id, p, cb) => cb && cb({ id }) };
+    return calls;
+  }
+  test("opens the popup in the tab's window and leaves the flag for the popup", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.resolve());
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(20);
+    assert.deepEqual(plain(calls), [{ windowId: 3 }]);
+    assert.equal(env.storage.speedtestOnPopup.tabId, 7);
+    env.close();
+  });
+  test("the popup cannot be opened (e.g. Firefox needs a user gesture): the flag stays for a popup opened by hand", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.reject(new Error("openPopup requires a user gesture")));
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(30);
+    assert.equal(calls.length, 1);
+    assert.equal(env.storage.speedtestOnPopup.tabId, 7, "kept: opening the popup by hand within a minute still starts the test");
+    env.close();
+  });
+  test("a request from a tab that is not active (forged by a background page) is ignored and does not grab focus", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3, active: false } });
+    const calls = withAction(env, () => Promise.resolve());
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(20);
+    assert.equal(calls.length, 0);
+    assert.equal("speedtestOnPopup" in env.storage, false);
+    env.close();
+  });
+  test("an open popup still closing (Chrome: 'Failed to open popup.') is retried, and the flag is written again for the new popup", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    let n = 0;
+    const calls = withAction(env, () => (++n === 1 ? Promise.reject(new Error("Failed to open popup.")) : Promise.resolve()));
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(20);
+    delete env.storage.speedtestOnPopup; // 关闭中的 popup 读走了标记
+    await env.settle(400);
+    assert.equal(calls.length, 2);
+    assert.equal(env.storage.speedtestOnPopup.tabId, 7, "written again before the retry");
+    env.close();
+  });
+  test("'another popup is already open' is not retried (that popup handles the flag); the flag carries one click id", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.reject(new Error("Invalid call to action.openPopup(). Another popup is already open.")));
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(1300);
+    assert.equal(calls.length, 1);
+    assert.ok(env.storage.speedtestOnPopup.id);
+    env.close();
+  });
+  test("the user switched away during the retries: the popup is not opened", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.reject(new Error("Failed to open popup.")));
+    env.chrome.tabs.get = (id, cb) => cb({ id, windowId: 3, active: false });
+    env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" });
+    await env.settle(500);
+    assert.equal(calls.length, 1);
+    env.close();
+  });
+  test("all three tries fail: three calls, the flag stays for a popup opened by hand", async () => {
+    const env = boot({}, { senderTab: { id: 7, windowId: 3 } });
+    const calls = withAction(env, () => Promise.reject(new Error("Failed to open popup.")));
+    env.chrome.tabs.get = (id, cb) => cb({ id, windowId: 3, active: true });
+    const id0 = await new Promise((r) => { env.chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" }); setTimeout(() => r(env.storage.speedtestOnPopup.id), 20); });
+    await env.settle(1400);
+    assert.equal(calls.length, 3);
+    assert.equal(env.storage.speedtestOnPopup.id, id0, "same click id on every retry");
     env.close();
   });
 });

@@ -79,6 +79,52 @@ function loginDone(tabId) {
   });
 }
 
+// 影片上的終態提示按了「重新測速選節點」（bridge 轉來，sender 是那個分頁）：留下 speedtestOnPopup，在那個分頁的視窗打開 popup，
+// popup 讀到就自動開始手動測速。打不開（Firefox 要使用者在擴充自己的介面上操作、popup 已經開著、其他環境沒有 openPopup）就回傳原因。
+// Safari 27.2（macOS 27.2）實測 2026-11-16：使用者點了按鈕後從這裡呼叫可以打開；popup 已經開著時回 "Another popup is already open"
+// 打不開時標記照樣留著（popup 那邊只認一分鐘內、而且是這個分頁的）：使用者自己點工具列的圖示打開 popup，也會自動開始測速。
+// 分頁不是作用中的（頁面腳本在背景分頁偽造的請求）不理，也不搶視窗焦點
+// popup 開著時使用者去點頁面上的按鈕：Chrome 會先把那個 popup 關掉，關閉途中 openPopup 會失敗（"Failed to open popup."，Windows 實測），
+// 所以失敗時隔一下再開，最多再試兩次（300、800 毫秒後）。"Another popup is already open"（Safari：popup 還開著）不重試，那個 popup 自己會處理標記。
+// 重試前再確認分頁仍是作用中、視窗仍在前景，使用者已經換走就不開。標記帶這次點擊的 id，重試沿用同一個，popup 同一個 id 只處理一次
+var OPEN_ST_RETRY_MS = [300, 800];
+function openSpeedtestPopup(tab) {
+  if (!tab || tab.id == null) return Promise.resolve({ popup: false, why: "no-tab" });
+  if (tab.active === false) return Promise.resolve({ popup: false, why: "inactive" });
+  var flag = { at: Date.now(), tabId: tab.id, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) };
+  function setFlag() { flag.at = Date.now(); return new Promise(function (r) { chrome.storage.local.set({ speedtestOnPopup: flag }, r); }); }
+  function openOnce() {
+    return Promise.resolve().then(function () { return tab.windowId != null ? chrome.action.openPopup({ windowId: tab.windowId }) : chrome.action.openPopup(); })
+      .then(function () { return { popup: true, why: "" }; }, function (e) { return { popup: false, why: String((e && e.message) || e || "error").slice(0, 120) }; });
+  }
+  function stillThere() {
+    return new Promise(function (r) {
+      if (!chrome.tabs || !chrome.tabs.get) return r(true);
+      chrome.tabs.get(tab.id, function (t) {
+        void chrome.runtime.lastError;
+        if (!t || t.active === false) return r(false);
+        if (!chrome.windows || !chrome.windows.get || t.windowId == null) return r(true);
+        chrome.windows.get(t.windowId, function (w) { void chrome.runtime.lastError; r(!w || w.focused !== false); });
+      });
+    });
+  }
+  function attempt(n) {
+    return openOnce().then(function (res) {
+      if (n) res.tries = n + 1;
+      if (res.popup || n >= OPEN_ST_RETRY_MS.length || /already open/i.test(res.why)) return res;
+      return new Promise(function (r) { setTimeout(r, OPEN_ST_RETRY_MS[n]); }).then(stillThere).then(function (ok) {
+        if (!ok) { res.why = "tab-left"; return res; }
+        return setFlag().then(function () { return attempt(n + 1); });
+      });
+    });
+  }
+  if (!chrome.action || typeof chrome.action.openPopup !== "function") return setFlag().then(function () { return { popup: false, why: "no-api" }; });
+  var focus = tab.windowId != null && chrome.windows && chrome.windows.update
+    ? new Promise(function (r) { chrome.windows.update(tab.windowId, { focused: true }, function () { void chrome.runtime.lastError; r(); }); })
+    : Promise.resolve();
+  return setFlag().then(function () { return focus; }).then(function () { return attempt(0); });
+}
+
 chrome.runtime.onInstalled.addListener(function (details) {
   if (details.reason === "install") {
     chrome.storage.local.set({ installedAt: Date.now(), installTestPending: true });
@@ -95,6 +141,9 @@ chrome.runtime.onInstalled.addListener(function (details) {
       chrome.storage.local.remove("autoSpeedSwitch");
     });
     whenListReady("update");
+    // 選「全部」的人：舊版寫的是空清單（卡頓時不測），新版改測 OTHER 清單。清單沒有新版本時 syncAutoSpeedHosts 不會跑，
+    // 更新時用手上的清單補一次（跟清單一致就不寫）
+    BBCdnList.load().then(function (l) { if (l && l.data) return syncAutoSpeedHosts(l.data); }).catch(function () {});
   }
   if (details.reason !== "update" || !details.previousVersion) return;
   chrome.storage.local.get("installedVersion", function (items) {
@@ -172,11 +221,11 @@ function afterList(res) {
     return new Promise(function (r) { chrome.storage.local.remove("cdnListPending", r); }).then(function () { return selectCountry(pending); });
   }).then(function () { if (res.changed) return syncAutoSpeedHosts(res.data); });
 }
-// 新清單：用國家清單（沒選「全部」）的人，卡頓時要測的節點換成新清單裡該國的節點。目前使用的節點（cdnHost）不動
+// 新清單：用國家清單的人，卡頓時要測的節點換成新清單裡該國的節點（選「全部」的換成 OTHER 清單）。目前使用的節點（cdnHost）不動
 function syncAutoSpeedHosts(data) {
   return storageGet(["cdnMode", "cdnCountry", "autoSpeedHosts"]).then(function (items) {
-    if (items.cdnMode === "custom" || !items.cdnCountry || items.cdnCountry === "ALL") return;
-    var hosts = BBCdnList.countryHosts(data, items.cdnCountry);
+    if (items.cdnMode === "custom" || !items.cdnCountry) return;
+    var hosts = BBCdnList.countryHosts(data, items.cdnCountry === "ALL" ? "OTHER" : items.cdnCountry); // 選「全部」：卡頓時測 OTHER 清單
     if (!hosts.length || (items.autoSpeedHosts || []).join("|") === hosts.join("|")) return;
     return new Promise(function (r) { chrome.storage.local.set({ autoSpeedHosts: hosts }, r); });
   });
@@ -432,6 +481,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (msg.type === "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW") { openAnnouncementWindow(msg.id); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_HANDOFF_URL" && /^macappstore:/.test(msg.url || "")) { openHandoffUrl(msg.url); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_LOGIN_DONE") { loginDone(sender && sender.tab ? sender.tab.id : null).then(function (ok) { sendResponse({ popup: ok }); }); return true; }
+  if (msg.type === "CDN_SWITCHER_OPEN_SPEEDTEST") { openSpeedtestPopup(sender && sender.tab).then(sendResponse); return true; }
   if (msg.type === "CDN_SWITCHER_WELCOME_DONE") { finishWelcome(msg.windowId); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_REPORT_WINDOW") { openReportWindow(msg.tab != null ? msg.tab : tabId); sendResponse({ ok: true }); return true; }
 });

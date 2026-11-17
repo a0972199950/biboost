@@ -34,6 +34,10 @@ describe("detectPattern", () => {
     assert.equal(r.detectPattern(null, [{ k: "fb.stall", d: { phase: "hit" } }, { k: "fb.switch" }, { k: "fb.switch" }], [], {}, {}), "fallback-exhausted");
     assert.equal(r.detectPattern(null, [{ k: "fb.stall", d: { phase: "hit" } }, { k: "fb.switch" }], [], {}, {}), "none");
   });
+  test("v2: an entry-1 trigger (fb.hit) without a switch, and the all-nodes-slow prompt", () => {
+    assert.equal(r.detectPattern(null, [{ k: "fb.hit", d: { entry: 1 } }], [], {}, {}), "stall-no-fallback");
+    assert.equal(r.detectPattern(null, [{ k: "fb.hit", d: { entry: 1 } }, { k: "ui.term", d: { phase: "show" } }], [], {}, {}), "all-nodes-slow");
+  });
   test("slow decay in the last samples", () => {
     const samples = [100, 90, 80, 70, 20, 10].map((spd) => ({ spd }));
     assert.equal(r.detectPattern(null, [], samples, {}, {}), "slow-decay");

@@ -29,6 +29,20 @@
   };
 
   var latestDebug = null;
+  var openStAt = 0; // 最近一次请 background 打开 popup 测速的时间
+  // 使用者刚刚真的点了擴充自己的提示按钮（终态提示、换节点提示）：ISOLATED world 在 capture 阶段记下 isTrusted 的点击，
+  // 页面脚本造不出 isTrusted 的事件，也碰不到这个变数。只看 userActivation 不够：使用者点了播放器任何地方，5 秒内页面脚本都能冒用
+  var ownClickAt = 0;
+  try {
+    document.addEventListener("click", function (ev) {
+      var t = ev && ev.target;
+      if (ev.isTrusted && t && t.closest && t.closest("#cdn-switcher-terminal button,#cdn-switcher-toast button")) ownClickAt = Date.now();
+    }, true);
+  } catch (e) {}
+  function userGesture() {
+    try { return document.visibilityState === "visible" && Date.now() - ownClickAt < 1500; } catch (e) { return false; }
+  }
+
   var isTopFrame = window.top === window;
 
   // ---- 問題回報：日誌／採樣／快照 → background（單一寫入者，寫進 storage.session）----
@@ -58,6 +72,30 @@
   // "install" auto test: armed only when storage (which the page cannot write) says one is pending
   // at the time autotest-start arrives; a forged autotest-done with reason "install" is otherwise ignored.
   var installTestArmed = false;
+  var installArmedHost = null; // armed 那一刻的节点设定（installSig）
+  var INSTALL_SIG_KEYS = { installTestPending: false, cdnHost: "", cdnMode: "", videoEnabled: true };
+  function installSig(items) { return [items.cdnHost || "", items.cdnMode || "", items.videoEnabled === false ? 0 : 1].join("|"); }
+  // 开测（autotest-start）要先读 storage 才知道该不该 armed；读回来之前这一轮就结束了（刚开测就切到背景）：
+  // 不 armed、也不清 storage 的旗标（等于没开测过，之后照常由前景分页来测）
+  var installStartSeq = 0, installEndSeq = 0;
+  // 分页在背景（或影片在子母画面，一律算背景）：isolated world 读到的 DOM 状态，页面脚本改不了
+  function pageHidden() {
+    try {
+      if (document.visibilityState === "hidden" || document.pictureInPictureElement) return true;
+      if (window.documentPictureInPicture && window.documentPictureInPicture.window) return true;
+      var vs = document.getElementsByTagName("video");
+      for (var i = 0; i < vs.length; i++) if (vs[i].webkitPresentationMode === "picture-in-picture") return true;
+    } catch (e) {}
+    return false;
+  }
+  // 安装后那次测速期间，分页曾经进过背景：autotest-end 可能晚几秒才到（卡住的连线 abort 后不一定马上结束），
+  // 那时分页可能已经切回前景 —— 只看「讯息到的那一刻」会把该补测的那次漏掉，安装后的优化就再也不会跑
+  var installSawHidden = false;
+  function noteInstallHidden() { if (installStartSeq > installEndSeq && pageHidden()) installSawHidden = true; }
+  try {
+    document.addEventListener("visibilitychange", noteInstallHidden, true);
+    ["enterpictureinpicture", "webkitpresentationmodechanged"].forEach(function (ev) { document.addEventListener(ev, noteInstallHidden, true); });
+  } catch (e) {}
 
   function pushConfig(cfg) {
     try { window.localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
@@ -86,8 +124,9 @@
   // 开局推一次；使用者在 popup 切换语言（uiMsgs 变更）时会再推一次。
   var MSGS_KEY = "__CDN_SWITCHER_MSGS__";
   var MSG_KEYS = [
-    "mhToastAutoSwitched", "mhToastAllFailed", "mhToastReloadBackup", "mhToastClose",
+    "mhTermText", "mhTermContinue", "mhTermDisable", "mhTermRetest",
     "mhCdnTargetOriginal", "mhCdnTargetBackup", "mhToastLiveFallback", "mhToastSwitched",
+    "mhToastAutoSwitched", "mhToastTooFrequent", "mhToastDisableAuto",
     "liveRouteOv", "liveRouteOvB", "liveRouteCn", "liveRouteCnB"
   ];
   // 使用者在 popup 進階設定選了語言時，popup 會把該語系的整份文案存在 storage 的 uiMsgs，優先用它
@@ -174,7 +213,7 @@
     if (d.dir === "debug") { latestDebug = d.payload || null; if (isTopFrame && latestDebug) maybeStoreSnapshot(latestDebug); return; }
     if (d.dir === "journal" && d.payload && isTopFrame) { toBackground({ type: "CDN_SWITCHER_JOURNAL", entry: d.payload }); return; }
     if (d.dir === "sample" && d.payload && isTopFrame) { toBackground({ type: "CDN_SWITCHER_SAMPLE", row: d.payload }); return; }
-    // 自动优化节点（main-hook 的 reason "install"／"stall"）：进度给 popup 显示「当前节点速度不佳，优化中」；
+    // 安装后那次自动优化节点（main-hook 的 reason "install"）：进度给 popup 显示「当前节点速度不佳，优化中」（卡顿救援没有任何 UI，不送这些讯息）；
     // 安装后那次一开始就把旗标清掉，之后不论结果都不再测
     if (d.dir === "autotest-start" && d.payload) {
       var maxMs = Number(d.payload.maxMs);
@@ -182,8 +221,12 @@
         startedAt: Date.now(), maxMs: maxMs > 0 && maxMs < AUTOTEST_MAX_MS ? maxMs : AUTOTEST_MAX_MS };
       if (d.payload.reason === "install") {
         try {
-          chrome.storage.local.get({ installTestPending: false }, function (items) {
+          var seq = ++installStartSeq;
+          installSawHidden = pageHidden();
+          chrome.storage.local.get(INSTALL_SIG_KEYS, function (items) {
+            if (installEndSeq >= seq) return;
             installTestArmed = !!items.installTestPending;
+            installArmedHost = installSig(items); // 补测（rerun）前要确认使用者没有自己改过节点设定
             if (items.installTestPending) chrome.storage.local.set({ installTestPending: false });
           });
         } catch (e) {}
@@ -191,7 +234,51 @@
       return;
     }
     if (d.dir === "autotest-progress" && d.payload) { if (latestAutoTest) latestAutoTest.done = d.payload.done || 0; return; }
-    if (d.dir === "autotest-end") { if (latestAutoTest) latestAutoTest.running = false; return; }
+    if (d.dir === "autotest-end") {
+      if (latestAutoTest) latestAutoTest.running = false;
+      // 安装后那一次结束（不论有没有选到节点、是不是作废）：这个 frame 一律解除 armed，
+      // 不然测完没换节点时 armed 会一直悬着（main-hook 先送 autotest-done 再送 autotest-end，不影响正常写入）。
+      // 因为分页切到背景而作废（rerun）：把旗标还回 storage，让之后任何一个前景分页接手补测。只在这些条件都成立时才还：
+      //  - 真的 armed（开测时 storage 确实有 installTestPending），页面伪造这个讯息造不出原本没有的测速；
+      //  - 分页真的在背景（见下方）；
+      //  - 使用者在测的期间没有自己改节点设定（节点、清单／自订模式、开关跟开测时一样，installTestPending 还是 false）——popup 选节点会取消安装后的优化
+      if (d.payload && d.payload.reason === "install") {
+        var sawHidden = installSawHidden || pageHidden();
+        var wasArmed = installTestArmed, armedHost = installArmedHost;
+        installTestArmed = false; installArmedHost = null; installEndSeq = installStartSeq; installSawHidden = false;
+        // 分页真的进过背景才补（测的期间曾经 hidden／子母画面，或现在就是）：isolated world 读到的状态页面脚本改不了，
+        // 分页从头到尾都在前景时的 rerun（伪造的）一律不理
+        if (d.payload.rerun && wasArmed && sawHidden) {
+          try {
+            chrome.storage.local.get(INSTALL_SIG_KEYS, function (items) {
+              if (items.installTestPending || installSig(items) !== armedHost) return;
+              chrome.storage.local.set({ installTestPending: true });
+            });
+          } catch (e) {}
+        }
+      }
+      return;
+    }
+    // 换节点后的提示按了「关闭优化」：把「速度不佳时自动优化节点」关掉（全域，所有分页都生效；跟 popup 的开关同一个设定）。
+    // 页面脚本也能送这两则讯息：要真的是使用者刚刚点了（userGesture），而且分页在前景
+    if (d.dir === "auto-fallback-off" && isTopFrame) {
+      if (!userGesture()) { journal("ui.autoOff", { rejected: 1 }); return; }
+      try { chrome.storage.local.set({ autoFallback: false }); } catch (e) {}
+      return;
+    }
+    // 终态提示按了「重新测速选节点」：请 background 打开 popup 并自动开始手动测速。10 秒内只理一次
+    if (d.dir === "open-speedtest" && isTopFrame) {
+      if (!userGesture()) { journal("ui.term", { retest: 1, rejected: 1 }); return; }
+      if (Date.now() - openStAt < 10000) return;
+      openStAt = Date.now();
+      try {
+        chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_SPEEDTEST" }, function (r) {
+          void chrome.runtime.lastError;
+          journal("ui.term", { retest: 1, popup: r && r.popup ? 1 : 0, why: (r && r.why) || (r ? "" : "no-response"), tries: (r && r.tries) || 1 });
+        });
+      } catch (e) {}
+      return;
+    }
     if (d.dir === "speedtest-meta" && d.payload) {
       speedTest.title = d.payload.title || "";
       speedTest.qn = d.payload.qn || "";
@@ -209,25 +296,26 @@
       else speedTest.results.push(d.payload);
       return;
     }
-    // 自动优化测完：把选到的节点存成使用者选的节点（storage 变更会再推回 MAIN，由它做播放器内重载）。
-    // 存之前再确认一次设定：期间使用者关掉了开关、或自己换了节点（cdnHost 已不是开测时的 from），就不覆盖。
-    // 安装后的那一次（reason "install"）不看开关，但要先经过上面的 installTestArmed；卡顿时那次（"stall"）要开着「速度不佳时自动优化节点」
+    // 安装后那一次测完：把选到的节点存成使用者选的节点（storage 变更会再推回 MAIN，由它做播放器内重载）。
+    // 存之前再确认一次设定：期间使用者自己换了节点（cdnHost 已不是开测时的 from），就不覆盖。不看开关，但要先经过上面的 installTestArmed。
+    // 卡顿时那次（"stall"）只在发生的分页覆写、不写设定（main-hook 的 applyRescuePick），这里一律不收
     // Security: any script running in the page context (bilibili's own, third-party SDKs, other
     // extensions) can post a forged "autotest-done", and whatever host we store here is applied to
     // every segment request in every tab from then on. Every condition below reads storage, which
     // the page cannot write: the host must be in autoSpeedHosts (the list the test was asked to
-    // measure), "install" needs a real pending test, "stall" needs autoFallback on, and videoEnabled
+    // measure), only "install" is accepted and it needs a real pending test, and videoEnabled
     // is never touched from here (auto tests only run while video override is on anyway).
     if (d.dir === "autotest-done" && d.payload && typeof d.payload.host === "string") {
       var p = d.payload;
       journal("ui.speedtest", { phase: "apply", kind: "auto-" + (p.reason || ""), host: p.host, from: p.from });
-      var install = p.reason === "install" && installTestArmed;
-      if (p.reason === "install") installTestArmed = false;
+      if (p.reason !== "install") return;
+      var armed = installTestArmed;
+      installTestArmed = false;
+      if (!armed) return;
       try {
-        chrome.storage.local.get({ autoFallback: DEFAULTS.autoFallback, cdnHost: DEFAULTS.cdnHost, autoSpeedHosts: [], cdnListMeta: null }, function (items) {
+        chrome.storage.local.get({ cdnHost: DEFAULTS.cdnHost, autoSpeedHosts: [], cdnListMeta: null }, function (items) {
           if (!Array.isArray(items.autoSpeedHosts) || items.autoSpeedHosts.indexOf(p.host) < 0) return;
           if ((items.cdnHost || (items.cdnListMeta && items.cdnListMeta.defaultHost) || "") !== p.from) return;
-          if (!install && !(p.reason === "stall" && items.autoFallback)) return;
           chrome.storage.local.set({ cdnHost: p.host });
         });
       } catch (e) {}
@@ -244,6 +332,27 @@
       return;
     }
   });
+
+  // popup 的测速页开着（按过手动测速）：MAIN 暂停这个分页的自动优化，测速页关掉时要通知它（speedtest-closed）。
+  // 正常靠长连线断线（见下方 onConnect）；Safari 关 popup 时不一定送 onDisconnect、或测速指令比断线晚到，
+  // 所以另外看心跳：测速页每秒会来问进度（CDN_SWITCHER_GET_SPEEDTEST），超过 5 秒没来就当成关了
+  var ST_POPUP_TIMEOUT_MS = 5000;
+  var stPopupSeenAt = 0, stPopupTimer = null;
+  function stPopupAlive() {
+    stPopupSeenAt = Date.now();
+    if (stPopupTimer) return;
+    stPopupTimer = setInterval(function () { if (Date.now() - stPopupSeenAt > ST_POPUP_TIMEOUT_MS) stPopupGone(); }, 1000);
+  }
+  // 测速页关了（心跳逾时或长连线断线）：跟 onDisconnect 一样中止手动测速，再通知 MAIN 恢复自动优化
+  function stPopupGone() {
+    speedTest.running = false;
+    try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-stop" }, "*"); } catch (e) {}
+    stPopupClosed();
+  }
+  function stPopupClosed() {
+    if (stPopupTimer) { clearInterval(stPopupTimer); stPopupTimer = null; }
+    try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-closed" }, "*"); } catch (e) {}
+  }
 
   // 回应 popup 查询 / 测速指令。只由最上层 frame 回应：iPad Safari 送讯息时不能指定 frameId: 0（见 popup.js 的 sendToTop），
   // 会送到所有 frame，iframe 里的 bridge 不能抢着回应
@@ -264,6 +373,7 @@
         var hosts = Array.isArray(msg.hosts) ? msg.hosts : [];
         speedTestHosts = hosts.slice();
         speedTest = { running: true, results: [], total: hosts.length, error: null, title: speedTest.title, qn: speedTest.qn, avail: null };
+        stPopupAlive();
         journal("ui.speedtest", { phase: "start", kind: "video", hosts: hosts.length });
         try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-run", payload: { hosts: hosts, limits: msg.limits || null } }, "*"); } catch (e) {}
         sendResponse({ ok: true });
@@ -277,8 +387,8 @@
         sendResponse({ ok: true });
         return true;
       }
-      if (msg && msg.type === "CDN_SWITCHER_STOP_AUTOTEST") {
-        try { window.postMessage({ __cdnSwitcher: 1, dir: "autotest-stop" }, "*"); } catch (e) {}
+      if (msg && msg.type === "CDN_SWITCHER_CLEAR_AUTO") {
+        try { window.postMessage({ __cdnSwitcher: 1, dir: "auto-clear" }, "*"); } catch (e) {}
         sendResponse({ ok: true });
         return true;
       }
@@ -290,6 +400,7 @@
         return true;
       }
       if (msg && msg.type === "CDN_SWITCHER_GET_SPEEDTEST") {
+        if (stPopupTimer) stPopupAlive();
         sendResponse({ speedTest: speedTest });
         return true;
       }
@@ -303,14 +414,12 @@
   } catch (e) {}
 
   // popup 开一条 "cdn-switcher-speedtest" 长连线来标记「测速页开着」；不论是按返回主动断线、
-  // 还是直接关掉 popup（浏览器自动断线），content script 都会收到 onDisconnect → 立刻中止测速
+  // 还是直接关掉 popup（浏览器自动断线），content script 都会收到 onDisconnect → 立刻中止测速，
+  // 并通知 MAIN 测速页关了（speedtest-closed）：按下手动测速后暂停的自动优化从这时恢复
   try {
     chrome.runtime.onConnect.addListener(function (port) {
       if (!isTopFrame || !port || port.name !== "cdn-switcher-speedtest") return;
-      port.onDisconnect.addListener(function () {
-        speedTest.running = false;
-        try { window.postMessage({ __cdnSwitcher: 1, dir: "speedtest-stop" }, "*"); } catch (e) {}
-      });
+      port.onDisconnect.addListener(stPopupGone);
     });
   } catch (e) {}
 
@@ -318,7 +427,8 @@
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
     globalThis.__BCS_TEST__.register("bridge", {
       IMPORT_RE: IMPORT_RE, importFromHash: importFromHash, DEFAULTS: DEFAULTS,
-      speedTest: function () { return speedTest; }, latestDebug: function () { return latestDebug; }, latestAutoTest: function () { return latestAutoTest; }
+      speedTest: function () { return speedTest; }, latestDebug: function () { return latestDebug; }, latestAutoTest: function () { return latestAutoTest; },
+      markOwnClick: function () { ownClickAt = Date.now(); } // jsdom 造不出 isTrusted 的点击
     });
   }
 })();
