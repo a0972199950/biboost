@@ -10,6 +10,10 @@ import path from "node:path";
 import {
   WORK_FILE, CdnListError, fetchLive, readWorkFile, writeWorkFile, validate, diff, publish, verifyLive, history, getVersion, extModule,
 } from "./lib/cdn-list.mjs";
+import { useExitFlush } from "./lib/kv-snapshot.mjs";
+
+// 改到公告、抽獎、功能開關、問卷這些表時，結束前把給擴充讀的 KV 快照重寫（scripts/lib/kv-snapshot.mjs）
+useExitFlush();
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];

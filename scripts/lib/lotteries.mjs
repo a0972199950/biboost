@@ -12,6 +12,7 @@ import vm from "node:vm";
 import { spawnSync } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath } from "node:url";
+import { markWrite } from "./kv-snapshot.mjs";
 
 // 雲端後台（biboost.app/admin，tools/site/src/index.js）打包進 Cloudflare Worker 時沒有 import.meta.url，也沒有 repo 的檔案：
 // ROOT 是空字串，讀檔、跑 Python 的功能會丟錯（後台只在本機開放那些功能，見 admin-api.mjs 的 LOCAL_ONLY）
@@ -53,19 +54,36 @@ function getDbUrl() {
 export async function sql(query, params = []) {
   const url = getDbUrl();
   const host = new URL(url).hostname;
-  const res = await fetch(`https://${host.replace(/^[^.]+\./, "api.")}/sql`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Neon-Connection-String": url },
-    body: JSON.stringify({ query, params }),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`Neon ${res.status}：${text.slice(0, 300)}`);
-  return JSON.parse(text).rows || [];
+  // 寫到公告、抽獎、功能開關、問卷這些表：標記 KV 快照過期（後台動作做完、CLI 結束前會重寫，見 kv-snapshot.mjs）。
+  //   · Neon 明確回「0 列」（例如 ensureTable 的 insert … where not exists、on conflict do nothing）：沒有真的改到，不標記
+  //   · 連線斷掉、5xx：可能已經寫進去只是回應丟了，寧可多寫一次 KV，照樣標記
+  //   · 4xx：查詢本身錯了（語法、限制條件），沒有寫入
+  const db = currentDb();
+  let res, text;
+  try {
+    res = await fetch(`https://${host.replace(/^[^.]+\./, "api.")}/sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Neon-Connection-String": url },
+      body: JSON.stringify({ query, params }),
+    });
+    text = await res.text();
+  } catch (e) {
+    markWrite(db, query);
+    throw e;
+  }
+  if (!res.ok) {
+    if (res.status >= 500) markWrite(db, query);
+    throw new Error(`Neon ${res.status}：${text.slice(0, 300)}`);
+  }
+  const out = JSON.parse(text);
+  if (out.rowCount !== 0) markWrite(db, query);
+  return out.rows || [];
 }
 
-let tableReady = null;
+const tableReady = {}; // 每個資料庫（正式／測試）各建一次（後台的公告、抽獎可以切換環境）
 export function ensureTable() {
-  tableReady ||= (async () => {
+  const db = currentDb();
+  tableReady[db] ||= (async () => {
     await sql(`create table if not exists lotteries (
       id serial primary key,
       title text not null,
@@ -83,11 +101,12 @@ export function ensureTable() {
       add column if not exists isps text[],
       add column if not exists winners int,
       add column if not exists draw_days int`);
-    // 擴充的公告（跑馬燈）：type = 'lottery'（由抽獎自動建立，內容由擴充依抽獎資料自己組）或 'html'（後台寫的一般公告）。
-    // 一般公告的 prefix／title／html 是 { 語言: 文字 }，countries 空＝所有國家；沒有期間，刪掉才消失（見 scripts/lib/announcements.mjs）
+    // 擴充的公告（跑馬燈），都在後台手動新增（2026-11-21 起抽獎不再自動建公告）：type = 'html'（一般公告）、'lottery'（掛一個抽獎，
+    // 點開的內容由擴充依抽獎資料自己組）、'survey'（掛一份問卷，點開直接開問卷）。prefix／title／html 是 { 語言: 文字 }，
+    // countries 空＝所有國家，starts_at／ends_at 是公告自己的期間（空＝不限）。欄位與規則見 scripts/lib/announcements.mjs
     await sql(`create table if not exists announcements (
       id serial primary key,
-      type text not null check (type in ('lottery', 'html')),
+      type text not null check (type in ('lottery', 'html', 'survey')),
       lottery_id int unique references lotteries(id) on delete cascade,
       prefix jsonb,
       title jsonb,
@@ -95,10 +114,7 @@ export function ensureTable() {
       countries text[],
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now())`);
-    // 有 metadata 但還沒有公告的抽獎（建公告表之前就有的）補建
-    await sql(`insert into announcements (type, lottery_id, created_at)
-      select 'lottery', l.id, l.created_at from lotteries l
-      where l.country is not null and not exists (select 1 from announcements a where a.lottery_id = l.id)`);
+    // （以前這裡會替「有 metadata 但還沒有公告的 v1 抽獎」補建抽獎公告；改成手動新增後拿掉，不然刪掉的舊抽獎公告會被補回來）
     // 抽獎 v2（2026-10 起，見 scripts/lib/lotteries-v2.mjs）：每張禮物卡各自的面額（gift_cards = [{ name, amount }]）、
     // 標題與備註都是 { 語言: 文字／HTML }。
     // 跟 lotteries 各自獨立（舊版擴充與 exe 只讀 lotteries，看不到 v2）；migrated_from＝從哪一筆 lotteries 遷移來的。
@@ -119,8 +135,10 @@ export function ensureTable() {
       ended_at timestamptz,
       created_at timestamptz not null default now())`);
     await sql("alter table announcements add column if not exists lottery_v2_id int unique references lotteries_v2(id) on delete cascade");
-  })().catch((e) => { tableReady = null; throw e; });
-  return tableReady;
+    // （公告改版 2026-11-21 加的欄位 survey_id、starts_at、ends_at 不在這裡：這裡連看抽獎頁都會跑，
+    //   不能因為看一眼正式環境就改它的 schema。見 announcements.mjs 的 ensureAnnouncementSchema，存公告時才跑）
+  })().catch((e) => { tableReady[db] = null; throw e; });
+  return tableReady[db];
 }
 
 // 檢查並整理 metadata；不合格丟 LotteryError
@@ -222,16 +240,13 @@ async function refuseMigrated(id) {
   if (rows.length) throw new LotteryError(`這個抽獎已遷移到 v2（v2 第 ${rows[0].id} 個），請到「抽獎 v2」修改；這筆只留給舊版擴充與 exe 顯示到結束`);
 }
 
-// 新增，回傳 id；同時建立對應的公告（type = 'lottery'，跟抽獎同一句 SQL，不會只建一半）
+// 新增，回傳 id。不會自動建公告（2026-11-21 起公告一律在後台手動新增；後台的抽獎公告只掛抽獎 v2）
 export async function addLottery(meta) {
   const m = validateMeta(meta);
   await ensureTable();
   const rows = await sql(
-    `with l as (
-       insert into lotteries (title, html, starts_at, ends_at, country, prize_amount, currency, gift_cards, isps, winners, draw_days)
-       values ($1, $2::jsonb, ${START_SQL}, ${END_SQL}, $5, $6, $7, $8::text[], $9::text[], $10, $11) returning id),
-     a as (insert into announcements (type, lottery_id) select 'lottery', id from l)
-     select id from l`,
+    `insert into lotteries (title, html, starts_at, ends_at, country, prize_amount, currency, gift_cards, isps, winners, draw_days)
+     values ($1, $2::jsonb, ${START_SQL}, ${END_SQL}, $5, $6, $7, $8::text[], $9::text[], $10, $11) returning id`,
     metaParams(m),
   );
   return rows[0].id;

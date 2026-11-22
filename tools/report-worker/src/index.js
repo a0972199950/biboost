@@ -7,7 +7,9 @@
  * 任一 GitHub 步驗失敗仍盡量回 200（檔案已存就算收到），避免使用者重送造成重複。
  * 這裡不另外記錄任何 log（避免第二份個資副本）。
  *
- * 另有兩個公開的 GET（不用 token、不收任何使用者資料；結果在 Cloudflare 邊緣快取 LOTTERY_CACHE_S 秒，Neon 不會每次開 popup 都被打到）：
+ * 另有幾個公開的 GET（不用 token、不收任何使用者資料）。公告、抽獎、功能開關、問卷清單全天都有人打，不能每個請求都查 Neon
+ * （Neon 閒置 5 分鐘才休眠，會整天開著計費）：一律讀 KV 快照（snapshots.js；後台與 CLI 改資料時寫），
+ * 「進行中」用現在時間在這裡判斷。KV 沒有那份快照時才查 Neon 一次並寫回 KV：
  *  - /v1/lotteries：進行中抽獎的 metadata（Neon 的 lotteries），給測速 exe 的「測速目的」頁，文字由 exe 自己組（lottery_text.py）
  *  - /v1/announcements：擴充的公告（Neon 的 announcements）：抽獎公告附抽獎 metadata（擴充用 src/lottery-text.js 組字），
  *    一般公告是後台寫的各語言前綴／標題／HTML
@@ -15,11 +17,15 @@
  *    每張禮物卡各自的面額、備註 HTML），v1 只來自 lotteries，兩邊各自獨立（v2 建的抽獎舊版看不到）
  *  - /v1/donors、/v1/donate/*：擴充贊助頁（src/donate.html）的乾爹排行榜與 Stripe 結帳，見 donate.js
  *  - /v1/features：後台「功能管理」的功能開關，簽章後下發給擴充，見 features.js
+ *  - /v2/surveys*、/v1/telemetry/*：問卷（admin 管理的多份問卷）與匿名統計（播放心跳、遇到地區限定計數），見 surveys.js
  * 公告 API（/v1、/v2/announcements）每被下載一次，在 Workers Analytics Engine 記一筆「國家 × 瀏覽器 × 路徑」（countOpen），
  * 用來看各國實際打開 popup 的比例；不記 IP、User-Agent 或任何能識別個人的資料。查詢：npm run worker:opens（opens.mjs）。
  */
 import { handleDonate } from "./donate.js";
 import { handleFeatures } from "./features.js";
+import { buildSnapshot, liveAnnouncements, liveLotteries, readSnapshot } from "./snapshots.js";
+import { handleSurveys, isSurveyPath } from "./surveys.js";
+import { runDaily } from "./daily.js";
 
 const MAX_BODY = 256 * 1024;
 const MAX_DESC = 4000;
@@ -145,90 +151,32 @@ async function neonSql(env, query, params = []) {
   return (await r.json()).rows || [];
 }
 
-// 抽獎欄位（lotteries 的別名 l）：日期是台灣時間；startsAt / endsAt 是毫秒時間戳（endsAt 不含，即結束日隔天 00:00 台灣時間）
-const LOTTERY_FIELDS = `l.id as l_id, l.title as l_title, l.country as l_country, l.prize_amount::float8 as l_amount, l.currency as l_currency,
-    l.gift_cards as l_gift_cards, l.isps as l_isps, l.winners as l_winners, l.draw_days as l_draw_days,
-    to_char(l.starts_at at time zone 'Asia/Taipei', 'YYYY-MM-DD') as l_start_date,
-    to_char(l.ends_at at time zone 'Asia/Taipei' - interval '1 day', 'YYYY-MM-DD') as l_end_date,
-    to_char(l.ends_at at time zone 'Asia/Taipei' - interval '1 day' + make_interval(days => coalesce(l.draw_days, 7)), 'YYYY-MM-DD') as l_draw_by,
-    (extract(epoch from l.starts_at) * 1000)::float8 as l_starts_ms, (extract(epoch from l.ends_at) * 1000)::float8 as l_ends_ms`;
-const LOTTERY_ACTIVE = "l.ended_at is null and l.country is not null and now() >= l.starts_at and now() < l.ends_at";
-
-function lotteryItem(r) {
-  return {
-    id: r.l_id, title: r.l_title, country: r.l_country, prize: { amount: r.l_amount, currency: r.l_currency, giftCards: r.l_gift_cards || [] },
-    winners: r.l_winners, isps: r.l_isps || [], drawDays: r.l_draw_days == null ? 7 : r.l_draw_days,
-    startDate: r.l_start_date, endDate: r.l_end_date, drawBy: r.l_draw_by, startsAt: r.l_starts_ms, endsAt: r.l_ends_ms
-  };
-}
-
-// 抽獎 v2 的欄位（lotteries_v2 的別名 v），日期規則同 LOTTERY_FIELDS
-const LOTTERY_V2_FIELDS = `v.id as v_id, v.title as v_title, v.country as v_country, v.currency as v_currency, v.gift_cards as v_gift_cards,
-    v.note as v_note, v.isps as v_isps, v.winners as v_winners, v.draw_days as v_draw_days,
-    to_char(v.starts_at at time zone 'Asia/Taipei', 'YYYY-MM-DD') as v_start_date,
-    to_char(v.ends_at at time zone 'Asia/Taipei' - interval '1 day', 'YYYY-MM-DD') as v_end_date,
-    to_char(v.ends_at at time zone 'Asia/Taipei' - interval '1 day' + make_interval(days => v.draw_days), 'YYYY-MM-DD') as v_draw_by,
-    (extract(epoch from v.starts_at) * 1000)::float8 as v_starts_ms, (extract(epoch from v.ends_at) * 1000)::float8 as v_ends_ms`;
-const LOTTERY_V2_ACTIVE = "v.ended_at is null and now() >= v.starts_at and now() < v.ends_at";
-
-// v2 的一筆：跟 v1 一樣，差在 prize 沒有 amount、giftCards 是 [{ name, amount }]，title 是 { 語言: 文字 }，多了 note（{ 語言: HTML } 或 null）
-function lotteryItemV2(r) {
-  return {
-    id: r.v_id, title: r.v_title, country: r.v_country, prize: { currency: r.v_currency, giftCards: r.v_gift_cards || [] },
-    note: r.v_note || null, winners: r.v_winners, isps: r.v_isps || [], drawDays: r.v_draw_days,
-    startDate: r.v_start_date, endDate: r.v_end_date, drawBy: r.v_draw_by, startsAt: r.v_starts_ms, endsAt: r.v_ends_ms
-  };
-}
-
-// GET 清單的共同流程：Cloudflare 邊緣快取 LOTTERY_CACHE_S 秒，沒命中才查 Neon
-async function cachedList(request, env, ctx, path, load) {
-  const cache = caches.default;
-  const key = new Request(new URL(path, request.url).toString());
-  const hit = await cache.match(key);
-  if (hit) return hit;
-  if (!env.DATABASE_URL) return fail(503, "not_configured");
-  let items;
-  try { items = await load(); } catch (e) { return fail(502, "db"); }
-  const res = new Response(JSON.stringify({ ok: true, items }), {
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `public, max-age=${LOTTERY_CACHE_S}`, ...CORS }
-  });
-  ctx.waitUntil(cache.put(key, res.clone()));
-  return res;
+// 公告、抽獎：讀 KV 快照（snapshots.js），進行中的才給。回應讓瀏覽器快取 LOTTERY_CACHE_S 秒（舊版的行為）
+function snapshotList(env, name, pick) {
+  return readSnapshot(env, name, (info) => buildSnapshot(name, (q, p) => neonSql(env, q, p), info)).then((data) => {
+    const items = pick(data || {}, Date.now());
+    return new Response(JSON.stringify({ ok: true, items }), {
+      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `public, max-age=${LOTTERY_CACHE_S}`, ...CORS }
+    });
+  }, () => fail(env.DATABASE_URL ? 502 : 503, env.DATABASE_URL ? "db" : "not_configured"));
 }
 
 // 進行中、有 metadata 的抽獎（依結束時間排序，不分國家，各端自己篩）——測速 exe 用：
 // { ok, items: [{ id, title, country: "TW", prize: { amount, currency, giftCards: [...] }, winners, isps: [...]（空＝不限）, drawDays,
 //   startDate: "2026-10-01", endDate: "2026-10-30", drawBy: "2026-11-06", startsAt, endsAt }] }
-function lotteries(request, env, ctx) {
-  return cachedList(request, env, ctx, "/v1/lotteries", async () =>
-    (await neonSql(env, `select ${LOTTERY_FIELDS} from lotteries l where ${LOTTERY_ACTIVE} order by l.ends_at, l.id`)).map(lotteryItem));
+// v2：抽獎 v2，格式同上，但 prize: { currency, giftCards: [{ name, amount }] }（沒有 prize.amount）、title: { 語言: 文字 }、note: { 語言: HTML } | null
+function lotteries(env, v2) {
+  return snapshotList(env, "lotteries", (d, now) => liveLotteries(v2 ? d.v2 : d.v1, now));
 }
 
-// v2：進行中的抽獎 v2，格式同 /v1/lotteries，但 prize: { currency, giftCards: [{ name, amount }] }（沒有 prize.amount）、title: { 語言: 文字 }、note: { 語言: HTML } | null
-function lotteriesV2(request, env, ctx) {
-  return cachedList(request, env, ctx, "/v2/lotteries", async () =>
-    (await neonSql(env, `select ${LOTTERY_V2_FIELDS} from lotteries_v2 v where ${LOTTERY_V2_ACTIVE} order by v.ends_at, v.id`)).map(lotteryItemV2));
-}
-
-// 擴充的公告（新的在前，不分國家，擴充自己篩）：
-//   { id, type: "lottery", lottery: { 同 /v1/lotteries 的一筆 } }        只列進行中的抽獎；前綴、標題、內容由擴充依抽獎資料組
-//   { id, type: "html", prefix: { 語言: 文字 } | null, title: { 語言: 文字 }, html: { 語言: HTML }, countries: ["TW"] | null（全部） }
+// 擴充的公告（新的在前，不分國家，擴充自己篩；只給公告期間內的，格式見 snapshots.js 的 announcementItem）：
+//   { id, type: "lottery", lottery: { 同 /v1/lotteries 的一筆 }, prefix, title, countries, startsAt, endsAt }
+//       舊版擴充只看 lottery（自己組前綴、標題，抽獎期間外不顯示）；新版用後台填的前綴、標題、國家，抽獎結束了點開說「已經結束」
+//   { id, type: "html", prefix: { 語言: 文字 } | null, title: { 語言: 文字 }, html: { 語言: HTML }, countries: ["TW"] | null（全部）, startsAt, endsAt }
+//   { id, type: "survey", surveyId, prefix, title, countries, startsAt, endsAt }   只在 v2；舊版擴充（2.5～2.10）遇到不認得的 type 會略過
 // v2（/v2/announcements）：抽獎公告只列掛在抽獎 v2 上的（announcements.lottery_v2_id），lottery 是 /v2/lotteries 的一筆
-function announcements(request, env, ctx, v2) {
-  return cachedList(request, env, ctx, v2 ? "/v2/announcements" : "/v1/announcements", async () => {
-    const rows = await neonSql(env, v2
-      ? `select a.id, a.type, a.prefix, a.title, a.html, a.countries, ${LOTTERY_V2_FIELDS}
-          from announcements a left join lotteries_v2 v on v.id = a.lottery_v2_id
-          where a.type = 'html' or (a.type = 'lottery' and ${LOTTERY_V2_ACTIVE})
-          order by a.created_at desc, a.id desc`
-      : `select a.id, a.type, a.prefix, a.title, a.html, a.countries, ${LOTTERY_FIELDS}
-          from announcements a left join lotteries l on l.id = a.lottery_id
-          where a.type = 'html' or (a.type = 'lottery' and ${LOTTERY_ACTIVE})
-          order by a.created_at desc, a.id desc`);
-    return rows.map((r) => r.type === "lottery"
-      ? { id: r.id, type: "lottery", lottery: v2 ? lotteryItemV2(r) : lotteryItem(r) }
-      : { id: r.id, type: "html", prefix: r.prefix || null, title: r.title || {}, html: r.html || {}, countries: r.countries || null });
-  });
+function announcements(env, v2) {
+  return snapshotList(env, "announcements", (d, now) => liveAnnouncements(v2 ? d.v2 : d.v1, now));
 }
 
 // 公告下載次數（Analytics Engine 的 OPENS 綁定，wrangler.toml）：每次一筆 blobs = [國家, 瀏覽器, 路徑]。
@@ -253,20 +201,25 @@ function countOpen(request, env, path) {
 }
 
 export default {
+  // 每天一次（wrangler.toml 的 [triggers]，只有正式環境有）：匿名統計彙總回 Neon、重建全部 KV 快照、結果記進 cron_runs（daily.js）
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runDaily(env, (q, p) => neonSql(env, q, p), event.scheduledTime || Date.now()));
+  },
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/v1/lotteries") return lotteries(request, env, ctx);
+    if (request.method === "GET" && url.pathname === "/v1/lotteries") return lotteries(env, false);
     if (request.method === "GET" && url.pathname === "/v1/announcements") {
       countOpen(request, env, url.pathname);
-      return announcements(request, env, ctx, false);
+      return announcements(env, false);
     }
-    if (request.method === "GET" && url.pathname === "/v2/lotteries") return lotteriesV2(request, env, ctx);
+    if (request.method === "GET" && url.pathname === "/v2/lotteries") return lotteries(env, true);
     if (request.method === "GET" && url.pathname === "/v2/announcements") {
       countOpen(request, env, url.pathname);
-      return announcements(request, env, ctx, true);
+      return announcements(env, true);
     }
     if (request.method === "GET" && url.pathname === "/v1/features") return handleFeatures(request, env, ctx, { fail, neonSql, CORS, CACHE_S: LOTTERY_CACHE_S });
+    if (isSurveyPath(url.pathname)) return handleSurveys(request, env, ctx, url, { json, fail, neonSql, CORS, storeIds: EXT_IDS });
     if (/^\/v1\/(donors|donate)(\/|$)/.test(url.pathname)) return handleDonate(request, env, ctx, url, { json, fail, neonSql, CORS, CACHE_S: LOTTERY_CACHE_S });
     if (request.method !== "POST" || url.pathname !== "/v1/report") return fail(404, "not_found");
     if (request.headers.get("X-BCS-Token") !== env.REPORT_TOKEN) return fail(401, "bad_token");

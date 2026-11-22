@@ -2,8 +2,8 @@
 // 顯示的文字由各端自己組：
 //   · CDN 測速 GUI（CDNSpeedTest.exe）「測速目的」頁：tools/cdn-speedtest-app/lottery_text.py，只顯示使用者所在國家的抽獎
 //   · 擴充 popup 主頁的公告欄與點開的公告視窗：src/lottery-text.js，同樣只顯示使用者所在國家的抽獎
-// exe 透過 report worker 的 GET /v1/lotteries 讀取 metadata；擴充透過 GET /v1/announcements（新增抽獎時會自動建立對應的抽獎公告，
-// 見 scripts/lib/announcements.mjs）。
+// CDNSpeedTest.exe 透過 report worker 的 GET /v1/lotteries 讀取 metadata；擴充透過 GET /v1/announcements 讀抽獎公告（2026-11-21 起新增抽獎
+// 不再自動建公告，見 scripts/lib/announcements.mjs）。
 // 邏輯在 scripts/lib/lotteries.mjs（本機後台 admin/ 也用它）；這支是命令列版本。
 //
 //   npm run lottery:add -- <lottery.json>          新增一個抽獎
@@ -27,6 +27,10 @@ import fs from "node:fs";
 import {
   LotteryError, validateMeta, legacyHtml, addLottery, updateLottery, endLottery, listLotteries,
 } from "./lib/lotteries.mjs";
+import { useExitFlush } from "./lib/kv-snapshot.mjs";
+
+// 改到公告、抽獎、功能開關、問卷這些表時，結束前把給擴充讀的 KV 快照重寫（scripts/lib/kv-snapshot.mjs）
+useExitFlush();
 
 const width = (s) => [...s].reduce((n, ch) => n + (/[⺀-￯]/.test(ch) ? 2 : 1), 0);
 const pad = (s, n) => s + " ".repeat(Math.max(0, n - width(s)));
@@ -98,6 +102,7 @@ try {
   else if (cmd === "show") await show();
   else fail("用法：lottery.mjs add|update|preview|end|show");
 } catch (e) {
-  if (e instanceof LotteryError) fail(e.message);
-  throw e;
+  // 不直接 process.exit、也不往外丟：可能已經寫了一部分，讓結束前的 KV 快照照樣寫（沒接住的錯誤不會觸發 beforeExit）
+  console.error(e instanceof LotteryError ? e.message : e);
+  process.exitCode = 1;
 }

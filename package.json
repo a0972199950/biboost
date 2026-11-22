@@ -7,6 +7,9 @@
     "test": "node --test \"test/*.test.mjs\"",
     "test:private": "node --test \"src/private/test/*.test.mjs\"",
     "e2e:cloud": "node scripts/e2e-cloud-sync.mjs",
+    "e2e:survey": "node scripts/e2e-survey.mjs",
+    "surveys": "node scripts/surveys.mjs",
+    "announcements": "node scripts/announcements.mjs",
     "build": "node scripts/build.mjs",
     "build:safari": "node scripts/build-safari.mjs",
     "package": "node scripts/package.mjs",
@@ -34,7 +37,7 @@
     "private:push": "node scripts/private-repo.mjs push",
     "private:pull": "node scripts/private-repo.mjs pull",
     "prepare": "node scripts/setup-hooks.mjs || exit 0",
-    "worker:deploy": "wrangler deploy --config tools/report-worker/wrangler.toml",
+    "worker:deploy": "wrangler deploy --config tools/report-worker/wrangler.toml && node scripts/mark-deployed.mjs",
     "worker:deploy:staging": "wrangler deploy --config tools/report-worker/wrangler.toml --env staging",
     "worker:dev": "wrangler dev --config tools/report-worker/wrangler.toml",
     "worker:opens": "node tools/report-worker/opens.mjs",
@@ -49,7 +52,9 @@
     "cdn-list:publish": "node scripts/cdn-list.mjs publish",
     "cdn-list:rollback": "node scripts/cdn-list.mjs rollback",
     "cdn-list:history": "node scripts/cdn-list.mjs history",
-    "cdn-list:status": "node scripts/cdn-list.mjs status"
+    "cdn-list:status": "node scripts/cdn-list.mjs status",
+    "snapshots": "node scripts/snapshots.mjs",
+    "telemetry:rollup": "node scripts/telemetry-rollup.mjs"
   },
   "devDependencies": {
     "jsdom": "^27.0.1",

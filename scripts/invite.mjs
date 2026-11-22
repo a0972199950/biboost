@@ -13,6 +13,10 @@
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { useExitFlush } from "./lib/kv-snapshot.mjs";
+
+// 改到公告、抽獎、功能開關、問卷這些表時，結束前把給擴充讀的 KV 快照重寫（scripts/lib/kv-snapshot.mjs）
+useExitFlush();
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 try {

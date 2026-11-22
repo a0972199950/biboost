@@ -2,13 +2,15 @@
  * 功能開關（Neon 的 features：key → data jsonb，後台「功能管理」改，格式見 scripts/lib/features.mjs）。
  *  - GET /v1/features → { ok, jws }：jws 是 compact JWS（ES256，header { alg, typ: "JWT", kid }），
  *    payload = { iat（秒）, features: { <key>: data } }，資料庫裡的每一列原樣放進去；沒有的功能由擴充用自己的預設值。
- *    擴充內建公鑰驗章（src/features.js），storage 或回應被改過就不採用。結果在 Cloudflare 邊緣快取 CACHE_S 秒。
+ *    擴充內建公鑰驗章（src/features.js），storage 或回應被改過就不採用。資料讀 KV 快照（snapshots.js 的 features，後台存檔時寫），
+ *    不每個請求都查 Neon；簽好的結果在這個 isolate 的記憶體留 CACHE_S 秒。
  *    簽章私鑰：secret FEATURES_SIGNING_KEY（P-256 私鑰的 JWK JSON；值在 .env.local）。沒設回 503 not_configured。
  *  - featureData(env, h, key)：其他 API 用（例如贊助的 /v1/donate/config、結帳），沒有這一列＝{ enabled: true }
  * 還沒有 features 表時（後台還沒打開過「功能管理」），贊助沿用舊的 settings.donate_enabled。
  */
+import { buildSnapshot, readSnapshot } from "./snapshots.js";
+
 export const KID = "f1";
-const MISSING_TABLE = /^neon_4\d\d [\s\S]*(42P01|does not exist)/;
 
 const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const b64urlText = (s) => b64url(new TextEncoder().encode(s));
@@ -28,23 +30,9 @@ export async function signJws(payload, jwkText, kid = KID) {
   return input + "." + b64url(new Uint8Array(sig));
 }
 
-// { <key>: data }
+// { <key>: data }：KV 快照；KV 沒有才查 Neon 一次（還沒有 features 表時沿用 settings.donate_enabled，見 snapshots.js）
 export async function featureRows(env, h) {
-  try {
-    const rows = await h.neonSql(env, "select key, data from features");
-    const out = {};
-    for (const r of rows) out[r.key] = r.data && typeof r.data === "object" ? r.data : {};
-    return out;
-  } catch (e) {
-    if (!MISSING_TABLE.test(String(e.message))) throw e;
-  }
-  try {
-    const rows = await h.neonSql(env, "select value from settings where key = 'donate_enabled'");
-    return rows.length ? { donate: { enabled: rows[0].value !== false } } : {};
-  } catch (e) {
-    if (MISSING_TABLE.test(String(e.message))) return {};
-    throw e;
-  }
+  return (await readSnapshot(env, "features", (info) => buildSnapshot("features", (q, p) => h.neonSql(env, q, p), info))) || {};
 }
 
 export async function featureData(env, h, key) {
@@ -52,18 +40,17 @@ export async function featureData(env, h, key) {
   return { enabled: true, ...(rows[key] || {}) };
 }
 
+let signed = null; // { at, body }：簽好的回應，同一個 isolate 內 CACHE_S 秒不重簽
+export function _resetFeaturesMemory() { signed = null; }
+
 export async function handleFeatures(request, env, ctx, h) {
-  const key = new Request(new URL("/v1/features", request.url).toString());
-  const hit = await caches.default.match(key);
-  if (hit) return hit;
-  if (!env.DATABASE_URL || !env.FEATURES_SIGNING_KEY) return h.fail(503, "not_configured");
+  if (!env.FEATURES_SIGNING_KEY) return h.fail(503, "not_configured");
+  const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `public, max-age=${h.CACHE_S}`, ...h.CORS };
+  if (signed && Date.now() - signed.at < h.CACHE_S * 1000) return new Response(signed.body, { headers });
   let features;
-  try { features = await featureRows(env, h); } catch (e) { return h.fail(502, "db"); }
+  try { features = await featureRows(env, h); } catch (e) { return h.fail(env.DATABASE_URL ? 502 : 503, env.DATABASE_URL ? "db" : "not_configured"); }
   let jws;
   try { jws = await signJws({ iat: Math.floor(Date.now() / 1000), features }, env.FEATURES_SIGNING_KEY); } catch (e) { return h.fail(503, "not_configured"); }
-  const res = new Response(JSON.stringify({ ok: true, jws }), {
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": `public, max-age=${h.CACHE_S}`, ...h.CORS }
-  });
-  ctx.waitUntil(caches.default.put(key, res.clone()));
-  return res;
+  signed = { at: Date.now(), body: JSON.stringify({ ok: true, jws }) };
+  return new Response(signed.body, { headers });
 }

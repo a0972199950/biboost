@@ -1,8 +1,12 @@
-import { test, describe } from "node:test";
+import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { checkInput, verifyStripe, pidOf, ecpayCheckMac, isBackUrl, handleDonate, rateHit, usdRates, recordDonation, recordFee, donateEnabled } from "../tools/report-worker/src/donate.js";
+import { checkInput, verifyStripe, pidOf, ecpayCheckMac, isBackUrl, handleDonate, rateHit, usdRates, recordDonation, recordFee, donateEnabled as donateEnabledReal } from "../tools/report-worker/src/donate.js";
 import { createEnv } from "./helpers/load.mjs";
+import { _resetSnapshotMemory } from "../tools/report-worker/src/snapshots.js";
+
+// 功能開關讀的 KV 快照在 isolate 記憶體留 60 秒：每個測試從乾淨的開始
+beforeEach(() => _resetSnapshotMemory());
 
 const ok = { v: 1, donorId: "0123456789abcdef0123456789abcdef", name: "老王", avatar: { style: 3 }, amount: 100, currency: "TWD" };
 
@@ -189,12 +193,13 @@ describe("report worker: donate", () => {
   });
 
   test("donate flag: on unless the admin turned it off (no table / no row = on)", async () => {
-    assert.equal(await donateEnabled({}, flagDb(false)), false);
-    assert.equal(await donateEnabled({}, flagDb(true)), true);
-    assert.equal(await donateEnabled({}, flagDb(undefined)), true);
-    assert.equal(await donateEnabled({}, flagDb("missing")), true);
-    assert.equal(await donateEnabled({}, flagDb({ legacy: false })), false, "before the features table exists, the old switch still counts");
-    assert.equal(await donateEnabled({}, flagDb({ legacy: true })), true);
+    const donateEnabled = (env, db) => { _resetSnapshotMemory(); return donateEnabledReal(env, db); }; // 每種資料庫狀態各自從頭讀
+    assert.equal(await donateEnabled({ SNAPSHOT_ENV: "prod" }, flagDb(false)), false);
+    assert.equal(await donateEnabled({ SNAPSHOT_ENV: "prod" }, flagDb(true)), true);
+    assert.equal(await donateEnabled({ SNAPSHOT_ENV: "prod" }, flagDb(undefined)), true);
+    assert.equal(await donateEnabled({ SNAPSHOT_ENV: "prod" }, flagDb("missing")), true);
+    assert.equal(await donateEnabled({ SNAPSHOT_ENV: "prod" }, flagDb({ legacy: false })), false, "before the features table exists, the old switch still counts");
+    assert.equal(await donateEnabled({ SNAPSHOT_ENV: "prod" }, flagDb({ legacy: true })), true);
   });
 
   test("GET /v1/donate/config answers the flag for the popup", async () => {
@@ -202,7 +207,7 @@ describe("report worker: donate", () => {
     globalThis.caches = noCache;
     try {
       const url = new URL("https://api.biboost.app/v1/donate/config");
-      const res = await handleDonate(new Request(url), { DATABASE_URL: "postgres://x" }, { waitUntil() {} }, url, helpers(flagDb(false)));
+      const res = await handleDonate(new Request(url), { SNAPSHOT_ENV: "prod", DATABASE_URL: "postgres://x" }, { waitUntil() {} }, url, helpers(flagDb(false)));
       assert.equal(res.status, 200);
       assert.deepEqual(await res.json(), { ok: true, enabled: false });
       assert.match(res.headers.get("Cache-Control"), /max-age=60/);
@@ -216,7 +221,7 @@ describe("report worker: donate", () => {
     try {
       const url = new URL("https://api.biboost.app/v1/donate/checkout");
       const req = new Request(url, { method: "POST", body: JSON.stringify({ ...ok, currency: "USD", amount: 3 }) });
-      const res = await handleDonate(req, { DATABASE_URL: "postgres://x", STRIPE_SECRET_KEY: "sk_test" }, { waitUntil() {} }, url, helpers(flagDb(false)));
+      const res = await handleDonate(req, { SNAPSHOT_ENV: "prod", DATABASE_URL: "postgres://x", STRIPE_SECRET_KEY: "sk_test" }, { waitUntil() {} }, url, helpers(flagDb(false)));
       assert.equal(res.status, 403);
       assert.equal((await res.json()).error, "disabled");
       assert.ok(!stripeCalled);

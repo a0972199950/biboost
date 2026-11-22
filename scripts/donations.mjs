@@ -6,6 +6,10 @@
 //   npm run donations:refund -- <交易編號>   退款後把那一筆標成已退款（不再算進排行榜）：綠界 TradeNo 或 Stripe PaymentIntent id
 // worker 的排行榜在 Cloudflare 邊緣快取 1 分鐘，改完最慢 1 分鐘生效。連線字串同 lottery.mjs（.env.local 的 DATABASE_URL）。
 import { DonationError, ensureTable, listDonors, markRefunded, setHidden } from "./lib/donations.mjs";
+import { useExitFlush } from "./lib/kv-snapshot.mjs";
+
+// 改到公告、抽獎、功能開關、問卷這些表時，結束前把給擴充讀的 KV 快照重寫（scripts/lib/kv-snapshot.mjs）
+useExitFlush();
 
 const [cmd, ...rest] = process.argv.slice(2);
 const pid = rest.find((a) => !a.startsWith("--"));

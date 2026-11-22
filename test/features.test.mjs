@@ -1,8 +1,12 @@
 // 功能開關：後台的 scripts/lib/features.mjs、report worker 的 GET /v1/features（簽章）、擴充的 src/features.js（驗章、快取、內頁 404）
-import { test, describe, before, after } from "node:test";
+import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createEnv, closeAll, testKey, plain } from "./helpers/load.mjs";
-import { signJws, handleFeatures, featureData } from "../tools/report-worker/src/features.js";
+import { signJws, handleFeatures, featureData, _resetFeaturesMemory } from "../tools/report-worker/src/features.js";
+import { _resetSnapshotMemory, encodeSnapshot } from "../tools/report-worker/src/snapshots.js";
+
+// worker 的 KV 快照與簽好的回應在 isolate 記憶體留 60 秒：每個測試從乾淨的開始
+beforeEach(() => { _resetSnapshotMemory(); _resetFeaturesMemory(); });
 
 const realFetch = globalThis.fetch;
 const realCaches = globalThis.caches;
@@ -78,7 +82,7 @@ describe("report worker: GET /v1/features", () => {
     fail: (status, error) => new Response(JSON.stringify({ ok: false, error }), { status }),
   };
   const dbWith = (rows) => ({ ...h, neonSql: async (env, q) => (/from features/.test(q) ? rows : []) });
-  const call = (env, hh) => handleFeatures(new Request("https://api.biboost.app/v1/features"), env, { waitUntil() {} }, hh);
+  const call = (env, hh) => handleFeatures(new Request("https://api.biboost.app/v1/features"), { SNAPSHOT_ENV: "prod", ...env }, { waitUntil() {} }, hh);
   before(async () => { key = await testKey(); globalThis.caches = noCache; });
   after(() => { globalThis.caches = realCaches; });
 
@@ -98,14 +102,41 @@ describe("report worker: GET /v1/features", () => {
     assert.ok(Math.abs(payload.iat - Date.now() / 1000) < 5);
   });
 
-  test("503 without the signing key or the database", async () => {
+  test("503 without the signing key; no KV snapshot and Neon down = 502", async () => {
     assert.equal((await call({ DATABASE_URL: "x" }, dbWith([]))).status, 503);
-    assert.equal((await call({ FEATURES_SIGNING_KEY: key.priv }, dbWith([]))).status, 503);
+    const down = { ...h, neonSql: async () => { throw new Error("neon_500 boom"); } };
+    assert.equal((await call({ DATABASE_URL: "x", FEATURES_SIGNING_KEY: key.priv }, down)).status, 502);
+  });
+
+  test("SNAPSHOT_ENV missing or misspelt: error, never guesses prod (and never touches Neon)", async () => {
+    let neon = 0;
+    const hh = { ...h, neonSql: async () => { neon++; return []; } };
+    for (const v of [undefined, "production", ""]) {
+      const res = await call({ SNAPSHOT_ENV: v, DATABASE_URL: "x", FEATURES_SIGNING_KEY: key.priv }, hh);
+      assert.equal(res.status, 502, String(v));
+    }
+    assert.equal(neon, 0);
+  });
+
+  test("reads the KV snapshot, not Neon; signed once per isolate for CACHE_S", async () => {
+    const kv = { get: async (k, o) => (k === "snap:features:prod" ? JSON.parse(encodeSnapshot({ donate: { enabled: false } })) : null), put: async () => {} };
+    let neon = 0;
+    const hh = { ...h, neonSql: async () => { neon++; return []; } };
+    const a = await (await call({ FEATURES_SIGNING_KEY: key.priv, RATE_KV: kv }, hh)).json();
+    const b = await (await call({ FEATURES_SIGNING_KEY: key.priv, RATE_KV: kv }, hh)).json();
+    assert.equal(neon, 0, "Neon is not touched");
+    assert.equal(a.jws, b.jws, "second request reuses the signed answer");
+    const env = createEnv();
+    env.load("features.js");
+    const payload = plain(await env.internals("features").verifyJws(a.jws, { f1: key.pub }));
+    env.close();
+    assert.deepEqual(payload.features, { donate: { enabled: false } });
   });
 
   test("featureData: no row = on", async () => {
-    assert.deepEqual(await featureData({}, dbWith([]), "donate"), { enabled: true });
-    assert.deepEqual(await featureData({}, dbWith([{ key: "donate", data: { enabled: false } }]), "donate"), { enabled: false });
+    assert.deepEqual(await featureData({ SNAPSHOT_ENV: "prod" }, dbWith([]), "donate"), { enabled: true });
+    _resetSnapshotMemory();
+    assert.deepEqual(await featureData({ SNAPSHOT_ENV: "prod" }, dbWith([{ key: "donate", data: { enabled: false } }]), "donate"), { enabled: false });
   });
 });
 
