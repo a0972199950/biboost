@@ -22,7 +22,6 @@
 //   cloudSync = { auto, rev: { ns: n }, snap: { 欄位: JSON }, dirty: [欄位], lastUp, lastDown, lastErr }
 //   cloudAppliedAt：還原（從雲端恢復設定）寫進本機的時間；popup 開著時看到它變了就重新載入，畫面才會是新的設定
 var BBCloud = (function () {
-  var API = { prod: "https://api.biboost.app", dev: "https://api-staging.biboost.app" };
   var EXT_FIELDS = ["enabled", "cdnMode", "cdnCountry", "cdnHost", "videoEnabled", "liveEnabled", "liveRoute", "autoFallback", "showDebug", "sortBySpeed",
     "stVideoMb", "stVideoSec", "stLiveRuns", "stLiveSec", "stVideoPreset", "stLivePreset", "uiLang", "uiTheme", "reportHistory"];
   var SHARED_FIELDS = ["customHosts"];
@@ -38,14 +37,8 @@ var BBCloud = (function () {
   function remove(keys) { return new Promise(function (r) { chrome.storage.local.remove(keys, function () { r(); }); }); }
   var J = function (v) { return JSON.stringify(v === undefined ? null : v); };
 
-  var apiPromise = null;
-  function apiBase() {
-    apiPromise = apiPromise || new Promise(function (resolve) {
-      try { chrome.management.getSelf(function (self) { resolve(self && self.installType === "development" ? API.dev : API.prod); }); }
-      catch (e) { resolve(API.prod); }
-    });
-    return apiPromise;
-  }
+  // 商店版／開發版各接哪個環境：common.js 的 bbApiBase（網址只寫在那裡）
+  function apiBase() { return bbApiBase(); }
 
   function CloudError(code, status) { var e = new Error(code); e.code = code; e.status = status || 0; return e; }
 

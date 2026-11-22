@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- Google 登入的回跳頁：api.biboost.app 的登入中間頁導到這裡（?code&state，見 cloud.js 的 finishLogin），
-     manifest 的 web_accessible_resources 只開給 api.biboost.app／api-staging.biboost.app。
+     manifest 的 web_accessible_resources 只開給後台網域（正式環境；開發版另外加測試環境，上架時拿掉）。
      從歡迎頁登入的換完 token 直接換回歡迎頁；從 popup 登入的（小視窗）顯示雲端備份面板。版面跟歡迎頁一樣（白色頁首＋粉紅線） -->
 <html>
 

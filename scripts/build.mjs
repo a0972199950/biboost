@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
+import { STAGING_HOST, findStaging, prodCommonJs, prodManifest } from "./lib/prod-env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -92,18 +93,24 @@ async function buildTarget(name, manifestFile) {
   const changelog = readJson(path.join(SRC, "changelog.json"));
   const changelogBuf = Buffer.from(JSON.stringify({ unreleased: [], releases: changelog.releases }, null, 2) + "\n");
 
-  const sortedNames = [...entries.keys(), "changelog.json"].sort();
+  // 內容要改寫的檔案（其他照 src/ 原樣）：環境設定換成上架版（只有正式環境）、manifest 拿掉測試環境網域（scripts/lib/prod-env.mjs）
+  const override = new Map([
+    ["changelog.json", changelogBuf],
+    ["manifest.json", Buffer.from(JSON.stringify(prodManifest(manifest), null, 2) + "\n")],
+    ["common.js", Buffer.from(prodCommonJs(fs.readFileSync(path.join(SRC, "common.js"), "utf8")))],
+  ]);
+  const contentOf = (relName) => override.get(relName) || fs.readFileSync(entries.get(relName));
+
+  const sortedNames = [...new Set([...entries.keys(), "changelog.json"])].sort();
+  const leaked = findStaging(sortedNames.map((n) => [n, contentOf(n)]));
+  if (leaked.length) throw new Error(`上架版不能出現測試環境網址（${STAGING_HOST}），但這些檔案有：${leaked.join("、")}`);
   const zip = new JSZip();
   for (const relName of sortedNames) {
-    if (relName === "changelog.json") {
-      zip.file(relName, changelogBuf, { date: FIXED_DATE, createFolders: false });
-      continue;
-    }
     // createFolders:false —— 不然 JSZip 會自動幫 "_locales/en/x.json" 這種路徑補上
     // "_locales/"、"_locales/en/" 這些資料夾 entry，而且時間戳是產生當下的現在時間，
     // 每次包出來的 zip bytes 就會不一樣，reproducible build 就破功了。原本 PowerShell 版本
     // （.NET 的 ZipArchive.CreateEntry）本來就只會建檔案 entry，這裡維持同樣行為。
-    zip.file(relName, fs.readFileSync(entries.get(relName)), { date: FIXED_DATE, createFolders: false });
+    zip.file(relName, contentOf(relName), { date: FIXED_DATE, createFolders: false });
   }
   // platform 明確指定 UNIX：不指定的話 zip 內部的檔案屬性欄位會依執行平台（Windows/Mac）不同，
   // 同樣內容在不同系統打包出來的 bytes 會不一樣，指定死了才能讓 Windows／Mac 包出來的結果一致。
@@ -117,7 +124,7 @@ async function buildTarget(name, manifestFile) {
 
   console.log(`\n${resolveDisplayName(manifest)} [${name}]  v${version}`);
   for (const relName of sortedNames) {
-    const size = relName === "changelog.json" ? changelogBuf.length : fs.statSync(entries.get(relName)).size;
+    const size = contentOf(relName).length;
     console.log(`  ${relName.padEnd(24)} ${String(size).padStart(7)} B`);
   }
   console.log(`-> ${zipPath}  (${buf.length} B)\n`);

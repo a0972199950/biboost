@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { prodCommonJs } from "./lib/prod-env.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "src");
@@ -16,6 +17,8 @@ const FILES = ["donate.js", "common.js", "i18n.js", "logo128.png"];
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 for (const f of FILES) fs.copyFileSync(path.join(SRC, f), path.join(OUT, f));
+// 網站是正式環境：common.js 的環境設定換成上架版（只有正式環境，不出現測試環境的網址）
+fs.writeFileSync(path.join(OUT, "common.js"), prodCommonJs(fs.readFileSync(path.join(SRC, "common.js"), "utf8")));
 fs.copyFileSync(path.join(ROOT, "tools/site/web-shim.js"), path.join(OUT, "web-shim.js"));
 for (const lang of fs.readdirSync(path.join(SRC, "_locales"))) {
   fs.mkdirSync(path.join(OUT, "_locales", lang), { recursive: true });

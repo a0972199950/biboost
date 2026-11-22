@@ -92,6 +92,10 @@ jobs:
           echo "BUILD_NUMBER=$((BASE + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
           echo "build number: $((BASE + GITHUB_RUN_NUMBER))"
 
+      - name: 改成上架版的環境設定（只有正式環境）
+        # Xcode 直接引用 src/，所以上架前先改寫 src/：common.js 的環境設定只留正式環境、manifest 拿掉測試環境網域（scripts/lib/prod-env.mjs）
+        run: node scripts/prod-env.mjs
+
       - name: Archive
         run: |
           set -o pipefail

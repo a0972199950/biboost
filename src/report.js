@@ -8,7 +8,7 @@
  *  - POST 到 Cloudflare Worker（tools/report-worker），Worker 存進私有 repo 並開公開 issue，回 issue 網址
  *  - 失敗時提供「複製診斷資料」當退路
  */
-var REPORT_ENDPOINT = "https://api.biboost.app/v1/report";
+var REPORT_ENDPOINT = BB_API_PROD + "/v1/report"; // 問題回報一律送正式環境（開發版也是），網址在 common.js
 var REPORT_TOKEN = "bcs-f302715d682c1c7864032e45"; // 與 Worker 的 REPORT_TOKEN 相同：弱驗證，只擋無差別掃描
 var PRIVACY_URL = "https://github.com/a0972199950/biboost/blob/master/PRIVACY.md";
 var ISSUES_URL = "https://github.com/a0972199950/biboost/issues/new";

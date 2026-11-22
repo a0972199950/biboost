@@ -1,14 +1,30 @@
-// Helpers shared by the extension pages (popup.html, report.html, announcement.html).
-// Loaded after i18n.js (needs `uiMessages` / `uiLangPref`) and before the page's own script.
+// Helpers shared by the extension pages (popup.html, report.html, announcement.html, …) and the background
+// (background.js importScripts it first; Firefox lists it first in manifest.firefox.json), so keep top-level code free of DOM access.
+// Pages load it after i18n.js (the i18n helpers need `uiMessages` / `uiLangPref`) and before the page's own script.
+// The API base URLs live only here (BB_API_PROD / BB_API_STAGING); features.js, cloud.js, donate.js, report.js use them.
 // Not used by the content scripts: main-hook.js runs in the page's MAIN world as a single file.
 "use strict";
 
+// ---- 環境設定（開發版／上架版）----
+// src/ 裡的是開發用的設定：直接「載入未封裝項目」或 Xcode 用 Debug 建置時接測試環境，popup 版號標「開發版」。
+// 打包上架時（scripts/build.mjs、build-site.mjs，以及 Safari 上架前的 scripts/prod-env.mjs）整段換成只有正式環境的版本
+// （scripts/lib/prod-env.mjs），manifest 裡的測試環境網址也一起拿掉：上架版裡不會出現測試環境的網址。
+// 標記那兩行不要改，打包靠它們找到這一段。
+// @env-begin
+var BB_ENV = "dev";
+var BB_API_PROD = "https://api.biboost.app";
+var BB_API_STAGING = "https://api-staging.biboost.app";
+// @env-end
+function bbIsDevBuild() { return Promise.resolve(BB_ENV === "dev" && !!BB_API_STAGING); }
+function bbApiBase() { return bbIsDevBuild().then(function (dev) { return dev ? BB_API_STAGING : BB_API_PROD; }); }
+
 // ---- i18n ----
 // Prefer the language the user picked in advanced settings (i18n.js); otherwise chrome.i18n follows the browser.
-function t(key) { return (uiMessages && uiMessages[key]) || chrome.i18n.getMessage(key) || key; }
+// 背景（service worker）也載入這個檔案，但沒有 i18n.js 也沒有 window：這兩種情況照瀏覽器語言
+function t(key) { return (typeof uiMessages !== "undefined" && uiMessages && uiMessages[key]) || chrome.i18n.getMessage(key) || key; }
 function uiLanguage() {
-  if (uiLangPref !== "auto") return uiLangPref.replace("_", "-");
-  return window.uiAutoLang ? window.uiAutoLang.replace("_", "-") : chrome.i18n.getUILanguage();
+  if (typeof uiLangPref !== "undefined" && uiLangPref !== "auto") return uiLangPref.replace("_", "-");
+  return typeof window !== "undefined" && window.uiAutoLang ? window.uiAutoLang.replace("_", "-") : chrome.i18n.getUILanguage();
 }
 // Short UI language code used for feedback forms and utm_content (see promotions/campaigns.md)
 function uiLangCode() {

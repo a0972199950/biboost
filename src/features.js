@@ -9,7 +9,6 @@
 // 入口：check(flags, key) → { ok, reason }（reason "off"＝收起來）；mark(el, result) 依結果標示入口。
 //   有選用模組（擴充裡的 private/，開發時才有、打包不帶）就由它判斷與標示；沒有就只看開關。
 var BBFeatures = (function () {
-  var API = { prod: "https://api.biboost.app", dev: "https://api-staging.biboost.app" };
   // kid → 公鑰（P-256）。換金鑰時先在這裡加新的 kid、發版，再換 report worker 的 FEATURES_SIGNING_KEY
   var PUBLIC_KEYS = {
     f1: { kty: "EC", crv: "P-256", x: "UQMcBk_Bck5s3VFGPLBnNBnEg_dzz6q0Pm2k3RKcN0I", y: "YPwo2Nlyf1gp1vRwzYt3UjQ2iyjN1zoY7gkISL1MWt0" }
@@ -65,14 +64,8 @@ var BBFeatures = (function () {
     }).catch(function () { return null; });
   }
 
-  var apiPromise = null;
-  function apiBase() {
-    apiPromise = apiPromise || new Promise(function (resolve) {
-      try { chrome.management.getSelf(function (self) { resolve(self && self.installType === "development" ? API.dev : API.prod); }); }
-      catch (e) { resolve(API.prod); }
-    });
-    return apiPromise;
-  }
+  // 商店版／開發版各接哪個環境：common.js 的 bbApiBase（網址只寫在那裡）
+  function apiBase() { return bbApiBase(); }
 
   // 驗過章的 payload.features → 每個功能的值（預設值＋後台存過的）
   function resolve(features) {
@@ -198,7 +191,7 @@ var BBFeatures = (function () {
     if (el && window.BBGuard) window.BBGuard.mark(el, result);
   }
 
-  var api = { load: load, refresh: refresh, watch: watch, enabled: enabled, guardPage: guardPage, check: check, mark: mark, verifyJws: verifyJws, DEFAULTS: DEFAULTS, PUBLIC_KEYS: PUBLIC_KEYS, STORE_KEY: STORE_KEY, NOT_FOUND: NOT_FOUND };
+  var api = { apiBase: apiBase, load: load, refresh: refresh, watch: watch, enabled: enabled, guardPage: guardPage, check: check, mark: mark, verifyJws: verifyJws, DEFAULTS: DEFAULTS, PUBLIC_KEYS: PUBLIC_KEYS, STORE_KEY: STORE_KEY, NOT_FOUND: NOT_FOUND };
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
   if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") globalThis.__BCS_TEST__.register("features", api);
   return api;

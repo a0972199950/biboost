@@ -10,6 +10,11 @@
 //   npm run build:safari -- --platform=ios     # 改打包 iOS（產物是 .app，需真機/模擬器才能跑）
 //   npm run build:safari -- --configuration=Debug
 //
+// 環境：Release 是上架版（只接正式環境），Debug 是開發版（接測試環境、popup 版號標「開發版」）。
+// 在 Safari 實測時注意：Release 和 Debug 都建過的話，兩個 .app 會同時被系統登記（同一個 bundle id、同一個版本），
+// Safari 不一定載入你剛建的那份。先用 `pluginkit -mAD | grep -i biboost` 看有幾份，把不用的那份 `pluginkit -r <.appex 路徑>`
+// 取消登記（或刪掉 build/Build/Products 底下那個 .app）再重開 Safari；popup 版號有沒有「開發版」可以確認載到哪份。
+//
 // 注意：這裡是 ad-hoc 簽章（CODE_SIGN_IDENTITY="-"），產物僅供本機測試。
 // 要上架 App Store 仍需在 Xcode 用你的 Apple Developer 帳號 Archive → 上傳，
 // 這步無法純命令列在沒有簽章憑證的情況下完成。
@@ -17,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { prodCommonJs, prodManifest } from "./lib/prod-env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -70,12 +76,35 @@ const buildArgs = [
   "build",
 ];
 
+// Xcode 27 起 macOS 的最低版本只能設 12.0 以上，工程設定的 10.14 會直接建置失敗。本機用新版 Xcode 建來測試時自動補 12.0；
+// 上架（GitHub Actions 的 Xcode 26.x）照工程設定，不受影響。要不要正式把最低版本改成 macOS 12 另外決定（會放棄 10.14～11 的使用者）
+function xcodeMajor() {
+  try { return Number((/Xcode (\d+)/.exec(execFileSync("xcodebuild", ["-version"], { encoding: "utf8" })) || [])[1]) || 0; }
+  catch (e) { return 0; }
+}
+if (platform === "macos" && xcodeMajor() >= 27) {
+  buildArgs.splice(buildArgs.length - 1, 0, "MACOSX_DEPLOYMENT_TARGET=12.0");
+  console.log("ℹ️  Xcode 27 以上：本機建置的 macOS 最低版本暫時用 12.0（工程設定 10.14 在新版 Xcode 不支援；上架流程不受影響）\n");
+}
+
+// Release：Xcode 直接引用 src/，建置期間把 src/ 暫時改成上架版的環境設定（只有正式環境，scripts/lib/prod-env.mjs），建完一定還原。
+// Debug 維持開發版（接測試環境）
+const ENV_FILES = ["common.js", "manifest.json", "manifest.firefox.json"].map((f) => path.join(SRC, f));
+const original = configuration === "Release" ? new Map(ENV_FILES.map((p) => [p, fs.readFileSync(p)])) : null;
+let failed = false;
 try {
+  if (original) {
+    fs.writeFileSync(ENV_FILES[0], prodCommonJs(original.get(ENV_FILES[0]).toString("utf8")));
+    for (const p of ENV_FILES.slice(1)) fs.writeFileSync(p, JSON.stringify(prodManifest(JSON.parse(original.get(p).toString("utf8"))), null, 2) + "\n");
+  }
   execFileSync("xcodebuild", buildArgs, { stdio: "inherit" });
 } catch (e) {
+  failed = true;
   console.error("\n❌ xcodebuild 失敗。常見原因：未安裝 Xcode（只有 Command Line Tools 不夠），或簽章設定衝突。");
-  process.exit(1);
+} finally {
+  if (original) for (const [p, buf] of original) fs.writeFileSync(p, buf);
 }
+if (failed) process.exit(1);
 
 // 產物：build/Build/Products/<Configuration>[-iphoneos]/<PRODUCT_NAME>.app
 const productDirName = platform === "ios" ? `${configuration}-iphoneos` : configuration;

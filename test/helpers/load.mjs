@@ -34,6 +34,8 @@ export function readSrcJson(file) {
 }
 
 const enMessages = readSrcJson(path.join("_locales", "en", "messages.json"));
+// 用到 common.js（API 網址）的擴充檔案：env.load 時若還沒載入 common.js 就先載入
+const needsCommon = (src) => /\b(bbApiBase|bbIsDevBuild|BB_API_PROD)\b/.test(src);
 
 // 節點清單（伺服器下發，src/cdn-list.js）：測試用假清單 test/fixtures/cdn-list.json，用測試金鑰（kid "t1"）簽章。
 // createEnv 預設把它放進 storage（＝已經拿到清單）；cdnList: false ＝還沒拿到清單。載入 cdn-list.js 時自動把測試公鑰放進去
@@ -158,6 +160,10 @@ export function createEnv(opts = {}) {
 
   const local = makeStorageArea(opts.cdnList === false ? opts.storage : { ...cdnListStorage(), ...(opts.storage || {}) }, "local", onChangedListeners);
   const session = makeStorageArea(opts.session, "session", onChangedListeners);
+  // chrome.storage.sync：只有 opts.sync 給了才有（預設沒有，測「不支援 sync 時退回 local」）；opts.sync === "broken" 時每個呼叫都丟例外
+  const sync = opts.sync === "broken"
+    ? { get() { throw new Error("sync unavailable"); }, set() { throw new Error("sync unavailable"); }, remove() { throw new Error("sync unavailable"); } }
+    : opts.sync ? makeStorageArea(opts.sync, "sync", onChangedListeners) : null;
 
   // chrome.cookies is only present when a test passes `cookies` (name → value for www.bilibili.com), like a browser without the API otherwise.
   // cookieSets records every set() call; the cookie-change listeners fire on set() like in a real browser.
@@ -203,6 +209,7 @@ export function createEnv(opts = {}) {
     storage: {
       local,
       session,
+      ...(sync ? { sync } : {}),
       onChanged: { addListener: (fn) => onChangedListeners.push(fn) }
     },
     i18n: {
@@ -250,6 +257,7 @@ export function createEnv(opts = {}) {
     chrome,
     storage: local.data,
     sessionStorage: session.data,
+    syncStorage: sync && sync.data,
     cookieJar,
     cookieSets,
     cookieChangedListeners,
@@ -266,9 +274,14 @@ export function createEnv(opts = {}) {
     onAlarmListeners,
     alarms,
     load(file) {
+      // 這些檔案用 common.js 的 API 網址（BB_API_PROD、bbApiBase）；正式環境裡頁面與背景都先載入 common.js，
+      // 測試沒先載入時這裡補上，照實際的載入順序
+      if (file !== "common.js" && typeof window.bbApiBase !== "function" && needsCommon(readSrc(file))) env.load("common.js");
       // Run as a classic script in the window's realm: top-level function/var declarations become
       // window globals even under "use strict" (window.eval would keep them local to the eval).
       vm.runInContext(readSrc(file), dom.getInternalVMContext(), { filename: file });
+      // src/common.js 是開發版的環境設定（接測試環境）；測試照上架版跑（只有正式環境），要測開發版的設 opts.devBuild
+      if (file === "common.js" && !opts.devBuild) window.BB_ENV = "prod";
       if (file === "cdn-list.js") window.BBCdnList.PUBLIC_KEYS.t1 = listKey.pub;
       return env;
     },
