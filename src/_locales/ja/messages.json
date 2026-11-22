@@ -413,6 +413,9 @@
   "changelogTitle": {
     "message": "更新履歴"
   },
+  "versionDevBuild": {
+    "message": "開発版"
+  },
   "changelogCurrent": {
     "message": "現在のバージョン"
   },
@@ -661,6 +664,9 @@
   },
   "announceGone": {
     "message": "このお知らせは終了したか、削除されました。"
+  },
+  "lotteryEnded": {
+    "message": "この抽選キャンペーンは終了しました。ご参加ありがとうございました。"
   },
   "lotteryNote": {
     "message": "備考"
@@ -1012,5 +1018,44 @@
   },
   "welcomeSkipStart": {
     "message": "スキップしてはじめる"
+  },
+  "surveyNext": {
+    "message": "次へ"
+  },
+  "surveyPrev": {
+    "message": "戻る"
+  },
+  "surveySkipSubmit": {
+    "message": "スキップして送信"
+  },
+  "surveySubmit": {
+    "message": "送信"
+  },
+  "surveyThanks": {
+    "message": "ありがとうございました"
+  },
+  "surveyClose": {
+    "message": "閉じる"
+  },
+  "surveyTelemetryConsent": {
+    "message": "匿名の利用統計（国のみ）の送信を許可する"
+  },
+  "surveyFail": {
+    "message": "送信できませんでした。しばらくしてからもう一度お試しください。"
+  },
+  "surveyBadEmail": {
+    "message": "メールアドレスの形式が正しくありません。ご確認ください。"
+  },
+  "surveyEnded": {
+    "message": "このアンケートは終了しました。ありがとうございました"
+  },
+  "surveyMoveUp": {
+    "message": "上へ移動"
+  },
+  "surveyMoveDown": {
+    "message": "下へ移動"
+  },
+  "surveyClosedNotice": {
+    "message": "このアンケートは今後表示されません。気が変わったら、お知らせからもう一度開けます。"
   }
 }

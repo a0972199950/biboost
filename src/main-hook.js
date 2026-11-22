@@ -1840,7 +1840,51 @@
   //  - 课程:     pugv/player/web/playurl
   var PLAYURL_RE = /(x\/player\/(wbi\/)?playurl|pgc\/player\/web\/(v2\/)?playurl|pugv\/player\/web\/playurl)/i;
 
+  // 匿名統計「遇到地區限定」：影片因所在地區不能看，就通知 bridge 計一次（只記國家與日期，見 survey-page.js）。不論擴充有沒有啟用都偵測；
+  // 同一個頁面網址只報一次（播放器重試、重打只算一次）。兩種訊號（2026-11-09 用真瀏覽器、新加坡 IP 實測）：
+  //  - 舊的番劇 playurl（pgc/player/web/(v2/)playurl）回 code -10403（所在地區不可觀看）
+  //  - 現在的番劇網頁播放器改打 ogv/player/playview：code 是 0，但 data.plugins 有 AreaLimitPanel（地區限制的提示面板）、play_video_type 為 none
+  //  - 2026-11-18 起（真瀏覽器、新加坡 IP 實測）：第一集的播放資料由伺服器直接寫進頁面 window.__PLAYURL_HYDRATE_DATA__，不再另打 playview；
+  //    形狀同 playview，但 plugins 在 result 底下：{ code: 0, result: { play_video_type: "none", plugins: [{ name: "AreaLimitPanel" }] } }（見 watchHydrateData）
+  var BLOCKED_RE = /(pgc\/player\/web\/(v2\/)?playurl|ogv\/player\/playview)/i;
+  var blockedSeen = {};
+  function hasAreaLimitPanel(plugins) {
+    return Array.isArray(plugins) && plugins.some(function (p) { return p && p.name === "AreaLimitPanel"; });
+  }
+  function isRegionBlocked(j) {
+    if (!j || typeof j !== "object") return false;
+    if (j.code === -10403) return true;
+    if (j.code !== 0) return false;
+    return hasAreaLimitPanel(j.data && j.data.plugins) || hasAreaLimitPanel(j.result && j.result.plugins);
+  }
+  function noteBlocked(j) {
+    try {
+      if (!isRegionBlocked(j)) return;
+      var key = location.pathname;
+      if (blockedSeen[key]) return;
+      blockedSeen[key] = true;
+      window.postMessage({ __cdnSwitcher: 1, dir: "region-blocked", payload: {} }, "*");
+    } catch (e) {}
+  }
+  function peekBlockedResponse(resp) {
+    try { resp.clone().json().then(noteBlocked, function () {}); } catch (e) {}
+    return resp;
+  }
+  // 頁面寫入的 __PLAYURL_HYDRATE_DATA__：document_start 時通常還沒寫，掛 setter 等它；已經有值就直接看。值原樣交給頁面
+  function watchHydrateData() {
+    try {
+      if (window.__PLAYURL_HYDRATE_DATA__) { noteBlocked(window.__PLAYURL_HYDRATE_DATA__); return; }
+      var hyd;
+      Object.defineProperty(window, "__PLAYURL_HYDRATE_DATA__", {
+        configurable: true, enumerable: true,
+        get: function () { return hyd; },
+        set: function (v) { hyd = v; noteBlocked(v); }
+      });
+    } catch (e) { debug.lastError = "hydrate hook: " + e; }
+  }
+
   function installHooks() {
+    watchHydrateData(); // 遇到地區限定（不論擴充有沒有啟用）
     // __playinfo__（SSR 首个分 P）— CDN 重排启用时才需要
     if (ACTIVE) {
       try {
@@ -1911,6 +1955,16 @@
         }
         return _fetch.call(this, input, init);
       };
+      // 地區限定偵測：包在外面，不動上面的改寫流程（回傳的 promise 原樣交給頁面）
+      var hookedFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var p = hookedFetch.apply(this, arguments);
+        try {
+          var bu = typeof input === "string" ? input : (input && input.url) || "";
+          if (BLOCKED_RE.test(bu) && p && typeof p.then === "function") p.then(peekBlockedResponse, function () {});
+        } catch (e) {}
+        return p;
+      };
     }
 
     // XHR：分段 host 差替 +（次要）playurl 改写
@@ -1955,6 +2009,16 @@
           self.addEventListener("error", function () {
             jlog("net.error", { host: shortHost(hostOf(url)), track: trackOf(url), xhr: 1 });
             if (isCurrentSegHost(hostOf(self.__cdnSwitcherUrl || ""))) onSegFailure("network-error");
+          });
+        }
+        if (BLOCKED_RE.test(url) && textDesc && respDesc) {
+          self.addEventListener("load", function () {
+            try {
+              var rt0 = self.responseType, j0 = null;
+              if (rt0 === "json") j0 = respDesc.get.call(self);
+              else if (rt0 === "" || rt0 === "text") j0 = JSON.parse(textDesc.get.call(self));
+              noteBlocked(j0);
+            } catch (e) {}
           });
         }
         if (ACTIVE && PLAYURL_RE.test(url) && textDesc && respDesc) {
@@ -2859,6 +2923,19 @@
       v.addEventListener(ev, function () { if (getMainVideo() === v) jlog("play.state", { ev: ev, ct: Math.round(v.currentTime) }); });
     });
   }
+  // 主 video 的狀態（none／playing／paused／ended）通知 bridge 端的匿名統計與問卷（survey-page.js）：
+  // 播放中才送抽樣心跳、沒在看影片時才可能出現問卷邀請。狀態有變就送，沒變每 10 秒補送一次（對方可能比這裡晚載入）
+  var lastVideoState = "", lastVideoStateAt = 0;
+  function postVideoState(force) {
+    try {
+      // 只認播放器裡的 video：首頁的預覽影片（自動播放、靜音）不算在看影片
+      var pe = getPlayerEl(), v = pe && pe.querySelector("video"), st = "none";
+      if (v) st = v.ended ? "ended" : (v.paused ? "paused" : "playing");
+      if (st === lastVideoState && !force) return;
+      lastVideoState = st;
+      window.postMessage({ __cdnSwitcher: 1, dir: "video-state", payload: { state: st } }, "*");
+    } catch (e) {}
+  }
   var lastHref = location.href, tick = 0, prevErr = null, prevStuck = null;
   function diagTick() {
     tick++;
@@ -2870,6 +2947,7 @@
     stallState.hit = false;
     prevStuck = stuck;
     trackVideoEvents();
+    postVideoState(tick % 10 === 0);
     if (tick % 10 === 0) postSample();
   }
   jlog("page.nav", pageInfo());
@@ -2915,7 +2993,7 @@
       playInfoExpires: playInfoExpires, usablePlayInfo: usablePlayInfo, playInfoKey: playInfoKey,
       clampNum: clampNum, cleanTitle: cleanTitle, pageTypeOf: pageTypeOf, qnText: qnText, currentQn: currentQn, isAllowedCdnHost: isAllowedCdnHost,
       addSample: addSample, updateSpeed: updateSpeed, videoQnByPath: function () { return videoQnByPath; },
-      needsOwnSig: needsOwnSig, knownUrlOn: knownUrlOn, onSegFailure: onSegFailure, stallState: stallState, legacyCheckStall: legacyCheckStall,
+      noteBlocked: noteBlocked, isRegionBlocked: isRegionBlocked, postVideoState: postVideoState, needsOwnSig: needsOwnSig, knownUrlOn: knownUrlOn, onSegFailure: onSegFailure, stallState: stallState, legacyCheckStall: legacyCheckStall,
       autoHost: function () { return autoHost; }, checkVideoKey: checkVideoKey, playerVideoKey: playerVideoKey, applyRescuePick: applyRescuePick, mainVideoIdle: mainVideoIdle, noteEarlySample: noteEarlySample, runAutoSpeedTest: runAutoSpeedTest,
       runSpeedTest: runSpeedTest, health: health,
       isFailed: isFailed, markFailed: markFailed, failedHosts: failedHosts, testUrlFor: testUrlFor, listCands: listCands,

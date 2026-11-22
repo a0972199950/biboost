@@ -413,6 +413,9 @@
   "changelogTitle": {
     "message": "版本更新记录"
   },
+  "versionDevBuild": {
+    "message": "开发版"
+  },
   "changelogCurrent": {
     "message": "当前版本"
   },
@@ -661,6 +664,9 @@
   },
   "announceGone": {
     "message": "这则公告已经结束或被移除。"
+  },
+  "lotteryEnded": {
+    "message": "这个抽奖活动已经结束，谢谢你的参与。"
   },
   "lotteryNote": {
     "message": "备注"
@@ -1012,5 +1018,44 @@
   },
   "welcomeSkipStart": {
     "message": "跳过，开始使用"
+  },
+  "surveyNext": {
+    "message": "下一题"
+  },
+  "surveyPrev": {
+    "message": "上一题"
+  },
+  "surveySkipSubmit": {
+    "message": "跳过并提交"
+  },
+  "surveySubmit": {
+    "message": "提交"
+  },
+  "surveyThanks": {
+    "message": "谢谢"
+  },
+  "surveyClose": {
+    "message": "关闭"
+  },
+  "surveyTelemetryConsent": {
+    "message": "允许发送匿名使用统计（只有国家）"
+  },
+  "surveyFail": {
+    "message": "提交失败，请稍后再试"
+  },
+  "surveyBadEmail": {
+    "message": "邮箱格式不正确，请再确认"
+  },
+  "surveyEnded": {
+    "message": "这份问卷已经结束，谢谢"
+  },
+  "surveyMoveUp": {
+    "message": "上移"
+  },
+  "surveyMoveDown": {
+    "message": "下移"
+  },
+  "surveyClosedNotice": {
+    "message": "此问卷不会再出现打扰。如果您改变主意，可以在公告中找回问卷"
   }
 }

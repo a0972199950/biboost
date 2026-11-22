@@ -71,6 +71,12 @@
 		2B5E355960E2825FFFFF869B /* auth.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2D0D58052D8EA7AFFD52 /* auth.html */; };
 		2B5E2A99CC6751B6F66DB91F /* welcome.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E3749C3E920D9263438EC /* welcome.js */; };
 		2B5E71A0C4D8F3B5E6A19C03 /* welcome-hero.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */; };
+		2B5E71A0C4D8F3B5E6A19C13 /* survey.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C10 /* survey.js */; };
+		2B5E71A0C4D8F3B5E6A19C14 /* survey-ui.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C11 /* survey-ui.js */; };
+		2B5E71A0C4D8F3B5E6A19C22 /* survey-core.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C21 /* survey-core.js */; };
+		2B5E71A0C4D8F3B5E6A19C15 /* survey-page.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C12 /* survey-page.js */; };
+		2B5E71A0C4D8F3B5E6A19C32 /* survey-window.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C30 /* survey-window.html */; };
+		2B5E71A0C4D8F3B5E6A19C33 /* survey-window.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C31 /* survey-window.js */; };
 		2B5E96EE9ECE258427295F62 /* auth.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E1D709CD3B5992C72F8F5 /* auth.js */; };
 		2B5EF0E01488730AB3C7D75A /* cloud-ui.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */; };
 		2B5E18199489D3223EF1BBD4 /* cloud.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E925FE59B8B6ABDF6648D /* cloud.js */; };
@@ -80,6 +86,12 @@
 		2B5E53D09B39E8CAB12061BE /* auth.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2D0D58052D8EA7AFFD52 /* auth.html */; };
 		2B5E6834A8B013C884193683 /* welcome.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E3749C3E920D9263438EC /* welcome.js */; };
 		2B5E71A0C4D8F3B5E6A19C04 /* welcome-hero.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */; };
+		2B5E71A0C4D8F3B5E6A19C16 /* survey.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C10 /* survey.js */; };
+		2B5E71A0C4D8F3B5E6A19C17 /* survey-ui.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C11 /* survey-ui.js */; };
+		2B5E71A0C4D8F3B5E6A19C23 /* survey-core.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C21 /* survey-core.js */; };
+		2B5E71A0C4D8F3B5E6A19C18 /* survey-page.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C12 /* survey-page.js */; };
+		2B5E71A0C4D8F3B5E6A19C34 /* survey-window.html in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C30 /* survey-window.html */; };
+		2B5E71A0C4D8F3B5E6A19C35 /* survey-window.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E71A0C4D8F3B5E6A19C31 /* survey-window.js */; };
 		2B5E12A7F13A6E6F9AA9B520 /* auth.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E1D709CD3B5992C72F8F5 /* auth.js */; };
 		2B5E98ED0ACF107F81176EE8 /* cloud-ui.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */; };
 		2B5EBDC8B0AF61A1BF448103 /* cloud.js in Resources */ = {isa = PBXBuildFile; fileRef = 2B5E925FE59B8B6ABDF6648D /* cloud.js */; };
@@ -185,6 +197,12 @@
 		2B5E2D0D58052D8EA7AFFD52 /* auth.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "auth.html"; path = "../../../src/auth.html"; sourceTree = "<group>"; };
 		2B5E3749C3E920D9263438EC /* welcome.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "welcome.js"; path = "../../../src/welcome.js"; sourceTree = "<group>"; };
 		2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "welcome-hero.js"; path = "../../../src/welcome-hero.js"; sourceTree = "<group>"; };
+		2B5E71A0C4D8F3B5E6A19C10 /* survey.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "survey.js"; path = "../../../src/survey.js"; sourceTree = "<group>"; };
+		2B5E71A0C4D8F3B5E6A19C11 /* survey-ui.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "survey-ui.js"; path = "../../../src/survey-ui.js"; sourceTree = "<group>"; };
+		2B5E71A0C4D8F3B5E6A19C21 /* survey-core.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "survey-core.js"; path = "../../../src/survey-core.js"; sourceTree = "<group>"; };
+		2B5E71A0C4D8F3B5E6A19C12 /* survey-page.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "survey-page.js"; path = "../../../src/survey-page.js"; sourceTree = "<group>"; };
+		2B5E71A0C4D8F3B5E6A19C30 /* survey-window.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "survey-window.html"; path = "../../../src/survey-window.html"; sourceTree = "<group>"; };
+		2B5E71A0C4D8F3B5E6A19C31 /* survey-window.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "survey-window.js"; path = "../../../src/survey-window.js"; sourceTree = "<group>"; };
 		2B5E1D709CD3B5992C72F8F5 /* auth.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "auth.js"; path = "../../../src/auth.js"; sourceTree = "<group>"; };
 		2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "cloud-ui.js"; path = "../../../src/cloud-ui.js"; sourceTree = "<group>"; };
 		2B5E925FE59B8B6ABDF6648D /* cloud.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "cloud.js"; path = "../../../src/cloud.js"; sourceTree = "<group>"; };
@@ -348,6 +366,12 @@
 				2B5E2D0D58052D8EA7AFFD52 /* auth.html */,
 				2B5E3749C3E920D9263438EC /* welcome.js */,
 				2B5E71A0C4D8F3B5E6A19C02 /* welcome-hero.js */,
+				2B5E71A0C4D8F3B5E6A19C10 /* survey.js */,
+				2B5E71A0C4D8F3B5E6A19C11 /* survey-ui.js */,
+				2B5E71A0C4D8F3B5E6A19C21 /* survey-core.js */,
+				2B5E71A0C4D8F3B5E6A19C12 /* survey-page.js */,
+				2B5E71A0C4D8F3B5E6A19C30 /* survey-window.html */,
+				2B5E71A0C4D8F3B5E6A19C31 /* survey-window.js */,
 				2B5E1D709CD3B5992C72F8F5 /* auth.js */,
 				2B5E2A97D7FCB39B8AF0F488 /* cloud-ui.js */,
 				2B5E925FE59B8B6ABDF6648D /* cloud.js */,
@@ -553,6 +577,12 @@
 				2B5E53D09B39E8CAB12061BE /* auth.html in Resources */,
 				2B5E6834A8B013C884193683 /* welcome.js in Resources */,
 				2B5E71A0C4D8F3B5E6A19C04 /* welcome-hero.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C16 /* survey.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C17 /* survey-ui.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C23 /* survey-core.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C18 /* survey-page.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C34 /* survey-window.html in Resources */,
+				2B5E71A0C4D8F3B5E6A19C35 /* survey-window.js in Resources */,
 				2B5E12A7F13A6E6F9AA9B520 /* auth.js in Resources */,
 				2B5E98ED0ACF107F81176EE8 /* cloud-ui.js in Resources */,
 				2B5EBDC8B0AF61A1BF448103 /* cloud.js in Resources */,
@@ -591,6 +621,12 @@
 				2B5E355960E2825FFFFF869B /* auth.html in Resources */,
 				2B5E2A99CC6751B6F66DB91F /* welcome.js in Resources */,
 				2B5E71A0C4D8F3B5E6A19C03 /* welcome-hero.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C13 /* survey.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C14 /* survey-ui.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C22 /* survey-core.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C15 /* survey-page.js in Resources */,
+				2B5E71A0C4D8F3B5E6A19C32 /* survey-window.html in Resources */,
+				2B5E71A0C4D8F3B5E6A19C33 /* survey-window.js in Resources */,
 				2B5E96EE9ECE258427295F62 /* auth.js in Resources */,
 				2B5EF0E01488730AB3C7D75A /* cloud-ui.js in Resources */,
 				2B5E18199489D3223EF1BBD4 /* cloud.js in Resources */,

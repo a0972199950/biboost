@@ -1,5 +1,16 @@
 {
-  "unreleased": [],
+  "unreleased": [
+    {
+      "type": "feature",
+      "text": {
+        "zh_TW": "偶爾在 B 站頁面上邀請你填寫簡短問卷，幫助我們改進；隨時可以關閉",
+        "zh_CN": "偶尔在 B 站页面上邀请你填写简短问卷，帮助我们改进；随时可以关闭",
+        "en": "Occasionally invites you to a short survey on bilibili pages to help us improve; you can close it any time",
+        "ja": "bilibili のページで、改善のための短いアンケートをときどきお願いします（いつでも閉じられます）",
+        "ko": "bilibili 페이지에서 가끔 개선을 위한 짧은 설문을 요청합니다. 언제든지 닫을 수 있습니다"
+      }
+    }
+  ],
   "releases": [
     {
       "version": "2.10.0",

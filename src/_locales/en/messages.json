@@ -413,6 +413,9 @@
   "changelogTitle": {
     "message": "Release notes"
   },
+  "versionDevBuild": {
+    "message": "dev build"
+  },
   "changelogCurrent": {
     "message": "current"
   },
@@ -661,6 +664,9 @@
   },
   "announceGone": {
     "message": "This announcement has ended or been removed."
+  },
+  "lotteryEnded": {
+    "message": "This giveaway has ended. Thanks for your interest!"
   },
   "lotteryNote": {
     "message": "Notes"
@@ -1012,5 +1018,44 @@
   },
   "welcomeSkipStart": {
     "message": "Skip and get started"
+  },
+  "surveyNext": {
+    "message": "Next"
+  },
+  "surveyPrev": {
+    "message": "Back"
+  },
+  "surveySkipSubmit": {
+    "message": "Skip and submit"
+  },
+  "surveySubmit": {
+    "message": "Submit"
+  },
+  "surveyThanks": {
+    "message": "Thank you"
+  },
+  "surveyClose": {
+    "message": "Close"
+  },
+  "surveyTelemetryConsent": {
+    "message": "Allow sending anonymous usage statistics (country only)"
+  },
+  "surveyFail": {
+    "message": "Could not submit. Please try again later."
+  },
+  "surveyBadEmail": {
+    "message": "That email address doesn't look right. Please check it."
+  },
+  "surveyEnded": {
+    "message": "This survey has ended. Thank you!"
+  },
+  "surveyMoveUp": {
+    "message": "Move up"
+  },
+  "surveyMoveDown": {
+    "message": "Move down"
+  },
+  "surveyClosedNotice": {
+    "message": "This survey won't show up again. If you change your mind, you can find it in the announcements."
   }
 }

@@ -111,9 +111,9 @@ describe("cloud actions follow what is configured", () => {
     let got;
     const ctx = { ...base, env: { ...env, GOOGLE_OAUTH: "{}" }, translate: async (...a) => { got = a; return { ja: { title: "やあ" } }; } };
     const off = localOnly(ctx);
-    assert.deepEqual(Object.keys(off).sort(), ["drawWinnersV2"]);
+    assert.deepEqual(Object.keys(off).sort(), ["drawWinnersV2", "translateSurvey"]);
     const s = await (await handleAdminApi(await req("session"), ctx)).json();
-    assert.deepEqual(Object.keys(s.result.localOnly).sort(), ["drawWinnersV2"]);
+    assert.deepEqual(Object.keys(s.result.localOnly).sort(), ["drawWinnersV2", "translateSurvey"]);
     const r = await (await handleAdminApi(await req("translate", ["en", ["ja"], { title: "Hi" }]), ctx)).json();
     assert.deepEqual(r, { ok: true, result: { translations: { ja: { title: "やあ" } } } });
     assert.deepEqual(got, ["en", ["ja"], { title: "Hi" }]);

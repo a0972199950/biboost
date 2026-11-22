@@ -13,7 +13,8 @@
         "optional": [
           "personallyIdentifyingInfo",
           "locationInfo",
-          "websiteActivity"
+          "websiteActivity",
+          "technicalAndInteraction"
         ]
       }
     },
@@ -37,9 +38,12 @@
   },
   "background": {
     "scripts": [
+      "common.js",
       "cdn-list.js",
       "features.js",
       "cloud.js",
+      "survey-core.js",
+      "survey.js",
       "background.js"
     ]
   },
@@ -87,6 +91,19 @@
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*.bilibili.com/*"
+      ],
+      "js": [
+        "survey-core.js",
+        "survey-ui.js",
+        "survey-page.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": false
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 **B 站 CDN 線路重排（Bilibili CDN Switcher）**
 
-最後更新 / Last updated：2026-11-10
+最後更新 / Last updated：2026-11-21
 
 ---
 
@@ -14,13 +14,43 @@
 
 ### 我們收集哪些資料
 
-**平常不收集、不上傳任何個人資料；只有你主動按下「問題回報」的「送出」時，才會把該次回報的內容與診斷資料傳給作者**（詳見下方「問題回報」）。唯一的統計是作者的伺服器彙總每天各國的公告下載次數（只到國家層級、不記 IP，見下方「公告」）。具體來說：
+**平常不收集、不上傳任何個人資料；只有你主動按下「問題回報」的「送出」時，才會把該次回報的內容與診斷資料傳給作者**（詳見下方「問題回報」）。統計都只到國家層級、不記 IP、不能識別個別使用者：每天各國的公告下載次數（見下方「公告」）、抽樣播放心跳與「遇到地區限定」計數（見下方「匿名使用統計」），以及問卷的使用情形（見下方「問卷」）。另外，你**自願**填寫的問卷會送給作者（見下方「問卷」）。具體來說：
 
 - 不會讀取、記錄或上傳你的帳號資訊或 Cookie 內容。唯一的例外是你自己使用進階設定的「切換新舊版頁面」時：擴充會在你的瀏覽器裡讀取並寫入 B 站的兩個站點偏好 Cookie（`user_site`、`default_sites`，只記錄你要看新版還是舊版首頁），這兩個值不會離開你的電腦，也不會讀取其他 Cookie
 - 不使用任何分析、追蹤或廣告 SDK（沒有 Google Analytics），不追蹤個別使用者
-- 除了你主動送出的問題回報之外，不會將任何資料傳送到作者或任何第三方的伺服器（擴充會從作者的伺服器**下載**公告、節點清單與功能設定，請求本身不附帶任何資料，見下方「公告」「節點清單與功能設定」）
+- 除了你主動送出的問題回報與問卷、下方「匿名使用統計」所述不含任何內容的計數請求、以及「問卷」所述的使用情形之外，不會將任何資料傳送到作者或任何第三方的伺服器（擴充會從作者的伺服器**下載**公告、節點清單、功能設定與問卷題目，請求本身不附帶任何資料，見下方「公告」「節點清單與功能設定」「問卷」）
 - 你在彈出視窗（popup）裡的設定（例如選擇的 CDN 節點、開關狀態）只會透過瀏覽器內建的 `chrome.storage.local` 存在**你自己的裝置上**，不會同步到雲端、不會離開你的電腦
 - 為了讓問題回報能附上「問題發生前發生了什麼」，擴充會在**你自己的瀏覽器裡**保留最近 10 分鐘的運作紀錄（切換節點、自動切換、分段請求失敗、下載速度等），存在 `chrome.storage.session`，關閉瀏覽器即清空；沒有送出回報就不會離開你的電腦
+
+### 匿名使用統計
+
+為了知道「同一時間有多少人在用」（影響伺服器頻寬與出口數量）和「有多少人遇到所在地區不能看的內容」，擴充會向作者的接收端（Cloudflare Workers，`https://api.biboost.app/v1/telemetry/*`）送兩種**不含任何內容**的請求：
+
+- **抽樣播放心跳**：隨機約 10% 的安裝（第一次要送時在本機抽籤決定，只存「有沒有被抽中」）才會送。影片正在播放時，每個整 5 分鐘的時刻送一次；每個分頁各自計算。
+- **遇到地區限定計數**：當 B 站回報某部影片「所在地區不可觀看」時送一次。
+
+這兩種請求都是單純的 POST，**沒有內容、不帶 Cookie**，接收端只依連線 IP 判斷**國家**，並累加「某個 5 分鐘的某個國家 +1」「某一天的某個國家 +1」。**不記錄 IP、不記錄 User-Agent、不記錄你看了哪部影片或影片類型**，也沒有任何能把計數連回你的識別碼。彙總後的數字長期保留；請求失敗時不會重試。Firefox 版需要你同意「技術與互動資料」權限才會送（Firefox 把匿名使用統計列為選用權限），同意可以在問卷最後一頁勾選，或隨時在附加元件管理頁的「權限與資料」撤銷。問卷的使用情形（見下方）也一樣。
+
+### 問卷
+
+擴充有時會在 B 站頁面上顯示簡短的問卷，問卷的題目與用途寫在問卷裡。**完全自願**，右上角 × 或 Esc 可隨時關閉。為了不打擾你：
+
+- 只在你沒在看影片時出現（剛打開首頁、或一部影片播完後）；播放中、暫停中、全螢幕時不會出現。
+- 關掉或填完的問卷不會再自動出現；關掉或填完一份之後，至少 3 天才會出現下一份；同一天出現過但你沒處理（例如直接換頁）就不會再出現。新安裝的前 3 天不會出現。
+- 有些問卷和特定情境有關（例如遇到所在地區不能看的影片），會在那個情境直接出現。
+- 想填的話也可以從公告裡的連結打開；填過的問卷也能從公告重新填寫，新的回答會取代你上次的回答。
+
+資料：
+
+- 問卷清單從作者的接收端下載（`https://api.biboost.app/v2/surveys`，單純的 GET，只附介面語言與擴充版本，不帶 Cookie）。IP 在中國大陸的使用者不會看到問卷。
+- 每答一題就把目前所有答案傳給接收端，所以中途關掉也會保留已答的部分。每份作答用一組隨機產生、只屬於這份問卷的 ID 識別，不是裝置識別碼，也不會用來追蹤你；重新填寫時沿用同一組 ID，覆蓋上次的回答。
+- 為了防止大量重複提交，接收端會隨作答保存經過加密雜湊的 IP（無法還原成原本的 IP），只用來判斷重複提交，不會顯示或匯出，也不會用在其他用途。
+- 隨答案一起自動附帶：由連線 IP 判斷的**國家**、瀏覽器種類、擴充版本、從哪個入口進來、介面語言、安裝天數的區間（少於 7、7–30、30–90、超過 90 天）、有沒有使用自訂節點（是／否）。
+- 使用情形：問卷出現、換頁（每一頁停留多久）、在第幾頁關掉、填完，以及每天各國「問卷出現了，或因為冷卻等原因沒出現」的次數。用來改善問卷、避免打擾；同樣只記國家、不記 IP。Firefox 版要同意「技術與互動資料」權限才會送。
+- 如果問卷請你留 Email：**填了 Email 的那一份作答就跟你的 Email 連在一起，不再是匿名的**；Email 只用在問卷裡寫的用途，不會提供給第三方。Email 都是選填，不填也能送出。Firefox 使用者填了 Email 時，Firefox 會依「個人識別資訊」權限詢問是否允許。
+- 作答與統計長期保存。
+- 本機（`chrome.storage.local`）只存每份問卷出現、關掉、填完的時間、進行中的作答，以及問卷清單的快取。
+- 瀏覽器的 `chrome.storage.sync` 存「填過哪些問卷」：每份問卷填完的時間與上述作答 ID（不含答案），登入同一個瀏覽器帳號、開啟同步的裝置會共用，所以在另一台電腦或重新安裝後，填過的問卷一樣不會自動出現；不支援同步時只存在本機。
 
 ### 使用的權限
 
@@ -95,13 +125,43 @@ This extension intercepts and rewrites the video-CDN network requests your brows
 
 ### What data we collect
 
-**No personal data is collected or uploaded in normal use. Data is sent to the author only when you explicitly press "Send" in "Report a problem"** (see "Problem reports" below). The only statistic is a daily per-country count of announcement downloads kept by the author's server (country level only, no IP — see "Announcements" below). Specifically:
+**No personal data is collected or uploaded in normal use. Data is sent to the author only when you explicitly press "Send" in "Report a problem"** (see "Problem reports" below). All statistics are at country level, with no IP and no way to identify an individual: a daily per-country count of announcement downloads (see "Announcements"), the sampled playback heartbeat and "region-locked" counts (see "Anonymous usage statistics"), and how surveys are used (see "Surveys"). In addition, surveys you choose to fill in are sent to the author (see "Surveys"). Specifically:
 
 - We do not read, log, or upload your account information or cookie contents. The only exception is when you use the "Old / new homepage" switch in Advanced settings: the extension then reads and writes two site-preference cookies of bilibili (`user_site` and `default_sites`, which only record whether you want the old or the new homepage) inside your browser. These two values never leave your computer, and no other cookie is read
 - No analytics, tracking, or advertising SDKs are used (no Google Analytics), and individual users are never tracked
-- Apart from problem reports you choose to send, no data is ever sent to the extension author or any third party (the extension **downloads** announcements, the node list and feature settings from the author's server, and the requests themselves carry no data — see "Announcements" and "Node list and feature settings" below)
+- Apart from problem reports and survey answers you choose to send, the content-free count requests described under "Anonymous usage statistics", and the survey usage described under "Surveys", no data is ever sent to the extension author or any third party (the extension **downloads** announcements, the node list, feature settings and survey questions from the author's server, and the requests themselves carry no data — see "Announcements", "Node list and feature settings" and "Surveys" below)
 - Your settings in the popup (e.g., selected CDN node, toggle states) are stored only via the browser's built-in `chrome.storage.local`, on **your own device**. They are never synced to any cloud service and never leave your computer
 - So that a problem report can show what happened before the problem, the extension keeps the last 10 minutes of its own activity (node switches, auto-switches, failed segment requests, download speed, etc.) **inside your browser** in `chrome.storage.session`, which is cleared when the browser closes. It never leaves your computer unless you send a report
+
+### Anonymous usage statistics
+
+To know roughly how many people use the extension at the same time (this affects server bandwidth and capacity) and how many people run into content that is not available in their region, the extension sends two kinds of requests with **no content at all** to the author's server (Cloudflare Workers, `https://api.biboost.app/v1/telemetry/*`):
+
+- **Sampled playback heartbeat**: only about 10% of installs send it (decided by a random draw on your device the first time one would be sent; only "picked or not" is stored). While a video is playing, one request is sent at each whole 5-minute mark; each tab counts separately.
+- **Region-locked count**: one request when bilibili reports that a video is "not available in your region".
+
+Both are plain POST requests with **no body and no cookies**. The server only works out your **country** from the connection IP and adds one to "this 5-minute slot, this country" or "this day, this country". It does **not** store your IP or User-Agent, which videos you watch or what type they are, and there is no identifier that could link a count back to you. The aggregated numbers are kept long-term; failed requests are not retried. In Firefox they are only sent if you grant the "technical and interaction data" permission (Firefox treats anonymous usage statistics as an optional permission); you can grant it with the checkbox on the last page of a survey and revoke it at any time under "Permissions and data" on the add-on management page. The same applies to survey usage (see below).
+
+### Surveys
+
+The extension sometimes shows a short survey on bilibili pages; each survey says what it is about and what it is for. Surveys are **entirely voluntary** — close one any time with the × or Esc. To avoid getting in your way:
+
+- A survey only appears when you are not watching a video (when you open the home page, or after a video finishes) — never while a video is playing, paused or in full screen.
+- A survey you closed or finished does not appear again automatically; after you close or finish one, the next one waits at least 3 days; if one appeared today and you left it without closing or finishing it, no other survey appears that day. Nothing appears in the first 3 days after installing.
+- Some surveys relate to a specific situation (for example, a video that is not available in your region) and may appear right then.
+- You can also open a survey from a link in an announcement; a survey you already finished can be filled in again from there, and the new answers replace your previous ones.
+
+Data:
+
+- The list of surveys is downloaded from the author's server (`https://api.biboost.app/v2/surveys`, a plain GET carrying only your UI language and the extension version, with no cookies). Users whose IP is in mainland China do not see surveys.
+- After each question, your answers so far are sent to the server, so a partly finished survey is kept. Each response is identified by a random ID generated for that survey only — not a device identifier and not used to track you; filling a survey in again reuses the same ID and replaces the previous answers.
+- To prevent mass duplicate submissions, the server keeps a cryptographically hashed form of your IP with each response (it cannot be turned back into the original IP). It is used only to detect duplicate submissions, is never displayed or exported, and is not used for anything else.
+- Sent with the answers automatically: your **country** (worked out from the connection IP), browser type, extension version, which entry point opened the survey, UI language, a bracket for how long it has been installed (under 7, 7–30, 30–90, over 90 days), and whether you use custom nodes (yes/no).
+- Usage: when a survey appears, page changes (how long each page was open), the page where it was closed, completion, and a daily per-country count of whether a survey appeared or was held back (for example by the cooldown). This is used to improve surveys and avoid getting in your way; again only the country is recorded, never the IP. In Firefox it is only sent if you grant the "technical and interaction data" permission.
+- If a survey asks for your email: **a response that includes your email is linked to it and is no longer anonymous**; the email is used only for the purpose stated in the survey and is never given to third parties. Email fields are always optional. In Firefox, entering an email makes Firefox ask whether to allow the "personally identifiable information" permission.
+- Responses and statistics are kept long-term.
+- Locally (`chrome.storage.local`), only when each survey appeared, was closed or was finished, any answers in progress, and a cache of the survey list are kept.
+- The browser's `chrome.storage.sync` keeps which surveys you have finished: the time each was finished and the response ID above (no answers). It is shared by devices signed in to the same browser account with sync on, so a survey you finished does not appear automatically on another computer or after reinstalling; if sync is unavailable it is stored locally only.
 
 ### Permissions used
 

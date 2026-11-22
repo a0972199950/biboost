@@ -134,3 +134,46 @@ export async function translateWithGemini({ apiKey, model }, from, targets, fiel
   try { reply = JSON.parse(text); } catch { throw new TranslateError("Gemini 回傳的翻譯不是合法的 JSON"); }
   return checkReply(reply, p.targets, p.src);
 }
+
+// ── 問卷（後台「問卷」頁的翻譯；本機 Claude Code）──
+// 語言代碼用擴充 _locales 的寫法（zh_TW…，含粵語 zh_HK）。fields：{ 欄位 key: 繁中文字 }（扁平；key 是畫面自己編的路徑）
+export const SURVEY_LANG_NAMES = {
+  zh_TW: "Traditional Chinese (Taiwan)", zh_HK: "Cantonese written in Traditional Chinese (Hong Kong colloquial, e.g. 嘅、咗、唔、睇)",
+  zh_CN: "Simplified Chinese (Mainland China)", en: "English", ja: "Japanese", ko: "Korean",
+};
+function buildSurveyPrompt(from, targets, fields) {
+  return `You translate a short in-app survey for a browser extension (BiBoost / 嗶速) that makes bilibili videos load faster for viewers outside mainland China.
+
+Translate every field below from ${SURVEY_LANG_NAMES[from]} into each of these languages: ${targets.map((l) => `${SURVEY_LANG_NAMES[l]} ("${l}")`).join(", ")}.
+
+Rules:
+- Fields are survey titles, questions, answer options, scale labels and units. Keep each one about as long as the source; answer options stay short.
+- Keep "(選填)"-style optional markers in the target language's natural form, e.g. "(Optional)", "（任意）", "(선택)".
+- Keep product names (BiBoost, bilibili, B 站 → bilibili in non-Chinese languages), numbers and units unchanged.
+- Simplified Chinese uses Mainland China wording; Traditional Chinese uses Taiwan wording; Cantonese uses Hong Kong colloquial wording.
+- Use neutral wording; do not add promises or details that are not in the source.
+
+Reply with only a JSON object and nothing else, keyed by the language codes above, each holding exactly the same keys as the source:
+{"<language code>": {${Object.keys(fields).slice(0, 3).map((k) => `"${k}": "..."`).join(", ")}${Object.keys(fields).length > 3 ? ", ..." : ""}}}
+
+Source (${SURVEY_LANG_NAMES[from]}):
+${JSON.stringify(fields, null, 2)}`;
+}
+export async function translateSurveyFields(from, targets, fields) {
+  if (!SURVEY_LANG_NAMES[from]) throw new TranslateError(`不認得的語言：${from}`);
+  const tg = (Array.isArray(targets) ? targets : []).filter((l) => l !== from && SURVEY_LANG_NAMES[l]);
+  const src = Object.fromEntries(Object.entries(fields || {}).filter(([, v]) => typeof v === "string" && v.trim()));
+  if (!tg.length || !Object.keys(src).length) return {};
+  const reply = parseReply(await runClaude(buildSurveyPrompt(from, tg, src)));
+  const out = {};
+  for (const l of tg) {
+    const t = reply?.[l];
+    if (!t || typeof t !== "object") throw new TranslateError(`翻譯結果少了 ${l}`);
+    out[l] = {};
+    for (const k of Object.keys(src)) {
+      if (typeof t[k] !== "string" || !t[k].trim()) throw new TranslateError(`翻譯結果的 ${l} 少了 ${k}`);
+      out[l][k] = t[k].trim();
+    }
+  }
+  return out;
+}

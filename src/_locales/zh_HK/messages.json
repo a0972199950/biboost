@@ -413,6 +413,9 @@
   "changelogTitle": {
     "message": "版本更新紀錄"
   },
+  "versionDevBuild": {
+    "message": "開發版"
+  },
   "changelogCurrent": {
     "message": "目前版本"
   },
@@ -661,6 +664,9 @@
   },
   "announceGone": {
     "message": "呢則公告已經完結或者被移除。"
+  },
+  "lotteryEnded": {
+    "message": "呢個抽獎活動已經完咗，多謝你嘅參與。"
   },
   "lotteryNote": {
     "message": "備註"
@@ -1012,5 +1018,44 @@
   },
   "welcomeSkipStart": {
     "message": "跳過，開始使用"
+  },
+  "surveyNext": {
+    "message": "下一題"
+  },
+  "surveyPrev": {
+    "message": "上一題"
+  },
+  "surveySkipSubmit": {
+    "message": "略過並送出"
+  },
+  "surveySubmit": {
+    "message": "送出"
+  },
+  "surveyThanks": {
+    "message": "多謝"
+  },
+  "surveyClose": {
+    "message": "關閉"
+  },
+  "surveyTelemetryConsent": {
+    "message": "允許傳送匿名使用統計（只有國家）"
+  },
+  "surveyFail": {
+    "message": "送出失敗，請稍後再試"
+  },
+  "surveyBadEmail": {
+    "message": "Email 格式唔啱，請再check下"
+  },
+  "surveyEnded": {
+    "message": "呢份問卷已經完咗，多謝"
+  },
+  "surveyMoveUp": {
+    "message": "移上"
+  },
+  "surveyMoveDown": {
+    "message": "移落"
+  },
+  "surveyClosedNotice": {
+    "message": "呢份問卷唔會再出現打擾你。如果你改變主意，可以喺公告度搵返問卷"
   }
 }
