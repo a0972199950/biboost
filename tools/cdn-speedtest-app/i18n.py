@@ -1,30 +1,31 @@
 # GUI 多語系字串：zh-TW / zh-CN / en / ja / ko。隱私聲明固定英文（PRIVACY_EN）。
 LANGS = [("zh-TW", "繁體中文"), ("zh-CN", "简体中文"), ("en", "English"), ("ja", "日本語"), ("ko", "한국어")]
 
-EXT_NAME = "Overseas Video Speedup for bilibili"
+EXT_NAME = "BiBoost - Fix Slow bilibili Videos & Live"
 # 擴充在各語言商店上的名稱（src/_locales 的 extName）；擴充沒有的語言用英文
-EXT_NAMES = {"zh-TW": "海外影片加速 for bilibili", "zh-CN": "海外视频加速 for bilibili"}
+EXT_NAMES = {"zh-TW": "嗶速 - 解決B站卡頓,影片直播加速載入 for bilibili", "zh-CN": "哔速 - 解决B站卡顿,视频直播加速加载 for bilibili",
+             "ja": "BiBoost - bilibili(ビリビリ)動画・配信 重い・止まる問題解消", "ko": "BiBoost - bilibili(빌리빌리) 영상·라이브 끊김 해결"}
 
 
 def ext_name(lang):
     return EXT_NAMES.get(lang, EXT_NAME)
 
 
-PRIVACY_EN = """Privacy Notice — Bilibili CDN Speed Test
+PRIVACY_EN = """Privacy Notice — BiBoost - Server Speed Test
 
-This tool is made by the developer of the browser extension "{ext}". It measures how fast Bilibili's video CDN servers are from your network, so the extension can recommend better servers for users in your country.
+This tool is made by the developer of the browser extension "{ext}". It measures how fast Bilibili's video servers are from your network, so the extension can recommend better servers for users in your country.
 
 WHAT IS COLLECTED (only if you click "Send" at the end)
 • Your public IP address, and the country, city and ISP/network name derived from it (via ipinfo.io).
 • Network type: wired / Wi-Fi / possibly mobile, plus Wi-Fi standard, signal strength and link rate. Your Wi-Fi name (SSID) is NOT collected.
 • General internet speed (download speed and latency) measured against nearby Speedtest by Ookla (speedtest.net) servers.
-• Speed test results for Bilibili CDN servers (speed, response time, errors), the test videos used, and DNS resolver information.
+• Speed test results for Bilibili video servers (speed, response time, errors), the test videos used, and DNS resolver information.
 • The detailed log of the test (the same text as the "Details log" window: each step, how long it took, and any errors), used to diagnose problems.
 • App version, the language you chose, and the time of the test.
 • Your email address — only if you choose to join the prize draw.
 
 USAGE LOG (sent automatically once you agree to this notice, even if you don't click "Send")
-• When you continue past this page (noting whether it's the first time on this computer), and when you start a test, finish a test, send the report, or add nodes to the extension's custom node list.
+• When you continue past this page (noting whether it's the first time on this computer), and when you start a test, finish a test, send the report, or add servers to the extension's custom server list.
 • Each entry contains only: the event type, your country (derived from your IP), the time, the app version and language, a random ID generated for this computer (not linked to your identity), and your email address only if you entered it for the prize draw.
 
 WHAT IS NOT COLLECTED
@@ -32,7 +33,7 @@ WHAT IS NOT COLLECTED
 • Your files, browsing history, or any other personal data.
 
 HOW IT IS USED
-• Test results are used only to develop and improve the extension (choosing and ranking CDN servers per country). After sending, the 10 recommended servers are added to the extension's custom node list in your browser (on this computer only).
+• Test results are used only to develop and improve the extension (choosing and ranking video servers per country). After sending, the 10 recommended servers are added to the extension's custom server list in your browser (on this computer only).
 • The usage log is used only to count how many people use the app and where, so the developer can improve it.
 • Your email (if provided) is used only to send you a confirmation and, after the results are verified, the gift card. It is never used for marketing and never shared.
 • Data is sent to the developer's Google account (Google Apps Script, Gmail, Google Drive / Sheets). It is not sold or shared with third parties.
@@ -47,8 +48,8 @@ Extension: {ext_url}
 """
 
 S = {
-    "title": {"zh-TW": "Bilibili CDN 測速", "zh-CN": "Bilibili CDN 测速", "en": "Bilibili CDN Speed Test",
-              "ja": "Bilibili CDN 速度テスト", "ko": "Bilibili CDN 속도 테스트"},
+    "title": {"zh-TW": "嗶速 - 全伺服器測速工具", "zh-CN": "哔速 - 全服务器测速工具", "en": "BiBoost - Server Speed Test",
+              "ja": "BiBoost - 全サーバー速度テストツール", "ko": "BiBoost - 전체 서버 속도 테스트 도구"},
     "language": {"zh-TW": "語言", "zh-CN": "语言", "en": "Language", "ja": "言語", "ko": "언어"},
     "privacy": {"zh-TW": "隱私聲明", "zh-CN": "隐私声明", "en": "Privacy notice",
                 "ja": "プライバシーに関する通知", "ko": "개인정보 처리 안내"},

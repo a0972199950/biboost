@@ -47,7 +47,7 @@ https://www.bilibili.com/#cdnsw-import=1.<host>,<host>,…
 
 同一份程式碼，Mac 上的差異：
 
-- **Safari**：擴充包在 App「BiBoost - Video Speedup」（bundle ID `com.johnh.bilibili-cdn-switcher`）裡。有裝這個 App 就算有裝擴充，
+- **Safari**：擴充包在 App「BiBoost - Fix Video/Live Lag」（.app 檔名仍是 BiBoost - Video Speedup.app）（bundle ID `com.johnh.bilibili-cdn-switcher`）裡。有裝這個 App 就算有裝擴充，
   版本用 App 的 `CFBundleShortVersionString`；用 `open -b com.apple.Safari <匯入網址>` 開啟。Safari 有沒有啟用擴充、
   有沒有允許 bilibili.com，外部程式讀不到（設定檔受系統保護），所以感謝頁一律提示怎麼確認，並附「在 Safari 重新匯入」按鈕。
   有裝 BiBoost 時，發送頁預設勾 Safari；商店連結是 Mac App Store。

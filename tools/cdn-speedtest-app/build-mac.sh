@@ -67,7 +67,7 @@ rm -rf "$root/release/CDNSpeedTest"   # onedir 的中間產物，.app 裡已經�
 plist="$app/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$ver" "$plist"
 plutil -replace CFBundleVersion -string "$ver" "$plist"
-plutil -replace CFBundleDisplayName -string "CDN SpeedTest" "$plist"
+plutil -replace CFBundleDisplayName -string "BiBoost - Server Speed Test" "$plist"
 plutil -replace LSMinimumSystemVersion -string "11.0" "$plist"
 plutil -replace NSHighResolutionCapable -bool true "$plist"
 if [ -n "${CDNST_SIGN_IDENTITY:-}" ]; then

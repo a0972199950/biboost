@@ -23,7 +23,7 @@ const FOLDER_NAME = 'CDN SpeedTest Reports';
 const SHEET_NAME = 'CDN SpeedTest Log';
 const MAX_BYTES = 3 * 1024 * 1024;
 const DAILY_CONFIRM_LIMIT = 30;  // 每日最多寄幾封確認信（防止 token 外流後被拿來亂寄信）
-const SENDER_NAME = 'Overseas Video Speedup for bilibili';
+const SENDER_NAME = 'BiBoost';
 
 const HEADER = ['收到時間', '報告編號', '測試模式', 'Email', '無償', '國家', '城市', 'ISP', 'IP', '網路類型',
                 '下載 Mbps', '上傳 Mbps', '延遲 ms', 'B站頻寬上限 Mbps', '建議預設節點', '已登入', '語言', 'App 版本',
