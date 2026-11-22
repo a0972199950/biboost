@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title></title>
+  <style>
+    /* 問卷視窗：popup 跑馬燈點到「問卷公告」時由 background 開的獨立視窗（同公告視窗）。畫面是 survey-ui.js（跟 B 站頁面上的問卷同一份），
+       在這裡填滿視窗；問卷收掉（送出成功、關掉後的提示、已經結束）時視窗跟著關。只有淺色（同問卷畫面）。 */
+    html, body { margin: 0; min-height: 100vh; background: #f4f5f7; color-scheme: light; }
+  </style>
+</head>
+
+<body>
+  <script src="i18n.js"></script>
+  <script src="common.js"></script>
+  <script src="survey-core.js"></script>
+  <script src="survey-ui.js"></script>
+  <script src="survey-window.js"></script>
+</body>
+
+</html>

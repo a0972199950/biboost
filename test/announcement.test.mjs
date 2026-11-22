@@ -70,6 +70,16 @@ describe("announcement window", () => {
     assert.ok(env.document.querySelector("#body .empty"));
     env.close();
   });
+  test("lottery announcement with its own period whose lottery ended → 'ended' (not 'gone')", async () => {
+    const own = { id: 5, type: "lottery", lottery: ITEMS[2].lottery, startsAt: now - 5e6, endsAt: null, title: { en: "Mine" } };
+    const env = await boot(5, { feed: { v: 2, at: now, items: [own] } });
+    const d = env.document;
+    assert.equal(d.querySelector("#body .empty"), null);
+    assert.equal(d.querySelector("#body p.ended").textContent, env.chrome.i18n.getMessage("lotteryEnded"));
+    assert.ok(d.querySelector("#body h2").textContent.length > 0, "shows which lottery");
+    assert.equal(d.getElementById("ctaBtn").style.display, "none", "no speed-test CTA for an ended lottery");
+    env.close();
+  });
   test("no / invalid id → gone", async () => {
     const env = await boot("abc");
     assert.equal(env.internals("announcement").ID, null);

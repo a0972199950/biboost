@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { LotteryError, ROOT, textTables } from "./lotteries.mjs";
+import { LotteryError, ROOT, currentDb, textTables } from "./lotteries.mjs";
 import { getSetting, setSetting } from "./settings.mjs";
 // 擴充名稱（寫信用）：打包進來，雲端也讀得到
 import enMsg from "../../src/_locales/en/messages.json" with { type: "json" };
@@ -238,15 +238,23 @@ export const cjkPad = (s) => (/^[\x21-\x7e]/.test(s) ? " " : "") + s + (/[\x21-\
 // RFC 2047：非 ASCII 的標頭（主旨）
 const mimeWord = (s) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${Buffer.from(s, "utf8").toString("base64")}?=`);
 
-// 用使用者自己的 Gmail 寄純文字信；toSelf：測試用，改寄給使用者自己、主旨加「[測試]」。回傳 { to, threadId }
+// 測試環境（withDb("staging")）的抽獎與中獎人：資料是測試的，但參加者來自真的測速報告試算表（email 是真人的），
+// 所以寄信一律改寄給使用者自己、主旨加「[測試環境]」，不管畫面有沒有勾「寄給我自己」。後台的草稿帶 redirectToSelf 讓畫面先說清楚
+export const mailRedirectedToSelf = () => currentDb() === "staging";
+
+// 用使用者自己的 Gmail 寄純文字信；toSelf：測試用，改寄給使用者自己、主旨加「[測試]」。回傳 { to, threadId, redirected }
+// （redirected：測試環境，信改寄給自己了；呼叫端照樣記成已寄信，那是測試環境的資料）
 export async function sendGmail({ to, subject, body, toSelf = false }) {
   if (!String(subject || "").trim() || !String(body || "").trim()) throw new LotteryError("主旨和內文都要填");
+  const redirected = mailRedirectedToSelf();
   const token = await googleToken();
   subject = subject.trim();
-  if (toSelf) {
+  if (redirected) subject = `[測試環境] ${subject}`;
+  if (toSelf || redirected) {
     // 雲端的憑證只有 gmail.send，讀不了 profile：用憑證裡記的 email
     to = cached.email || (await gget(token, "https://gmail.googleapis.com/gmail/v1/users/me/profile")).emailAddress;
-    subject = `[測試] ${subject}`;
+    if (!to) throw new LotteryError("找不到你自己的 Gmail 地址，沒有寄出");
+    if (toSelf) subject = `[測試] ${subject}`;
   }
   const raw = [
     `To: ${to}`, `Subject: ${mimeWord(subject)}`, "MIME-Version: 1.0",
@@ -259,5 +267,5 @@ export async function sendGmail({ to, subject, body, toSelf = false }) {
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new LotteryError(`Gmail 寄信失敗（${res.status}）：${j.error?.message || ""}`);
-  return { to, threadId: j.threadId };
+  return { to, threadId: j.threadId, redirected };
 }

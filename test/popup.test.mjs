@@ -473,6 +473,43 @@ describe("announcement bar filtering", () => {
     assert.equal(out[1].label, "P");
     assert.equal(out[1].text, "Global");
   });
+  // 公告改版（2026-11-21）：後台手動新增的公告有自己的期間、前綴、標題、國家；問卷公告
+  test("announcements with their own period: own prefix/title/countries; a finished lottery still shows", () => {
+    const own = { startsAt: now - 1000, endsAt: null };
+    a.setState({ items: [
+      { ...lottery({ endsAt: now - 1 }), id: 11, ...own, prefix: { en: "Draw:" }, title: { en: "Mine" }, countries: ["SG"] },
+      { ...lottery(), id: 12, ...own, prefix: null, title: null, countries: null },
+      { id: 13, type: "survey", surveyId: "sample-survey", ...own, prefix: { en: "Survey:" }, title: { en: "Tell us" }, countries: null },
+      { id: 14, type: "survey", surveyId: "x", ...own, title: { en: "TW only" }, countries: ["TW"] },
+      { id: 15, type: "html", title: { en: "Later" }, startsAt: now + 1e6, endsAt: null },
+      { id: 16, type: "html", title: { en: "Over" }, startsAt: null, endsAt: now - 1 },
+      { id: 17, type: "survey", ...own, title: { en: "no id" } },
+      { id: 18, type: "weird", title: { en: "?" } },
+    ], country: "SG", dismissed: {}, showAll: false });
+    const out = plain(a.visibleAnnouncements());
+    assert.deepEqual(out.map((x) => x.id), [11, 12, 13]);
+    assert.deepEqual([out[0].label, out[0].text], ["Draw:", "Mine"], "own prefix/title, even after the lottery ended");
+    assert.equal(out[1].label, "NT$200 draw:", "no own title → composed from the lottery data");
+    assert.deepEqual([out[2].label, out[2].text, out[2].survey], ["Survey:", "Tell us", "sample-survey"]);
+  });
+  test("clicking a survey announcement opens the survey window; others open the announcement window", async () => {
+    a.setState({ items: [{ id: 13, type: "survey", surveyId: "sample-survey", startsAt: now - 1, endsAt: null, title: { en: "Tell us" }, countries: null }], country: "SG", dismissed: {}, showAll: false });
+    a.render();
+    let closes = 0;
+    const realClose = env.window.close;
+    env.window.close = () => { closes++; }; // popup 開完視窗就關自己；這裡不讓它真的關（後面還要點），測完還原
+    const before = env.runtimeMessages.length;
+    env.document.querySelector("#lotteryStack .lotteryCard.front .lotteryMain").click();
+    const msgs = plain(env.runtimeMessages.slice(before));
+    assert.deepEqual(msgs, [{ type: "CDN_SWITCHER_OPEN_SURVEY_WINDOW", surveyId: "sample-survey" }]);
+    a.setState({ items: [{ id: 2, type: "html", title: { en: "Hello" }, countries: null }] });
+    a.render();
+    const mid = env.runtimeMessages.length;
+    env.document.querySelector("#lotteryStack .lotteryCard.front .lotteryMain").click();
+    assert.deepEqual(plain(env.runtimeMessages.slice(mid)), [{ type: "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW", id: 2 }]);
+    env.window.close = realClose;
+    assert.equal(closes, 2);
+  });
   test("storage detectedCountry change re-filters", () => {
     ids({ country: "" });
     a.render();

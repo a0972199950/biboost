@@ -14,23 +14,24 @@
 //   { title: { 語言: 文字 }, country: "HK", start: "2026-10-01", end: "2026-10-30", currency: "HKD",
 //     giftCards: [{ name, amount }, ...], note: { 語言: "<p>…</p>" }（可空）, winners: 3, isps: [...], drawDays: 7 }
 import { randomInt } from "node:crypto";
-import { LANGS, LotteryError, ensureTable as ensureBaseTables, previewFromApi, sql } from "./lotteries.mjs";
+import { LANGS, LotteryError, currentDb, ensureTable as ensureBaseTables, previewFromApi, sql } from "./lotteries.mjs";
 import {
-  archivedRids, cjkPad, extName, fillText, ispLabel, ispMatcher, loadSnapshot, mailLang, money, pickText, sendGmail, sheetEntries,
+  archivedRids, cjkPad, extName, fillText, ispLabel, ispMatcher, loadSnapshot, mailLang, mailRedirectedToSelf, money, pickText, sendGmail, sheetEntries,
 } from "./speedtest-reports.mjs";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const NOTE_MAX = 20000;
 
 // 建表在 lotteries.mjs；v2 之後才加的欄位放這裡
-let v2Ready = null;
+const v2Ready = {}; // 每個資料庫各一次（公告頁可以切到測試環境列抽獎）
 function ensureTable() {
-  v2Ready ||= (async () => {
+  const db = currentDb();
+  v2Ready[db] ||= (async () => {
     await ensureBaseTables();
     // 抽獎結果：{ at, winners: [{ email, rid, isp, receivedAt }], pool, entries, excluded: { 原因: 筆數 }, ispMap }
     await sql("alter table lotteries_v2 add column if not exists draw jsonb");
-  })().catch((e) => { v2Ready = null; throw e; });
-  return v2Ready;
+  })().catch((e) => { v2Ready[db] = null; throw e; });
+  return v2Ready[db];
 }
 
 // { 語言: 文字 } 只留認得的語言、去掉空白；全空回 null
@@ -93,16 +94,13 @@ function params(m) {
           m.isps.length ? m.isps : null, m.winners, m.drawDays, m.start, m.end];
 }
 
-// 新增，回傳 id；同一句 SQL 建抽獎公告，不會只建一半
+// 新增，回傳 id。不會自動建公告（2026-11-21 起）：要公告就到後台「公告」新增一則抽獎公告，選這個抽獎
 export async function addLotteryV2(meta) {
   const m = validateMetaV2(meta);
   await ensureTable();
   const rows = await sql(
-    `with v as (
-       insert into lotteries_v2 (title, country, currency, gift_cards, note, isps, winners, draw_days, starts_at, ends_at)
-       values ($1::jsonb, $2, $3, $4::jsonb, $5::jsonb, $6::text[], $7, $8, ${START("$9")}, ${END("$10")}) returning id),
-     a as (insert into announcements (type, lottery_v2_id) select 'lottery', id from v)
-     select id from v`,
+    `insert into lotteries_v2 (title, country, currency, gift_cards, note, isps, winners, draw_days, starts_at, ends_at)
+     values ($1::jsonb, $2, $3, $4::jsonb, $5::jsonb, $6::text[], $7, $8, ${START("$9")}, ${END("$10")}) returning id`,
     params(m),
   );
   return rows[0].id;
@@ -268,7 +266,8 @@ const MAIL = {
     one: "경품은 '{card}'입니다. 이 메일에 답장으로 확인해 주세요.", card: "{name} ({amount})",
   },
 };
-// 中獎人的信件草稿：{ to, lang, subject, body }；lang 省略＝依抽獎國家
+// 中獎人的信件草稿：{ to, lang, subject, body, redirectToSelf }；lang 省略＝依抽獎國家。
+// redirectToSelf：測試環境，寄出時一律改寄給使用者自己（speedtest-reports.mjs 的 sendGmail），畫面要先說
 export async function winnerMailDraft(id, rid, { lang } = {}) {
   await loadSnapshot();   // 雲端：業者名稱對照用本機同步的快照
   const l = await getLotteryV2(id);
@@ -280,11 +279,12 @@ export async function winnerMailDraft(id, rid, { lang } = {}) {
   const prize = cards.length > 1 ? `${t.choose}\n${cards.map((c, i) => `${i + 1}. ${c}`).join("\n")}` : fillText(t.one, { card: cards[0] });
   const isp = ispLabel(l.country, w.isp, l.isps);
   const v = { title: pickText(l.title, lang), ext: extName(lang), rid, prize, isp, ispCjk: cjkPad(isp) };
-  return { to: w.email, lang, subject: fillText(t.subject, v), body: fillText(t.body, v) };
+  return { to: w.email, lang, subject: fillText(t.subject, v), body: fillText(t.body, v), redirectToSelf: mailRedirectedToSelf() };
 }
 
 // 用使用者自己的 Gmail 寄給中獎人（純文字），記下寄出時間；回傳更新後的 draw。
-// toSelf：測試用，改寄給使用者自己（主旨加「[測試]」），不記成已寄信
+// toSelf：測試用，改寄給使用者自己（主旨加「[測試]」），不記成已寄信。
+// 測試環境：sendGmail 一律改寄給使用者自己（主旨加「[測試環境]」），照樣記成已寄信（測試環境的資料，才測得到寄過信之後的畫面）
 export async function sendWinnerMail(id, rid, { subject, body, toSelf = false }) {
   const l = await getLotteryV2(id);
   const draw = l?.draw;

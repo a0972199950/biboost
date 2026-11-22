@@ -12,6 +12,8 @@
  *     有新版本就替用國家清單的人更新卡頓時要測的節點（autoSpeedHosts）；使用者正在用的節點不動
  *  7) 雲端備份（cloud.js）的自動同步；全新安裝時的歡迎頁（一律開；雲端備份那塊由歡迎頁自己看功能開關）
  *  8) 新舊版首頁（實驗性）：改 B 站的兩個站點偏好 cookie，見下方 HV_*
+ *  9) 問卷與匿名統計（survey.js）：頁面端（survey-page.js）要求的心跳／地區限定計數／問卷的開始與送出；公告裡的問卷連結；
+ *     測試用的 console 指令 bbSurvey()（在 Service Worker 的 console 叫出問卷）
  *
  * 1) 1.5.x 以前不會記錄 installedVersion，popup 沒辦法分辨「舊使用者剛更新」與「全新安裝」。
  * 瀏覽器在更新時會把 previousVersion 帶進 onInstalled，不用舊版配合，這裡把它補寫成 installedVersion，
@@ -19,7 +21,7 @@
  * 全新安裝（reason = install）不處理，維持「新使用者不彈」。
  */
 // Chrome／Safari 的 background 是 service worker，要自己載入；Firefox 在 manifest 的 background.scripts 裡已經先載入
-if (typeof BBCdnList === "undefined" && typeof importScripts === "function") importScripts("cdn-list.js", "features.js", "cloud.js");
+if (typeof BBCdnList === "undefined" && typeof importScripts === "function") importScripts("common.js", "cdn-list.js", "features.js", "cloud.js", "survey-core.js", "survey.js");
 
 // 7) 雲端備份（cloud.js）：自動同步在這裡跑（監看設定變動、上傳到雲端）
 BBCloud.attachBackground();
@@ -344,6 +346,13 @@ function openReportWindow(tabId) {
 function openAnnouncementWindow(id) {
   openExtWindow(chrome.runtime.getURL("announcement.html") + (/^\d+$/.test(String(id)) ? "?id=" + id : ""), 560, 680);
 }
+// 問卷視窗（survey-window.html）：popup 跑馬燈點到「問卷公告」時開，?id= 是公告連結的問卷；大小配合問卷卡片（約 480px 寬）
+var SURVEY_WINDOW_ID_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
+function openSurveyWindow(surveyId) {
+  if (!SURVEY_WINDOW_ID_RE.test(surveyId || "")) return;
+  // 高度：7 個選項＋兩行題目的頁面不用在卡片裡捲動；更長的題目照樣可以捲
+  openExtWindow(chrome.runtime.getURL("survey-window.html") + "?id=" + surveyId, 500, 880);
+}
 function openExtWindow(url, width, height) {
   try {
     if (chrome.windows && chrome.windows.create) {
@@ -354,6 +363,46 @@ function openExtWindow(url, width, height) {
     }
   } catch (e) {}
   chrome.tabs.create({ url: url });
+}
+
+// 8) 公告裡的問卷連結（#bb-survey=<問卷 id>，沒有 id＝任一份還沒填完的）與 console 的 bbSurvey()：
+//    目前（最近用過的一般視窗的）分頁是 B 站就請它打開問卷，不是就開新分頁到 B 站首頁帶這個 hash。entry：announcement｜console
+var SURVEY_URL = "https://www.bilibili.com/#bb-survey";
+var BILIBILI_RE = /^https?:\/\/([a-z0-9-]+\.)*bilibili\.com(\/|$)/i;
+var SURVEY_ID_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
+function openSurveyFromAnnouncement(surveyId, entry) {
+  var id = SURVEY_ID_RE.test(surveyId || "") ? surveyId : "";
+  var how = entry === "console" ? "console" : "announcement";
+  function fallback() { chrome.tabs.create({ url: SURVEY_URL + (id ? "=" + id : "") + (how === "console" ? "&console" : "") }); }
+  try {
+    chrome.windows.getLastFocused({ windowTypes: ["normal"] }, function (w) {
+      void chrome.runtime.lastError;
+      if (!w) return fallback();
+      chrome.tabs.query({ active: true, windowId: w.id }, function (tabs) {
+        void chrome.runtime.lastError;
+        var tab = tabs && tabs[0];
+        if (!tab || !BILIBILI_RE.test(tab.url || "")) return fallback();
+        chrome.tabs.sendMessage(tab.id, { type: "BB_SURVEY_SHOW", surveyId: id, entry: how }, { frameId: 0 }, function (r) {
+          if (chrome.runtime.lastError || !r) return fallback(); // 頁面還沒載入擴充的程式（擴充剛更新、頁面沒重開）
+          chrome.windows.update(w.id, { focused: true }, function () { void chrome.runtime.lastError; });
+          chrome.tabs.update(tab.id, { active: true }, function () { void chrome.runtime.lastError; });
+        });
+      });
+    });
+  } catch (e) { fallback(); }
+}
+
+// 測試用：在擴充的 Service Worker console 輸入 bbSurvey() 叫出問卷，不看任何門檻（冷卻、歡迎視窗、關掉過）；
+// 目前分頁是 B 站就在那裡開，不是就開新分頁到 B 站首頁。每次都丟掉清單快取、重拿後台最新的問卷（平常快取 6 小時）。
+//   bbSurvey()                         任一份還沒填完的
+//   bbSurvey("<問卷 id>")              指定問卷
+//   bbSurvey({ reset: true, id })       先清掉本機的問卷紀錄（已填、關掉過、冷卻、草稿）再打開；伺服器上已經送出的作答不會刪
+function bbSurvey(arg) {
+  var opts = typeof arg === "string" ? { id: arg } : (arg || {});
+  return (opts.reset ? BBSurvey.reset() : BBSurvey.dropListCache()).then(function () {
+    openSurveyFromAnnouncement(opts.id, "console");
+    return (opts.reset ? "已清掉本機的問卷紀錄，" : "") + "打開問卷" + (opts.id ? "「" + opts.id + "」" : "") + (opts.reset ? "" : "（填過的話用 bbSurvey({ reset: true }) 從頭再填）");
+  });
 }
 
 // 交給其他 App 處理的網址（Mac App Store 的評論頁 macappstore://）：分頁本身不會載入任何東西，
@@ -478,7 +527,16 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     putSnapshot(tabId, { t: Date.now(), tab: tabId, url: msg.url || "", payload: msg.payload }).then(function () { sendResponse({ ok: true }); });
     return true;
   }
+  // 8) 問卷與匿名統計（頁面端 survey-page.js）。心跳與計數失敗一律靜默
+  if (msg.type === "BB_TELEMETRY_HEARTBEAT") { BBSurvey.heartbeat().then(function () { sendResponse({ ok: true }); }); return true; }
+  if (msg.type === "BB_TELEMETRY_BLOCKED") { BBSurvey.blocked().then(function () { sendResponse({ ok: true }); }); return true; }
+  if (msg.type === "BB_SURVEY_BEGIN") { BBSurvey.begin({ entry: msg.entry, surveyId: msg.surveyId, lang: msg.lang }).then(sendResponse); return true; }
+  if (msg.type === "BB_SURVEY_SUBMIT") { BBSurvey.submit(msg).then(sendResponse); return true; }
+  if (msg.type === "BB_SURVEY_PAGE") { BBSurvey.pageEvent(msg).then(sendResponse); return true; }
+  if (msg.type === "BB_SURVEY_CLOSED") { BBSurvey.closed(msg).then(sendResponse); return true; }
+  if (msg.type === "BB_SURVEY_OPEN_FROM_ANNOUNCEMENT") { openSurveyFromAnnouncement(msg.surveyId, "announcement"); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW") { openAnnouncementWindow(msg.id); sendResponse({ ok: true }); return true; }
+  if (msg.type === "CDN_SWITCHER_OPEN_SURVEY_WINDOW") { openSurveyWindow(msg.surveyId); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_HANDOFF_URL" && /^macappstore:/.test(msg.url || "")) { openHandoffUrl(msg.url); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_LOGIN_DONE") { loginDone(sender && sender.tab ? sender.tab.id : null).then(function (ok) { sendResponse({ popup: ok }); }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_SPEEDTEST") { openSpeedtestPopup(sender && sender.tab).then(sendResponse); return true; }
@@ -489,7 +547,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
 if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
   globalThis.__BCS_TEST__.register("background", {
-    importCustomHosts: importCustomHosts, selectCountry: selectCountry, whenListReady: whenListReady, refreshList: refreshList, syncAutoSpeedHosts: syncAutoSpeedHosts, LIST_RETRY_ALARM: LIST_RETRY_ALARM, appendJournal: appendJournal, appendSample: appendSample, putSnapshot: putSnapshot, pruneOld: pruneOld,
+    openSurveyFromAnnouncement: openSurveyFromAnnouncement, importCustomHosts: importCustomHosts, selectCountry: selectCountry, whenListReady: whenListReady, refreshList: refreshList, syncAutoSpeedHosts: syncAutoSpeedHosts, LIST_RETRY_ALARM: LIST_RETRY_ALARM, appendJournal: appendJournal, appendSample: appendSample, putSnapshot: putSnapshot, pruneOld: pruneOld,
     JOURNAL_MAX: JOURNAL_MAX, SAMPLES_MAX: SAMPLES_MAX, MERGE_WINDOW_MS: MERGE_WINDOW_MS, DIAG_KEEP_MS: DIAG_KEEP_MS,
     hvDerive: hvDerive, hvState: hvState, hvSet: hvSet, hvInfo: hvInfo, hvEnforce: hvEnforce, HV_ENFORCE_DELAY_MS: HV_ENFORCE_DELAY_MS
   });

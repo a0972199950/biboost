@@ -225,15 +225,18 @@ if (isIosSafari()) document.getElementById("autoDetectText").textContent = t("au
 
 // -------- 公告欄：主頁的跑馬燈，公布使用者所在國家的公告（每則「前綴＋捲動的標題」，點了開公告視窗 announcement.html，只顯示那一則）--------
 // 多則時像兩張疊在一起的紙（後面那張往右下錯開、露出一角），手動切換、無限循環；樣式與動畫見 popup.html 的 #lotteryWrap。
-// 資料來自 report worker 的 GET /v2/announcements（Neon 的 announcements，本機後台 admin/ 維護，見 scripts/lib/announcements.mjs）：
-//   · type "lottery"：抽獎建立時自動產生。前綴（NT$200 抽獎:）與標題由 lottery-text.js 依抽獎資料組；只在抽獎期間、該國顯示。
-//     抽獎 v2 的禮物卡各自有面額（前綴的金額變成範圍，例如 HK$100–150）、可能有備註（公告視窗才顯示）
-//   · type "html"：後台寫的一般公告。前綴（可省略）、標題、點開的 HTML 都是 { 語言: 文字 }，依介面語言 → en → zh-TW 退回；
-//     countries 空＝所有國家
+// 資料來自 report worker 的 GET /v2/announcements（Neon 的 announcements，後台手動新增，見 scripts/lib/announcements.mjs）。
+// 每則都有自己的期間（startsAt／endsAt，null＝不限）、countries（空＝所有國家）、前綴（可省略）、標題，都是 { 語言: 文字 }，依介面語言 → en → zh-TW 退回：
+//   · type "lottery"：抽獎公告，附抽獎資料（lottery）。前綴與標題用後台填的；點開的內容由 lottery-text.js 依抽獎資料組（公告視窗），
+//     抽獎結束了而公告還在期間內，點開說「已經結束」。抽獎 v2 的禮物卡各自有面額、可能有備註（公告視窗才顯示）。
+//     沒有自己期間的是改版前自動建的：前綴（NT$200 抽獎:）與標題由 lottery-text.js 組，只在抽獎期間、抽獎的國家顯示
+//   · type "html"：一般公告，點開顯示後台寫的 HTML
+//   · type "survey"：問卷公告（surveyId），點開在單獨的視窗開問卷（survey-window.html）
 // 只下載、不送任何資料；國家由這裡依本機的 detectedCountry 自己篩，國家不會送出去。
 // storage.local.announcementFeed = { v, at, items } 快取 LOTTERY_TTL_MS（v 不是 ANNOUNCE_FEED_V 的舊格式快取直接作廢）：開 popup 先畫快取、過期再背景更新。
 // 按 × 只關目前那一則：announcementDismissed = { <公告 id>: 到期時間（現在 + 3 天） }，其他則照常顯示，新公告自然會出現。
-var ANNOUNCE_API = "https://api.biboost.app/v2/announcements";
+// 商店版問正式環境、本機載入的開發版問測試環境（common.js 的 bbApiBase）；快取記著是哪個環境的（api），換了就作廢重抓
+var ANNOUNCE_PATH = "/v2/announcements";
 var LOTTERY_TTL_MS = 15 * 60 * 1000; // 擴充自己的公告快取；加上 worker 的 1 分鐘，改了公告最慢約 16 分鐘使用者看得到
 var ANNOUNCE_FEED_V = 2; // announcementFeed 的格式版本：公告 API 的回應格式改了就 +1，舊快取自動作廢（announcement.js 的同名常數要一起改）；2＝/v2/announcements
 var LOTTERY_HIDE_MS = 3 * 24 * 60 * 60 * 1000;
@@ -302,20 +305,34 @@ var LOTTERY_SWAP_MS = 480; // 換則時「下面那張翻到上面」的動畫
 
   function visibleAnnouncements() {
     var now = Date.now(), out = [];
+    // countries 空＝所有國家
+    function forCountry(list) { return showAll || !list || !list.length || list.indexOf(country) !== -1; }
     items.forEach(function (it) {
       if (!it || (dismissed[it.id] && now < dismissed[it.id])) return; // 這則按過 ×，3 天內不顯示
+      // 公告自己的期間（worker 已經篩過，這裡再擋一次：擴充自己快取 15 分鐘）
+      var own = it.startsAt != null || it.endsAt != null;
+      if ((it.startsAt != null && now < it.startsAt) || (it.endsAt != null && now >= it.endsAt)) return;
+      var title = pickLang(it.title);
       if (it.type === "lottery") {
         var l = it.lottery;
-        if (!l || !l.country || now < l.startsAt || now >= l.endsAt) return;
-        if (!showAll && l.country !== country) return;
+        if (!l) return;
+        if (!own) {
+          // 改版前自動建的抽獎公告：跟著抽獎（抽獎期間、抽獎的國家），前綴與標題依抽獎資料組
+          if (!l.country || now < l.startsAt || now >= l.endsAt) return;
+          if (!showAll && l.country !== country) return;
+        } else if (!forCountry(it.countries)) return; // 有自己期間的：抽獎結束了照樣顯示，點開說已經結束
+        if (own && title) { out.push({ id: it.id, label: pickLang(it.prefix), text: title }); return; }
         try {
           var c = LotteryText.compose(l, lang);
           out.push({ id: it.id, label: c.label, text: c.line });
         } catch (e) {} // metadata 不完整（理論上 lottery.mjs 會擋）就略過這筆
       } else if (it.type === "html") {
-        if (!showAll && it.countries && it.countries.length && it.countries.indexOf(country) === -1) return;
-        var title = pickLang(it.title);
+        if (!forCountry(it.countries)) return;
         if (title) out.push({ id: it.id, label: pickLang(it.prefix), text: title });
+      } else if (it.type === "survey") {
+        // 問卷公告：點了在單獨的視窗開問卷（survey 欄位）；問卷結束了照樣顯示，點開說已經結束
+        if (!it.surveyId || !forCountry(it.countries)) return;
+        if (title) out.push({ id: it.id, label: pickLang(it.prefix), text: title, survey: it.surveyId });
       }
     });
     return out;
@@ -438,10 +455,11 @@ var LOTTERY_SWAP_MS = 480; // 換則時「下面那張翻到上面」的動畫
     if (front && !swapping && front.viewport.clientWidth && front.viewport.clientWidth !== laidOutWidth) play();
   }).observe(stack);
 
-  // 公告視窗（只顯示點到的那一則）：同問題回報，由 background 開成獨立視窗，popup 隨即關閉
+  // 公告視窗（只顯示點到的那一則）：同問題回報，由 background 開成獨立視窗，popup 隨即關閉。問卷公告開的是問卷視窗
   function openWindow() {
     var l = shown[idx];
-    chrome.runtime.sendMessage({ type: "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW", id: l ? l.id : null }, function () { void chrome.runtime.lastError; window.close(); });
+    var msg = l && l.survey ? { type: "CDN_SWITCHER_OPEN_SURVEY_WINDOW", surveyId: l.survey } : { type: "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW", id: l ? l.id : null };
+    chrome.runtime.sendMessage(msg, function () { void chrome.runtime.lastError; window.close(); });
   }
   // × 只關目前這一則（3 天），其他照常顯示；新的抽獎本來就沒被關過，自然會出現
   function dismissCurrent() {
@@ -476,25 +494,29 @@ var LOTTERY_SWAP_MS = 480; // 換則時「下面那張翻到上面」的動畫
   });
 
   chrome.storage.local.get({ announcementFeed: null, announcementDismissed: null, detectedCountry: "", announcementShowAll: false }, function (s) {
+    bbApiBase().then(function (api) { loadFeed(s, api); });
+  });
+  function loadFeed(s, api) {
     showAll = !!s.announcementShowAll;
     if (s.announcementDismissed && typeof s.announcementDismissed === "object") dismissed = s.announcementDismissed;
     country = s.detectedCountry || "";
     var feed = s.announcementFeed;
-    if (feed && (feed.v !== ANNOUNCE_FEED_V || !Array.isArray(feed.items))) feed = null; // 舊格式的快取：當作沒有，直接重抓
+    // 舊格式、或別的環境（開發版／商店版切換）的快取：當作沒有，直接重抓
+    if (feed && (feed.v !== ANNOUNCE_FEED_V || !Array.isArray(feed.items) || (feed.api || BB_API_PROD) !== api)) feed = null;
     if (feed) { items = feed.items; render(); }
     if (feed && Date.now() - feed.at < LOTTERY_TTL_MS) return;
     // no-store：不用瀏覽器的 HTTP 快取（worker 回應帶 max-age=60，給 Cloudflare 用的）；快取由擴充自己的 announcementFeed 管，
     // 不然 announcementReset() 清掉之後重抓，還是會拿到瀏覽器存著的舊回應
-    fetch(ANNOUNCE_API, { credentials: "omit", cache: "no-store" })
+    fetch(api + ANNOUNCE_PATH, { credentials: "omit", cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || !j.ok || !Array.isArray(j.items)) return;
-        chrome.storage.local.set({ announcementFeed: { v: ANNOUNCE_FEED_V, at: Date.now(), items: j.items } });
+        chrome.storage.local.set({ announcementFeed: { v: ANNOUNCE_FEED_V, at: Date.now(), api: api, items: j.items } });
         items = j.items;
         render();
       })
       .catch(function () {});
-  });
+  }
 })();
 
 var reviewUrl = isIosSafari() ? null : STORE_REVIEW_URLS[detectBrowser()];
@@ -1246,6 +1268,8 @@ try {
 var clView = document.getElementById("changelogView");
 var versionLink = document.getElementById("versionLink");
 versionLink.textContent = "v" + chrome.runtime.getManifest().version;
+// 本機載入的開發版：版號後面標「開發版」（公告、功能開關、贊助、問卷都接測試環境），免得跟商店版搞混
+bbIsDevBuild().then(function (dev) { if (dev) versionLink.textContent += " " + t("versionDevBuild"); });
 versionLink.title = t("changelogTitle");
 function showChangelogView() {
   var list = document.getElementById("clList");

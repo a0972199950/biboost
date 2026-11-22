@@ -11,9 +11,9 @@
 //     用 CLI（scripts/invite.mjs）產生的沒有綁定，寄信時禮物卡要自己填
 // 作廢只影響之後的驗證與送報告（Apps Script 讀 revoked_at），資料保留。錯誤一律丟 LotteryError（訊息給人看的中文）。
 import crypto from "node:crypto";
-import { LotteryError, sql } from "./lotteries.mjs";
+import { LotteryError, currentDb, sql } from "./lotteries.mjs";
 import {
-  archiveSource, archivedRids, cjkPad, extName, fillText, ispLabel, loadSnapshot, mailLang, money, rejectedReports, sendGmail, sheetEntries,
+  archiveSource, archivedRids, cjkPad, extName, fillText, ispLabel, loadSnapshot, mailLang, mailRedirectedToSelf, money, rejectedReports, sendGmail, sheetEntries,
 } from "./speedtest-reports.mjs";
 
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 去掉容易看錯的 0/O、1/I（同 scripts/invite.mjs）
@@ -22,9 +22,10 @@ export const REVIEWS = { pending: "待確認", valid: "有效", invalid: "無效
 // 寫信時預設的幣別（依報告國家）
 const COUNTRY_CURRENCY = { TW: "TWD", HK: "HKD", MO: "MOP", SG: "SGD", MY: "MYR", JP: "JPY", KR: "KRW", CN: "CNY" };
 
-let ready = null;
+const ready = {}; // 每個資料庫（正式／測試）各建一次：中獎人頁可以切到測試環境
 function ensureTable() {
-  ready ||= (async () => {
+  const db = currentDb();
+  ready[db] ||= (async () => {
     // 同 scripts/invite.mjs 的建表；後台用到的欄位另外加
     await sql(`create table if not exists invite_codes (
       code text primary key,
@@ -48,8 +49,8 @@ function ensureTable() {
       add column if not exists prize_currency text,
       add column if not exists lottery_v2_id int references lotteries_v2(id) on delete set null,
       add column if not exists deleted_at timestamptz`);
-  })().catch((e) => { ready = null; throw e; });
-  return ready;
+  })().catch((e) => { ready[db] = null; throw e; });
+  return ready[db];
 }
 
 const ms = (t) => (t ? new Date(t).getTime() : null);
@@ -260,7 +261,7 @@ export async function inviteMailDraft(code, { lang, cards, currency } = {}) {
   const prize = labels.length > 1 ? `${t.choose}\n${labels.map((c, i) => `${i + 1}. ${c}`).join("\n")}` : fillText(t.one, { card: labels[0] });
   const isp = report.ispLabel || report.isp;
   const v = { ext: extName(lang), rid: report.rid, prize, isp, ispCjk: cjkPad(isp) };
-  return { to: r.email, lang, subject: fillText(t.subject, v), body: fillText(t.body, v), country: report.country, currency };
+  return { to: r.email, lang, subject: fillText(t.subject, v), body: fillText(t.body, v), country: report.country, currency, redirectToSelf: mailRedirectedToSelf() };
 }
 
 // 寄給這組邀請碼的 email（toSelf：測試，改寄給自己、不記成已寄信）
