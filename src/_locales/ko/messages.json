@@ -1,30 +1,30 @@
 {
   "extName": {
-    "message": "BiBoost - 해외 영상 가속 for bilibili"
+    "message": "BiBoost - bilibili(빌리빌리) 영상·라이브 끊김 해결"
   },
   "extDescription": {
-    "message": "해외에서도 웹 bilibili에서 4K 등 고화질 영상을 더 매끄럽게 재생하고 버퍼링과 끊김을 줄여 줍니다. 비공식 서드파티 확장 프로그램이며 bilibili 공식과 관련이 없습니다."
+    "message": "빌리빌리 영상 끊김·버퍼링? 지역별로 실측한 가장 빠른 영상 서버로 자동 전환해 4K와 라이브 방송도 매끄럽게 재생합니다. 설정 불필요. 비공식 확장 프로그램이며 bilibili 공식과 관련이 없습니다."
   },
   "extActionTitle": {
-    "message": "BiBoost - 해외 영상 가속"
+    "message": "BiBoost - 영상·라이브 끊김 해결"
   },
-  "popupHeaderTitle": {
-    "message": "BiBoost - 해외 영상 가속 for bilibili"
+  "brandName": {
+    "message": "BiBoost"
   },
   "popupTitle": {
-    "message": "CDN 회선"
+    "message": "영상 서버"
   },
   "enabledLabel": {
     "message": "사용"
   },
   "autoFallbackLabel": {
-    "message": "느릴 때 노드 자동 최적화"
+    "message": "느릴 때 서버 자동 최적화"
   },
   "autoFallbackHint": {
-    "message": "영상이 멈추거나 로딩에 실패하면 현재 목록의 노드를 백그라운드에서 속도 측정해 이 탭만 충분히 빠른 노드로 전환합니다. 모두 충분히 빠르지 않으면 계속 시청, 다시 측정, 개입 끄기 중에서 선택하는 안내가 표시됩니다. 라이브는 국제 회선으로 전환합니다. 네트워크 자체가 불안정하면(예: 약한 Wi-Fi) 전환이 반복될 수 있으니 끄는 것을 권장합니다."
+    "message": "영상이 멈추거나 로딩에 실패하면 현재 목록의 서버를 백그라운드에서 속도 측정해 이 탭만 충분히 빠른 서버로 전환합니다. 모두 충분히 빠르지 않으면 계속 시청, 다시 측정, 개입 끄기 중에서 선택하는 안내가 표시됩니다. 라이브는 국제 회선으로 전환합니다. 네트워크 자체가 불안정하면(예: 약한 Wi-Fi) 전환이 반복될 수 있으니 끄는 것을 권장합니다."
   },
   "cdnHostRowLabel": {
-    "message": "CDN 노드"
+    "message": "서버"
   },
   "modeListLabel": {
     "message": "목록"
@@ -33,19 +33,19 @@
     "message": "사용자 지정"
   },
   "customHostPlaceholder": {
-    "message": "노드 URL 또는 호스트"
+    "message": "서버 URL 또는 호스트"
   },
   "customHintInvalid": {
     "message": "올바른 호스트를 입력하세요(도메인 포함, 예: xxx.bilivideo.com)."
   },
   "speedtestBtnLabel": {
-    "message": "🔍 노드별 속도 테스트"
+    "message": "🔍 서버별 속도 테스트"
   },
   "rateBtnLabel": {
     "message": "⭐ 별 5개로 응원하기"
   },
   "donateBtnLabel": {
-    "message": "☕ 후원/회장님 랭킹"
+    "message": "☕ 커피 한 잔 사주기"
   },
   "feedbackBtnLabel": {
     "message": "🐛 문제 신고 / 기능 요청"
@@ -66,16 +66,16 @@
     "message": "← 뒤로"
   },
   "stHeaderTitle": {
-    "message": "노드 속도 테스트"
+    "message": "서버 속도 테스트"
   },
   "stRetestBtn": {
     "message": "🔄 다시 테스트"
   },
   "stHintLeave": {
-    "message": "'현재 영상, 현재 화질'의 세그먼트로 각 노드를 실측합니다. 이 페이지를 나가면 테스트가 즉시 중단됩니다."
+    "message": "'현재 영상, 현재 화질'의 세그먼트로 각 서버를 실측합니다. 이 페이지를 나가면 테스트가 즉시 중단됩니다."
   },
   "stHintBandwidth": {
-    "message": "여기서는 각 노드의 <b>이론상 최대 대역폭</b>을 측정하며, 재생 중 실제 속도와는 다릅니다. 디버그 오버레이보다 높게 나오는 것이 정상입니다."
+    "message": "여기서는 각 서버의 <b>이론상 최대 대역폭</b>을 측정하며, 재생 중 실제 속도와는 다릅니다. 디버그 오버레이보다 높게 나오는 것이 정상입니다."
   },
   "speedtestCannotStart": {
     "message": "테스트를 시작할 수 없습니다. 현재 탭이 bilibili 영상 페이지인지 확인하세요."
@@ -84,13 +84,13 @@
     "message": "이 탭에는 테스트할 영상이 없습니다"
   },
   "stGuideText": {
-    "message": "bilibili 영상을 열어 재생을 시작한 뒤, 확장 프로그램 아이콘을 눌러 「노드별 속도 테스트」를 누르세요."
+    "message": "bilibili 영상을 열어 재생을 시작한 뒤, 확장 프로그램 아이콘을 눌러 「서버별 속도 테스트」를 누르세요."
   },
   "stGuideTextIphone": {
-    "message": "주소창 왼쪽의 페이지 메뉴(≡)에서 「데스크탑 웹 사이트 요청」을 선택하고 bilibili 영상을 열어 재생한 뒤, 페이지 메뉴에서 BiBoost를 눌러 「노드별 속도 테스트」를 누르세요."
+    "message": "주소창 왼쪽의 페이지 메뉴(≡)에서 「데스크탑 웹 사이트 요청」을 선택하고 bilibili 영상을 열어 재생한 뒤, 페이지 메뉴에서 BiBoost를 눌러 「서버별 속도 테스트」를 누르세요."
   },
   "stGuideTextIpad": {
-    "message": "bilibili 영상을 열어 재생을 시작한 뒤, 주소창의 확장 프로그램 아이콘에서 BiBoost를 선택하고 「노드별 속도 테스트」를 누르세요."
+    "message": "bilibili 영상을 열어 재생을 시작한 뒤, 주소창의 확장 프로그램 아이콘에서 BiBoost를 선택하고 「서버별 속도 테스트」를 누르세요."
   },
   "stGuideBtn": {
     "message": "샘플 영상으로 이동"
@@ -147,13 +147,13 @@
     "message": "세그먼트 샘플 없음"
   },
   "cdnNoteBackupUrl": {
-    "message": "bilibili가 제공하는 백업 노드 사용"
+    "message": "bilibili가 제공하는 백업 서버 사용"
   },
   "cdnNameBackupUrl": {
     "message": "백업 URL"
   },
   "mhTermText": {
-    "message": "모든 노드가 원활하게 재생되지 않습니다. 계속 시청하거나, 확장 프로그램의 개입을 끄고 bilibili 기본값으로 돌아갈 수 있습니다."
+    "message": "모든 서버가 원활하게 재생되지 않습니다. 계속 시청하거나, 확장 프로그램의 개입을 끄고 bilibili 기본값으로 돌아갈 수 있습니다."
   },
   "mhTermContinue": {
     "message": "계속 시청"
@@ -162,10 +162,10 @@
     "message": "개입 끄기"
   },
   "mhTermRetest": {
-    "message": "다시 측정해 노드 선택"
+    "message": "다시 측정해 서버 선택"
   },
   "mhToastAutoSwitched": {
-    "message": "[노드 속도 저하로 자동 최적화] {host}(으)로 전환했습니다"
+    "message": "[서버 속도 저하로 자동 최적화] {host}(으)로 전환했습니다"
   },
   "mhToastTooFrequent": {
     "message": "전환이 너무 잦다고 느껴지면 자동 최적화를 끄세요"
@@ -204,10 +204,10 @@
     "message": "끄기"
   },
   "modeOffHintVideo": {
-    "message": "일반 영상의 CDN 선택에 개입하지 않고 공식 기본 동작을 유지합니다."
+    "message": "일반 영상의 서버 선택에 개입하지 않고 공식 기본 동작을 유지합니다."
   },
   "modeOffHintLive": {
-    "message": "라이브의 CDN 선택에 개입하지 않고 공식 기본 동작을 유지합니다."
+    "message": "라이브의 서버 선택에 개입하지 않고 공식 기본 동작을 유지합니다."
   },
   "advancedBtnTitle": {
     "message": "고급 설정"
@@ -309,7 +309,7 @@
     "message": "{ms}ms 지연"
   },
   "liveRouteExplain": {
-    "message": "라이브는 영상처럼 노드를 자유롭게 고를 수 없습니다. bilibili가 매번 전용 노드 묶음을 배정하고, 다른 묶음으로는 재생되지 않기 때문입니다. 그래서 여기서는 '선호하는 회선 종류'를 고르며, 확장 프로그램이 그 묶음 안에서 해당 회선으로 전환합니다."
+    "message": "라이브는 영상처럼 서버를 자유롭게 고를 수 없습니다. bilibili가 매번 전용 서버 묶음을 배정하고, 다른 묶음으로는 재생되지 않기 때문입니다. 그래서 여기서는 '선호하는 회선 종류'를 고르며, 확장 프로그램이 그 묶음 안에서 해당 회선으로 전환합니다."
   },
   "liveModePrefLabel": {
     "message": "선호 회선"
@@ -324,10 +324,10 @@
     "message": "새로고침"
   },
   "sortBySpeedLabel": {
-    "message": "속도 테스트 순으로 노드 정렬"
+    "message": "속도 테스트 순으로 서버 정렬"
   },
   "sortBySpeedHint": {
-    "message": "켜면 테스트 중 노드를 빠른 순으로 자동 정렬하고, 다음 테스트까지 그 순서를 기억합니다. 영상과 라이브 모두 적용되며, 끄면 기본 순서로 돌아갑니다."
+    "message": "켜면 테스트 중 서버를 빠른 순으로 자동 정렬하고, 다음 테스트까지 그 순서를 기억합니다. 영상과 라이브 모두 적용되며, 끄면 기본 순서로 돌아갑니다."
   },
   "hvLabel": {
     "message": "홈 화면 신/구 버전 (실험적)"
@@ -360,13 +360,13 @@
     "message": "영상 테스트 한도"
   },
   "stVideoLimitHint": {
-    "message": "각 노드는 이 크기만큼 받거나 이 시간이 지나면(먼저 도달한 쪽) 다음으로 넘어갑니다. 값이 클수록 정확하지만 오래 걸립니다."
+    "message": "각 서버는 이 크기만큼 받거나 이 시간이 지나면(먼저 도달한 쪽) 다음으로 넘어갑니다. 값이 클수록 정확하지만 오래 걸립니다."
   },
   "stVideoMbLabel": {
-    "message": "노드당 최대 다운로드"
+    "message": "서버당 최대 다운로드"
   },
   "stVideoSecLabel": {
-    "message": "노드당 최대 시간"
+    "message": "서버당 최대 시간"
   },
   "stLiveLimitTitle": {
     "message": "라이브 테스트 한도"
@@ -420,7 +420,7 @@
     "message": "현재 버전"
   },
   "countryLabel": {
-    "message": "노드 목록의 국가/지역"
+    "message": "서버 목록의 국가/지역"
   },
   "countryYouAreHere": {
     "message": "{name}(현재 위치)"
@@ -429,28 +429,28 @@
     "message": "전체"
   },
   "countryNodeCount": {
-    "message": "노드 {n}개"
+    "message": "서버 {n}개"
   },
   "durationHMS": {
     "message": "{h}시간 {m}분 {s}초"
   },
   "allWarnTitle": {
-    "message": "전체 노드 테스트는 오래 걸립니다"
+    "message": "전체 서버 테스트는 오래 걸립니다"
   },
   "allWarnText": {
-    "message": "전체 <b>{n}</b>개 노드 테스트는 현재 설정으로 약 <b>{time}</b> 걸립니다."
+    "message": "전체 <b>{n}</b>개 서버 테스트는 현재 설정으로 약 <b>{time}</b> 걸립니다."
   },
   "allWarnAdvice": {
-    "message": "국가별 목록은 이미 가장 빠른 노드로 추려져 있습니다. 국가(또는 가장 가까운 국가)를 고른 뒤 테스트하세요."
+    "message": "국가별 목록은 이미 가장 빠른 서버로 추려져 있습니다. 국가(또는 가장 가까운 국가)를 고른 뒤 테스트하세요."
   },
   "allWarnQuestion": {
-    "message": "그래도 전체 노드를 테스트할까요?"
+    "message": "그래도 전체 서버를 테스트할까요?"
   },
   "allWarnCancel": {
     "message": "취소하고 국가 선택"
   },
   "allWarnConfirm": {
-    "message": "전체 노드 테스트"
+    "message": "전체 서버 테스트"
   },
   "crownRank": {
     "message": "{n}위"
@@ -465,13 +465,13 @@
     "message": "{host}(으)로 전환했습니다"
   },
   "customHintDup": {
-    "message": "이 노드는 이미 목록에 있습니다."
+    "message": "이 서버는 이미 목록에 있습니다."
   },
   "customAddBtn": {
     "message": "추가"
   },
   "customDesc1": {
-    "message": "국가 목록에 없거나 목록의 노드가 모두 느릴 때 사용하세요."
+    "message": "국가 목록에 없거나 목록의 서버가 모두 느릴 때 사용하세요."
   },
   "customListEmpty": {
     "message": "빈 목록"
@@ -483,13 +483,13 @@
     "message": "목록에서 제거"
   },
   "autoHostHint": {
-    "message": "재생이 멈춰서 이 탭만 {host}(으)로 자동 전환했어요. 직접 고른 노드를 누르면 되돌릴 수 있어요"
+    "message": "재생이 멈춰서 이 탭만 {host}(으)로 자동 전환했어요. 직접 고른 서버를 누르면 되돌릴 수 있어요"
   },
   "customClearTitle": {
-    "message": "사용자 지정 노드 목록을 비울까요?"
+    "message": "사용자 지정 서버 목록을 비울까요?"
   },
   "customClearText": {
-    "message": "목록의 <b>노드 {n}개</b>가 모두 제거되고, 현재 국가의 첫 번째 노드를 사용합니다."
+    "message": "목록의 <b>서버 {n}개</b>가 모두 제거되고, 현재 국가의 첫 번째 서버를 사용합니다."
   },
   "customClearCancel": {
     "message": "취소"
@@ -504,37 +504,37 @@
     "message": "초기 설정으로 복원할까요?"
   },
   "resetAllText": {
-    "message": "고급 설정과 영상·라이브의 노드 설정이 모두 기본값으로 돌아가고, 사용자 지정 노드 목록은 <b>비워집니다</b>."
+    "message": "고급 설정과 영상·라이브의 서버 설정이 모두 기본값으로 돌아가고, 사용자 지정 서버 목록은 <b>비워집니다</b>."
   },
   "importToastOk": {
-    "message": "속도 테스트 도구가 추천한 노드 {n}개를 '사용자 지정 노드 목록'에 추가했습니다. 메뉴에서 '사용자 지정'을 선택하면 사용할 수 있습니다."
+    "message": "속도 테스트 도구가 추천한 서버 {n}개를 '사용자 지정 서버 목록'에 추가했습니다. 메뉴에서 '사용자 지정'을 선택하면 사용할 수 있습니다."
   },
   "importToastNone": {
-    "message": "속도 테스트 도구가 추천한 노드가 이미 '사용자 지정 노드 목록'에 있습니다."
+    "message": "속도 테스트 도구가 추천한 서버가 이미 '사용자 지정 서버 목록'에 있습니다."
   },
   "importToastFail": {
-    "message": "추천 노드를 '사용자 지정 노드 목록'에 추가하지 못했습니다. 잠시 후 다시 시도해 주세요."
+    "message": "추천 서버를 '사용자 지정 서버 목록'에 추가하지 못했습니다. 잠시 후 다시 시도해 주세요."
   },
   "autoDetectText": {
-    "message": "어떤 노드가 빠른지 모르겠나요? 공식 속도 테스트 도구가 300개 이상의 노드를 테스트해 가장 빠른 10개를 이 목록에 자동으로 추가합니다."
+    "message": "어떤 서버가 빠른지 모르겠나요? 공식 속도 테스트 도구가 300개 이상의 서버를 테스트해 가장 빠른 10개를 이 목록에 자동으로 추가합니다."
   },
   "autoDetectTextIos": {
-    "message": "어떤 노드가 빠른지 모르겠나요? 컴퓨터에서 공식 속도 테스트 도구로 300개 이상의 노드를 테스트한 뒤, 화면의 QR 코드를 이 기기로 스캔하면 가장 빠른 10개가 이 목록에 추가됩니다."
+    "message": "어떤 서버가 빠른지 모르겠나요? 컴퓨터에서 공식 속도 테스트 도구로 300개 이상의 서버를 테스트한 뒤, 화면의 QR 코드를 이 기기로 스캔하면 가장 빠른 10개가 이 목록에 추가됩니다."
   },
   "autoDetectBtn": {
     "message": "⚡ 자동 감지 후 추가"
   },
   "countryMissingHint": {
-    "message": "내 국가가 없거나 모든 노드가 느린가요? 가장 가까운 국가를 사용해 보거나 {link}에서 노드를 추가하세요."
+    "message": "내 국가가 없거나 모든 서버가 느린가요? 가장 가까운 국가를 사용해 보거나 {link}에서 서버를 추가하세요."
   },
   "optimizingTitle": {
-    "message": "현재 노드 속도가 느려 최적화 중..."
+    "message": "현재 서버 속도가 느려 최적화 중..."
   },
   "listFailTitle": {
-    "message": "죄송합니다. 노드 목록을 불러오지 못했습니다"
+    "message": "죄송합니다. bilibili 서버 목록을 불러오지 못했습니다"
   },
   "listFailBody": {
-    "message": "지금은 서버에 연결할 수 없습니다. 노드 목록을 불러올 때까지 확장 프로그램은 꺼진 상태이며, bilibili는 평소대로 재생됩니다. 네트워크 연결을 확인해 주세요."
+    "message": "지금은 BiBoost 서버에 연결할 수 없습니다. bilibili 서버 목록을 불러올 때까지 확장 프로그램은 꺼진 상태이며, bilibili는 평소대로 재생됩니다. 네트워크 연결을 확인해 주세요."
   },
   "listRetryBtn": {
     "message": "다시 시도"
@@ -654,7 +654,7 @@
     "message": "추첨 이벤트"
   },
   "lotteryWinHow": {
-    "message": "참여 방법: 「CDN 속도 테스트 도구」를 내려받아 \"추첨에 참여\"를 선택하고 이메일을 입력한 뒤, 테스트를 마치고 보고서를 보내 주세요."
+    "message": "참여 방법: 「BiBoost - 전체 서버 속도 테스트 도구」를 내려받아 \"추첨에 참여\"를 선택하고 이메일을 입력한 뒤, 테스트를 마치고 보고서를 보내 주세요."
   },
   "lotteryWinCta": {
     "message": "속도 테스트 도구 받기"
@@ -693,7 +693,7 @@
     "message": "☕ 커피 한 잔 사주기"
   },
   "donateGiveSub": {
-    "message": "BiBoost는 개인 개발자가 퇴근 후에 관리하고 있어요. 후원은 계속 업데이트하고 더 많은 나라의 노드를 테스트하는 힘이 됩니다!"
+    "message": "BiBoost는 개인 개발자가 퇴근 후에 관리하고 있어요. 후원은 계속 업데이트하고 더 많은 나라의 서버를 테스트하는 힘이 됩니다!"
   },
   "donateStepAmount": {
     "message": "금액 선택"

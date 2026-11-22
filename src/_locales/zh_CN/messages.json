@@ -1,51 +1,51 @@
 {
   "extName": {
-    "message": "哔速 - 海外视频加速 for bilibili"
+    "message": "哔速 - 解决B站卡顿,视频直播加速加载 for bilibili"
   },
   "extDescription": {
-    "message": "让海外用户在网页版 bilibili 上更流畅地观看 4K 等高画质视频，减少缓冲与卡顿。非官方第三方扩展，与 bilibili 官方无关联。"
+    "message": "B站卡顿、一直缓冲？自动切换到你所在地区实测最快的视频服务器，海外看网页版 bilibili 4K、直播也流畅，免设置。非官方扩展，与 bilibili 官方无关。"
   },
   "extActionTitle": {
-    "message": "哔速 - 海外视频加速"
+    "message": "哔速 - 解决B站卡顿,视频直播加速加载"
   },
-  "popupHeaderTitle": {
-    "message": "哔速 - 海外视频加速 for bilibili"
+  "brandName": {
+    "message": "哔速 | BiBoost"
   },
   "popupTitle": {
-    "message": "CDN 线路"
+    "message": "视频服务器"
   },
   "enabledLabel": {
     "message": "启用"
   },
   "autoFallbackLabel": {
-    "message": "速度不佳时自动优化节点"
+    "message": "速度不佳时自动优化服务器"
   },
   "autoFallbackHint": {
-    "message": "视频卡住或加载失败时，在后台测速当前列表的节点，只在这个标签页换到够快的那个；都不够快时会弹出提示，让你选择继续观看、重新测速或关闭介入。直播则改用国际线路。网络本身不稳（如 Wi-Fi 信号弱）时可能频繁切换，建议关闭。"
+    "message": "视频卡住或加载失败时，在后台测速当前列表的服务器，只在这个标签页换到够快的那个；都不够快时会弹出提示，让你选择继续观看、重新测速或关闭介入。直播则改用国际线路。网络本身不稳（如 Wi-Fi 信号弱）时可能频繁切换，建议关闭。"
   },
   "cdnHostRowLabel": {
-    "message": "CDN 节点"
+    "message": "服务器"
   },
   "modeListLabel": {
     "message": "列表选择"
   },
   "modeCustomLabel": {
-    "message": "自定义节点列表"
+    "message": "自定义服务器列表"
   },
   "customHostPlaceholder": {
-    "message": "输入节点网址或 host"
+    "message": "输入服务器网址或 host"
   },
   "customHintInvalid": {
     "message": "请输入有效的 host（含网域，如 xxx.bilivideo.com）。"
   },
   "speedtestBtnLabel": {
-    "message": "🔍 测试各节点速度"
+    "message": "🔍 测试各服务器速度"
   },
   "rateBtnLabel": {
     "message": "⭐ 喜欢吗？给我 5 星鼓励"
   },
   "donateBtnLabel": {
-    "message": "☕ 赞助/金主爸爸榜"
+    "message": "☕ 请我喝杯咖啡"
   },
   "feedbackBtnLabel": {
     "message": "🐛 问题反馈／功能许愿"
@@ -66,16 +66,16 @@
     "message": "← 返回"
   },
   "stHeaderTitle": {
-    "message": "各节点测速"
+    "message": "各服务器测速"
   },
   "stRetestBtn": {
     "message": "🔄 重新测速"
   },
   "stHintLeave": {
-    "message": "用「当前视频、当前画质」的分段实测各节点；离开此页会立即停止测速。"
+    "message": "用「当前视频、当前画质」的分段实测各服务器；离开此页会立即停止测速。"
   },
   "stHintBandwidth": {
-    "message": "这里测的是各节点的<b>理论最大带宽</b>，不是播放时实际用到的速度，所以比 debug 浮层的数字高是正常的。"
+    "message": "这里测的是各服务器的<b>理论最大带宽</b>，不是播放时实际用到的速度，所以比 debug 浮层的数字高是正常的。"
   },
   "speedtestCannotStart": {
     "message": "无法开始测速，请确认当前标签页是 B 站视频页。"
@@ -84,13 +84,13 @@
     "message": "当前标签页没有可测速的视频"
   },
   "stGuideText": {
-    "message": "打开一部 B 站视频并开始播放，再点扩展图标按「测试各节点速度」。"
+    "message": "打开一部 B 站视频并开始播放，再点扩展图标按「测试各服务器速度」。"
   },
   "stGuideTextIphone": {
-    "message": "先点地址栏左边的页面菜单 ≡，选“请求桌面网站”，再打开一部 B 站视频并开始播放，然后从页面菜单点 BiBoost，按「测试各节点速度」。"
+    "message": "先点地址栏左边的页面菜单 ≡，选“请求桌面网站”，再打开一部 B 站视频并开始播放，然后从页面菜单点 BiBoost，按「测试各服务器速度」。"
   },
   "stGuideTextIpad": {
-    "message": "打开一部 B 站视频并开始播放，点地址栏的扩展图标，选 BiBoost，再按「测试各节点速度」。"
+    "message": "打开一部 B 站视频并开始播放，点地址栏的扩展图标，选 BiBoost，再按「测试各服务器速度」。"
   },
   "stGuideBtn": {
     "message": "前往示例视频"
@@ -147,13 +147,13 @@
     "message": "尚无分段样本"
   },
   "cdnNoteBackupUrl": {
-    "message": "用 B 站提供的备用节点"
+    "message": "用 B 站提供的备用服务器"
   },
   "cdnNameBackupUrl": {
     "message": "备用URL"
   },
   "mhTermText": {
-    "message": "所有节点都不流畅，你可以继续观看，或是关闭扩展介入回到B站默认"
+    "message": "所有服务器都不流畅，你可以继续观看，或是关闭扩展介入回到B站默认"
   },
   "mhTermContinue": {
     "message": "继续观看"
@@ -162,10 +162,10 @@
     "message": "关闭介入"
   },
   "mhTermRetest": {
-    "message": "重新测速选节点"
+    "message": "重新测速选服务器"
   },
   "mhToastAutoSwitched": {
-    "message": "[节点网速不佳自动优化] 切换到 {host}"
+    "message": "[服务器网速不佳自动优化] 切换到 {host}"
   },
   "mhToastTooFrequent": {
     "message": "如觉得切换过于频繁，请关闭自动优化"
@@ -204,10 +204,10 @@
     "message": "关闭"
   },
   "modeOffHintVideo": {
-    "message": "不介入普通视频的 CDN 选线，维持官方原始逻辑。"
+    "message": "不介入普通视频的服务器选择，维持官方原始逻辑。"
   },
   "modeOffHintLive": {
-    "message": "不介入直播的 CDN 选线，维持官方原始逻辑。"
+    "message": "不介入直播的服务器选择，维持官方原始逻辑。"
   },
   "advancedBtnTitle": {
     "message": "高级设置"
@@ -309,7 +309,7 @@
     "message": "落后 {ms}ms"
   },
   "liveRouteExplain": {
-    "message": "直播无法像视频一样自由挑节点：B 站每次会指派一组专属节点，换别组就播不了。所以这里选的是「偏好的线路类型」，扩展会在那组节点里切到这条。"
+    "message": "直播无法像视频一样自由挑服务器：B 站每次会指派一组专属服务器，换别组就播不了。所以这里选的是「偏好的线路类型」，扩展会在那组服务器里切到这条。"
   },
   "liveModePrefLabel": {
     "message": "偏好选择"
@@ -324,10 +324,10 @@
     "message": "刷新"
   },
   "sortBySpeedLabel": {
-    "message": "节点按测速排序"
+    "message": "服务器按测速排序"
   },
   "sortBySpeedHint": {
-    "message": "开启后，测速时节点会按速度由快到慢自动排序，并记住顺序直到下次测速。视频与直播都适用，关闭后恢复默认顺序。"
+    "message": "开启后，测速时服务器会按速度由快到慢自动排序，并记住顺序直到下次测速。视频与直播都适用，关闭后恢复默认顺序。"
   },
   "hvLabel": {
     "message": "新旧版页面（实验性）"
@@ -360,13 +360,13 @@
     "message": "视频测速门槛"
   },
   "stVideoLimitHint": {
-    "message": "每个节点下载到这个大小或测满这个秒数（先到为准）就换下一个。数字越大越准，但测得越久。"
+    "message": "每个服务器下载到这个大小或测满这个秒数（先到为准）就换下一个。数字越大越准，但测得越久。"
   },
   "stVideoMbLabel": {
-    "message": "每个节点最多下载"
+    "message": "每个服务器最多下载"
   },
   "stVideoSecLabel": {
-    "message": "每个节点最多测"
+    "message": "每个服务器最多测"
   },
   "stLiveLimitTitle": {
     "message": "直播测速门槛"
@@ -420,7 +420,7 @@
     "message": "当前版本"
   },
   "countryLabel": {
-    "message": "节点列表的国家／地区"
+    "message": "服务器列表的国家／地区"
   },
   "countryYouAreHere": {
     "message": "{name}（你在这里）"
@@ -429,7 +429,7 @@
     "message": "全部"
   },
   "countryNodeCount": {
-    "message": "{n} 个节点"
+    "message": "{n} 个服务器"
   },
   "durationHMS": {
     "message": "{h} 小时 {m} 分钟 {s} 秒"
@@ -438,10 +438,10 @@
     "message": "全量测速要很久"
   },
   "allWarnText": {
-    "message": "全部 <b>{n}</b> 个节点测速，按当前设置约需 <b>{time}</b>。"
+    "message": "全部 <b>{n}</b> 个服务器测速，按当前设置约需 <b>{time}</b>。"
   },
   "allWarnAdvice": {
-    "message": "各国列表已筛选出最快的节点，建议先选国家（或离您最近的国家）再测速。"
+    "message": "各国列表已筛选出最快的服务器，建议先选国家（或离您最近的国家）再测速。"
   },
   "allWarnQuestion": {
     "message": "确定进行全量测速吗？"
@@ -450,7 +450,7 @@
     "message": "取消，改选国家"
   },
   "allWarnConfirm": {
-    "message": "仍要测速全部节点"
+    "message": "仍要测速全部服务器"
   },
   "crownRank": {
     "message": "第 {n} 名"
@@ -465,13 +465,13 @@
     "message": "切换到 {host}"
   },
   "customHintDup": {
-    "message": "这个节点已经在列表里了。"
+    "message": "这个服务器已经在列表里了。"
   },
   "customAddBtn": {
     "message": "加入"
   },
   "customDesc1": {
-    "message": "适合不在国家列表中，或列表里的节点都很慢时使用。"
+    "message": "适合不在国家列表中，或列表里的服务器都很慢时使用。"
   },
   "customListEmpty": {
     "message": "空列表"
@@ -483,13 +483,13 @@
     "message": "从列表移除"
   },
   "autoHostHint": {
-    "message": "这个标签页卡顿时自动改用了 {host}，只影响这个标签页。点你选的节点可以换回来"
+    "message": "这个标签页卡顿时自动改用了 {host}，只影响这个标签页。点你选的服务器可以换回来"
   },
   "customClearTitle": {
-    "message": "清空自定义节点列表？"
+    "message": "清空自定义服务器列表？"
   },
   "customClearText": {
-    "message": "列表里的 <b>{n} 个节点</b>都会被移除，并改用当前国家的第一个节点。"
+    "message": "列表里的 <b>{n} 个服务器</b>都会被移除，并改用当前国家的第一个服务器。"
   },
   "customClearCancel": {
     "message": "取消"
@@ -504,37 +504,37 @@
     "message": "恢复原始设置？"
   },
   "resetAllText": {
-    "message": "高级设置、视频与直播的节点设置都会恢复默认，自定义节点列表会被<b>清空</b>。"
+    "message": "高级设置、视频与直播的服务器设置都会恢复默认，自定义服务器列表会被<b>清空</b>。"
   },
   "importToastOk": {
-    "message": "已将测速工具推荐的 {n} 个节点加入「自定义节点列表」，在扩展菜单选择它即可使用。"
+    "message": "已将测速工具推荐的 {n} 个服务器加入「自定义服务器列表」，在扩展菜单选择它即可使用。"
   },
   "importToastNone": {
-    "message": "测速工具推荐的节点都已经在「自定义节点列表」里了。"
+    "message": "测速工具推荐的服务器都已经在「自定义服务器列表」里了。"
   },
   "importToastFail": {
-    "message": "没办法把测速推荐的节点加入「自定义节点列表」，请稍后再试一次。"
+    "message": "没办法把测速推荐的服务器加入「自定义服务器列表」，请稍后再试一次。"
   },
   "autoDetectText": {
-    "message": "不知道哪些节点快？官方测速工具会测遍 300 多个节点，自动把最快的 10 个加入列表。"
+    "message": "不知道哪些服务器快？官方测速工具会测遍 300 多个服务器，自动把最快的 10 个加入列表。"
   },
   "autoDetectTextIos": {
-    "message": "不知道哪些节点快？在电脑上用官方测速工具测遍 300 多个节点，测完用这台设备扫描画面上的二维码，就会把最快的 10 个加入列表。"
+    "message": "不知道哪些服务器快？在电脑上用官方测速工具测遍 300 多个服务器，测完用这台设备扫描画面上的二维码，就会把最快的 10 个加入列表。"
   },
   "autoDetectBtn": {
     "message": "⚡ 自动检测并加入"
   },
   "countryMissingHint": {
-    "message": "没有你的国家？全部节点都很慢？试试最接近的国家，或是{link}。"
+    "message": "没有你的国家？全部服务器都很慢？试试最接近的国家，或是{link}。"
   },
   "optimizingTitle": {
-    "message": "当前节点速度不佳，优化中..."
+    "message": "当前服务器速度不佳，优化中..."
   },
   "listFailTitle": {
-    "message": "抱歉，节点列表加载失败"
+    "message": "抱歉，B站服务器列表加载失败"
   },
   "listFailBody": {
-    "message": "暂时连不上服务器。拿到节点列表之前，扩展先不启用，B 站会照原本的方式播放。请检查网络连接。"
+    "message": "暂时连不上哔速服务器。拿到B站服务器列表之前，扩展先不启用，B 站会照原本的方式播放。请检查网络连接。"
   },
   "listRetryBtn": {
     "message": "重试"
@@ -654,7 +654,7 @@
     "message": "抽奖活动"
   },
   "lotteryWinHow": {
-    "message": "参加方式：下载「CDN 测速工具」，选择“参加抽奖”并留下 email，完成测速并发送报告。"
+    "message": "参加方式：下载「哔速 - 全服务器测速工具」，选择“参加抽奖”并留下 email，完成测速并发送报告。"
   },
   "lotteryWinCta": {
     "message": "下载测速工具与教程"
@@ -693,7 +693,7 @@
     "message": "☕ 请我喝杯咖啡"
   },
   "donateGiveSub": {
-    "message": "哔速由一位独立开发者下班后维护。你的赞助会让我更有动力继续更新、测更多国家的节点！"
+    "message": "哔速由一位独立开发者下班后维护。你的赞助会让我更有动力继续更新、测更多国家的服务器！"
   },
   "donateStepAmount": {
     "message": "选择金额"

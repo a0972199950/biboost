@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="../assets/icons-prod/icon128.png" width="40" height="40" align="center"> BiBoost - 海外動画加速 for bilibili
+# <img src="../assets/icons-prod/icon128.png" width="40" height="40" align="center"> BiBoost - bilibili(ビリビリ)動画・配信 重い・止まる問題解消
 
 **言語 / Language：** [繁體中文](README.zh-TW.md)｜[简体中文](README.zh-CN.md)｜[English](../README.md)｜日本語（このページ）｜[한국어](README.ko.md)
 

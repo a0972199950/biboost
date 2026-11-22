@@ -1,51 +1,51 @@
 {
   "extName": {
-    "message": "嗶速 - 海外影片加速 for bilibili"
+    "message": "嗶速 - 解決B站卡頓,影片直播加速載入 for bilibili"
   },
   "extDescription": {
-    "message": "等海外用戶喺網頁版 bilibili 睇 4K 等高畫質影片更加順暢，減少緩衝同卡頓。非官方第三方擴充，同 bilibili 官方無關。"
+    "message": "B站好卡、成日 buffer？自動轉去你所在地區實測最快嘅影片伺服器，網頁版 bilibili 睇 4K、直播都順暢，唔使設定。非官方擴充，同 bilibili 官方無關。"
   },
   "extActionTitle": {
-    "message": "嗶速 - 海外影片加速"
+    "message": "嗶速 - 解決B站卡頓,影片直播加速載入"
   },
-  "popupHeaderTitle": {
-    "message": "嗶速 - 海外影片加速 for bilibili"
+  "brandName": {
+    "message": "嗶速 | BiBoost"
   },
   "popupTitle": {
-    "message": "CDN 線路"
+    "message": "影片伺服器"
   },
   "enabledLabel": {
     "message": "啟用"
   },
   "autoFallbackLabel": {
-    "message": "速度唔好時自動優化節點"
+    "message": "速度唔好時自動優化伺服器"
   },
   "autoFallbackHint": {
-    "message": "影片卡住或者載入失敗時，會喺背景測試目前清單啲節點，只喺呢個分頁轉去夠快嗰個；全部都唔夠快就會彈出提示，畀你揀繼續睇、重新測速定關閉介入。直播就改用國際線路。如果網絡本身唔穩定（例如 Wi-Fi 訊號弱），可能會成日切換，建議關閉。"
+    "message": "影片卡住或者載入失敗時，會喺背景測試目前清單啲伺服器，只喺呢個分頁轉去夠快嗰個；全部都唔夠快就會彈出提示，畀你揀繼續睇、重新測速定關閉介入。直播就改用國際線路。如果網絡本身唔穩定（例如 Wi-Fi 訊號弱），可能會成日切換，建議關閉。"
   },
   "cdnHostRowLabel": {
-    "message": "CDN 節點"
+    "message": "伺服器"
   },
   "modeListLabel": {
     "message": "清單選擇"
   },
   "modeCustomLabel": {
-    "message": "自訂節點列表"
+    "message": "自訂伺服器列表"
   },
   "customHostPlaceholder": {
-    "message": "輸入節點網址或者 host"
+    "message": "輸入伺服器網址或者 host"
   },
   "customHintInvalid": {
     "message": "請輸入有效嘅 host（要包括網域，例如 xxx.bilivideo.com）。"
   },
   "speedtestBtnLabel": {
-    "message": "🔍 測試各節點速度"
+    "message": "🔍 測試各伺服器速度"
   },
   "rateBtnLabel": {
     "message": "⭐ 鍾意嘅話，俾個 5 星鼓勵吓"
   },
   "donateBtnLabel": {
-    "message": "☕ 贊助/契爺排行榜"
+    "message": "☕ 請我飲杯咖啡"
   },
   "feedbackBtnLabel": {
     "message": "🐛 問題回報／功能許願"
@@ -66,16 +66,16 @@
     "message": "← 返回"
   },
   "stHeaderTitle": {
-    "message": "各節點測速"
+    "message": "各伺服器測速"
   },
   "stRetestBtn": {
     "message": "🔄 重新測速"
   },
   "stHintLeave": {
-    "message": "用「目前影片、目前畫質」嘅分段實測各節點；離開呢頁會即刻停止測速。"
+    "message": "用「目前影片、目前畫質」嘅分段實測各伺服器；離開呢頁會即刻停止測速。"
   },
   "stHintBandwidth": {
-    "message": "呢度測嘅係各節點嘅<b>理論最大頻寬</b>，唔係播放時實際用到嘅速度，所以比 debug 疊層嘅數字高係正常嘅。"
+    "message": "呢度測嘅係各伺服器嘅<b>理論最大頻寬</b>，唔係播放時實際用到嘅速度，所以比 debug 疊層嘅數字高係正常嘅。"
   },
   "speedtestCannotStart": {
     "message": "開始唔到測速，請確認目前分頁係 B 站影片頁。"
@@ -84,13 +84,13 @@
     "message": "目前分頁冇可以測速嘅影片"
   },
   "stGuideText": {
-    "message": "打開一條 B 站影片開始播放，再撳擴充圖示，按「測試各節點速度」。"
+    "message": "打開一條 B 站影片開始播放，再撳擴充圖示，按「測試各伺服器速度」。"
   },
   "stGuideTextIphone": {
-    "message": "先撳網址列左邊嘅頁面選單 ≡，揀「要求桌面版網站」，再打開一條 B 站影片開始播放，然後喺頁面選單撳 BiBoost，按「測試各節點速度」。"
+    "message": "先撳網址列左邊嘅頁面選單 ≡，揀「要求桌面版網站」，再打開一條 B 站影片開始播放，然後喺頁面選單撳 BiBoost，按「測試各伺服器速度」。"
   },
   "stGuideTextIpad": {
-    "message": "打開一條 B 站影片開始播放，撳網址列嘅延伸功能圖示，揀 BiBoost，再按「測試各節點速度」。"
+    "message": "打開一條 B 站影片開始播放，撳網址列嘅延伸功能圖示，揀 BiBoost，再按「測試各伺服器速度」。"
   },
   "stGuideBtn": {
     "message": "去示範影片"
@@ -147,13 +147,13 @@
     "message": "仲未有分段樣本"
   },
   "cdnNoteBackupUrl": {
-    "message": "用 B 站提供嘅備用節點"
+    "message": "用 B 站提供嘅備用伺服器"
   },
   "cdnNameBackupUrl": {
     "message": "備用URL"
   },
   "mhTermText": {
-    "message": "所有節點都唔流暢，你可以繼續睇，或者關閉擴充功能介入、返去B站預設"
+    "message": "所有伺服器都唔流暢，你可以繼續睇，或者關閉擴充功能介入、返去B站預設"
   },
   "mhTermContinue": {
     "message": "繼續睇"
@@ -162,10 +162,10 @@
     "message": "關閉介入"
   },
   "mhTermRetest": {
-    "message": "重新測速揀節點"
+    "message": "重新測速揀伺服器"
   },
   "mhToastAutoSwitched": {
-    "message": "[節點網速唔好自動優化] 轉咗去 {host}"
+    "message": "[伺服器網速唔好自動優化] 轉咗去 {host}"
   },
   "mhToastTooFrequent": {
     "message": "如果覺得轉得太密，可以關閉自動優化"
@@ -204,10 +204,10 @@
     "message": "關閉"
   },
   "modeOffHintVideo": {
-    "message": "唔干預一般影片嘅 CDN 選線，維持官方原本嘅做法。"
+    "message": "唔干預一般影片嘅伺服器選擇，維持官方原本嘅做法。"
   },
   "modeOffHintLive": {
-    "message": "唔干預直播嘅 CDN 選線，維持官方原本嘅做法。"
+    "message": "唔干預直播嘅伺服器選擇，維持官方原本嘅做法。"
   },
   "advancedBtnTitle": {
     "message": "進階設定"
@@ -309,7 +309,7 @@
     "message": "落後 {ms}ms"
   },
   "liveRouteExplain": {
-    "message": "直播唔可以好似影片咁隨便揀節點：B 站每次會分配一組專屬節點，轉第二組就播唔到。所以呢度揀嘅係「偏好嘅線路類型」，擴充會喺嗰組節點入面轉去呢條。"
+    "message": "直播唔可以好似影片咁隨便揀伺服器：B 站每次會分配一組專屬伺服器，轉第二組就播唔到。所以呢度揀嘅係「偏好嘅線路類型」，擴充會喺嗰組伺服器入面轉去呢條。"
   },
   "liveModePrefLabel": {
     "message": "偏好選擇"
@@ -324,10 +324,10 @@
     "message": "重新載入"
   },
   "sortBySpeedLabel": {
-    "message": "節點按測速排序"
+    "message": "伺服器按測速排序"
   },
   "sortBySpeedHint": {
-    "message": "開咗之後，測速時節點會按速度由快到慢自動排序，並記住次序直到下次測速。影片同直播都適用，閂咗就變返預設次序。"
+    "message": "開咗之後，測速時伺服器會按速度由快到慢自動排序，並記住次序直到下次測速。影片同直播都適用，閂咗就變返預設次序。"
   },
   "hvLabel": {
     "message": "新舊版頁面（實驗性）"
@@ -360,13 +360,13 @@
     "message": "影片測速門檻"
   },
   "stVideoLimitHint": {
-    "message": "每個節點下載到呢個大小或者測夠呢個秒數（邊個先到算邊個）就轉下一個。數字越大越準，但係測得越耐。"
+    "message": "每個伺服器下載到呢個大小或者測夠呢個秒數（邊個先到算邊個）就轉下一個。數字越大越準，但係測得越耐。"
   },
   "stVideoMbLabel": {
-    "message": "每個節點最多下載"
+    "message": "每個伺服器最多下載"
   },
   "stVideoSecLabel": {
-    "message": "每個節點最多測"
+    "message": "每個伺服器最多測"
   },
   "stLiveLimitTitle": {
     "message": "直播測速門檻"
@@ -420,7 +420,7 @@
     "message": "目前版本"
   },
   "countryLabel": {
-    "message": "節點清單嘅國家／地區"
+    "message": "伺服器清單嘅國家／地區"
   },
   "countryYouAreHere": {
     "message": "{name}（你喺度）"
@@ -429,7 +429,7 @@
     "message": "全部"
   },
   "countryNodeCount": {
-    "message": "{n} 個節點"
+    "message": "{n} 個伺服器"
   },
   "durationHMS": {
     "message": "{h} 小時 {m} 分鐘 {s} 秒"
@@ -438,19 +438,19 @@
     "message": "全部測速要好耐"
   },
   "allWarnText": {
-    "message": "全部 <b>{n}</b> 個節點測速，按目前設定大約要 <b>{time}</b>。"
+    "message": "全部 <b>{n}</b> 個伺服器測速，按目前設定大約要 <b>{time}</b>。"
   },
   "allWarnAdvice": {
-    "message": "各國清單已經篩選咗最快嘅節點，建議先揀國家（或者離你最近嘅國家）再測速。"
+    "message": "各國清單已經篩選咗最快嘅伺服器，建議先揀國家（或者離你最近嘅國家）再測速。"
   },
   "allWarnQuestion": {
-    "message": "確定要測晒全部節點？"
+    "message": "確定要測晒全部伺服器？"
   },
   "allWarnCancel": {
     "message": "取消，改揀國家"
   },
   "allWarnConfirm": {
-    "message": "照樣測晒全部節點"
+    "message": "照樣測晒全部伺服器"
   },
   "crownRank": {
     "message": "第 {n} 名"
@@ -465,13 +465,13 @@
     "message": "轉咗去 {host}"
   },
   "customHintDup": {
-    "message": "呢個節點已經喺列表入面。"
+    "message": "呢個伺服器已經喺列表入面。"
   },
   "customAddBtn": {
     "message": "加入"
   },
   "customDesc1": {
-    "message": "適合唔喺國家清單入面，或者清單啲節點都好慢嘅時候用。"
+    "message": "適合唔喺國家清單入面，或者清單啲伺服器都好慢嘅時候用。"
   },
   "customListEmpty": {
     "message": "空列表"
@@ -483,13 +483,13 @@
     "message": "由列表移除"
   },
   "autoHostHint": {
-    "message": "呢個分頁卡頓嗰陣自動轉咗用 {host}，只影響呢個分頁。撳返你揀嘅節點就可以轉返去"
+    "message": "呢個分頁卡頓嗰陣自動轉咗用 {host}，只影響呢個分頁。撳返你揀嘅伺服器就可以轉返去"
   },
   "customClearTitle": {
-    "message": "清空自訂節點列表？"
+    "message": "清空自訂伺服器列表？"
   },
   "customClearText": {
-    "message": "列表入面嘅 <b>{n} 個節點</b>都會被移除，並改用目前國家嘅第一個節點。"
+    "message": "列表入面嘅 <b>{n} 個伺服器</b>都會被移除，並改用目前國家嘅第一個伺服器。"
   },
   "customClearCancel": {
     "message": "取消"
@@ -504,37 +504,37 @@
     "message": "還原原本設定？"
   },
   "resetAllText": {
-    "message": "進階設定、影片同直播嘅節點設定都會變返預設，自訂節點列表會被<b>清空</b>。"
+    "message": "進階設定、影片同直播嘅伺服器設定都會變返預設，自訂伺服器列表會被<b>清空</b>。"
   },
   "importToastOk": {
-    "message": "已經將測速工具推薦嘅 {n} 個節點加入「自訂節點列表」，喺擴充選單揀佢就用得。"
+    "message": "已經將測速工具推薦嘅 {n} 個伺服器加入「自訂伺服器列表」，喺擴充選單揀佢就用得。"
   },
   "importToastNone": {
-    "message": "測速工具推薦嘅節點已經全部喺「自訂節點列表」入面。"
+    "message": "測速工具推薦嘅伺服器已經全部喺「自訂伺服器列表」入面。"
   },
   "importToastFail": {
-    "message": "加唔到測速推薦嘅節點入「自訂節點列表」，請遲啲再試。"
+    "message": "加唔到測速推薦嘅伺服器入「自訂伺服器列表」，請遲啲再試。"
   },
   "autoDetectText": {
-    "message": "唔知邊啲節點快？官方測速工具會測勻 300 幾個節點，自動將最快嘅 10 個加入列表。"
+    "message": "唔知邊啲伺服器快？官方測速工具會測勻 300 幾個伺服器，自動將最快嘅 10 個加入列表。"
   },
   "autoDetectTextIos": {
-    "message": "唔知邊啲節點快？喺電腦用官方測速工具測勻 300 幾個節點，測完用呢部裝置掃畫面上嘅 QR code，就會將最快嘅 10 個加入列表。"
+    "message": "唔知邊啲伺服器快？喺電腦用官方測速工具測勻 300 幾個伺服器，測完用呢部裝置掃畫面上嘅 QR code，就會將最快嘅 10 個加入列表。"
   },
   "autoDetectBtn": {
     "message": "⚡ 自動偵測並加入"
   },
   "countryMissingHint": {
-    "message": "冇你嘅國家？全部節點都好慢？試吓最近嘅國家，或者{link}。"
+    "message": "冇你嘅國家？全部伺服器都好慢？試吓最近嘅國家，或者{link}。"
   },
   "optimizingTitle": {
-    "message": "目前節點速度唔好，優化緊..."
+    "message": "目前伺服器速度唔好，優化緊..."
   },
   "listFailTitle": {
-    "message": "唔好意思，節點清單載入失敗"
+    "message": "唔好意思，B站伺服器清單載入失敗"
   },
   "listFailBody": {
-    "message": "暫時連唔到伺服器。攞到節點清單之前，擴充會先停用，B 站照原本方式播放。請檢查下網絡連線。"
+    "message": "暫時連唔到嗶速伺服器。攞到B站伺服器清單之前，擴充會先停用，B 站照原本方式播放。請檢查下網絡連線。"
   },
   "listRetryBtn": {
     "message": "再試"
@@ -654,7 +654,7 @@
     "message": "抽獎活動"
   },
   "lotteryWinHow": {
-    "message": "參加方法：下載「CDN 測速工具」，揀「參加抽獎」並留低 email，完成測速並發送報告。"
+    "message": "參加方法：下載「嗶速 - 全伺服器測速工具」，揀「參加抽獎」並留低 email，完成測速並發送報告。"
   },
   "lotteryWinCta": {
     "message": "下載測速工具同教學"
@@ -693,7 +693,7 @@
     "message": "☕ 請我飲杯咖啡"
   },
   "donateGiveSub": {
-    "message": "嗶速由一位獨立開發者放工後維護。你嘅贊助會令我更有動力繼續更新、測更多國家嘅節點！"
+    "message": "嗶速由一位獨立開發者放工後維護。你嘅贊助會令我更有動力繼續更新、測更多國家嘅伺服器！"
   },
   "donateStepAmount": {
     "message": "揀金額"

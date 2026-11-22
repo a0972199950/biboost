@@ -605,7 +605,7 @@ describe("node list overlay", () => {
     const env = await bootNoList(() => { calls++; return { ok: false }; });
     const box = env.document.getElementById("listFail");
     assert.ok(box.classList.contains("show"));
-    assert.equal(env.document.getElementById("lfTitle").textContent, "Sorry, the node list couldn't be loaded");
+    assert.equal(env.document.getElementById("lfTitle").textContent, "Sorry, the bilibili server list couldn't be loaded");
     assert.equal(calls, 1, "tried once on open");
     assert.equal(env.document.getElementById("lfRetry").textContent, "Retry");
     assert.equal(env.document.getElementById("lfNext").textContent, "Retrying automatically in 10s");

@@ -26,12 +26,12 @@ function surveyLang() {
   if (low.indexOf("zh") === 0) return /cn|hans|sg/.test(low) ? "zh_CN" : "zh_TW";
   return "en";
 }
-// 按鈕等介面文字（common.js 的 t() 已經處理 popup 選的語言）；頁首的品牌名取擴充名稱「 - 」前面
+// 按鈕等介面文字（common.js 的 t() 已經處理 popup 選的語言）；頁首的品牌名用 brandName（中文是「嗶速 | BiBoost」）
 function surveyUiStrings() {
   var out = {};
   Object.keys(SURVEY_UI_KEYS).forEach(function (k) { var v = t(SURVEY_UI_KEYS[k]); if (v && v !== SURVEY_UI_KEYS[k]) out[k] = v; });
-  var name = t("extName");
-  if (name && name !== "extName") { var cut = name.indexOf(" - "); out.brand = cut > 0 ? name.slice(0, cut) : name; }
+  var brand = t("brandName");
+  if (brand && brand !== "brandName") out.brand = brand;
   return out;
 }
 

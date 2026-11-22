@@ -655,9 +655,9 @@ describe("terminal prompt", () => {
     const el = b.env.window.document.getElementById("cdn-switcher-terminal");
     assert.ok(el);
     assert.equal(el.parentElement, b.p.c);
-    assert.match(el.textContent, /所有節點都不流暢/);
+    assert.match(el.textContent, /所有伺服器都不流暢/);
     const labels = [...el.querySelectorAll("button")].map((x) => x.textContent);
-    assert.deepEqual(labels.sort(), ["×", "繼續觀看", "重新測速選節點", "關閉介入"].sort());
+    assert.deepEqual(labels.sort(), ["×", "繼續觀看", "重新測速選伺服器", "關閉介入"].sort());
     // 跟换节点提示一样：播放器中间上方、深色底框（jsdom 解析不了 font 简写、整段 style 会被丢掉，所以看原始码）
     const src = readFileSync(new URL("../src/main-hook.js", import.meta.url), "utf8");
     const css = src.slice(src.indexOf("function showTerminal"), src.indexOf("function termAttach"));
@@ -1098,7 +1098,7 @@ describe("user decisions 2026-11-16 (cool-down, silent rescue)", () => {
     assert.deepEqual(of(b.posted, "autotest-progress"), []);
     // 没有 player.reload：整页重新整理，提示留到重载后再显示
     const saved = JSON.parse(b.env.window.sessionStorage.getItem("__CDN_SWITCHER_SWITCH_TOAST__"));
-    assert.deepEqual(saved, { t: "[節點網速不佳自動優化] 切換到 " + HW, n: 1, auto: 1 });
+    assert.deepEqual(saved, { t: "[伺服器網速不佳自動優化] 切換到 " + HW, n: 1, auto: 1 });
     b.env.close();
   });
 });
@@ -1226,7 +1226,7 @@ describe("spec update after acceptance (2026-11-16)", () => {
     const b = bootPlaying();
     withPlayer(b);
     b.mh.applyRescuePick(HW, "test");
-    assert.match(toast(b).textContent, /^\[節點網速不佳自動優化\] 切換到 upos-sz-mirrorhw\.bilivideo\.com/);
+    assert.match(toast(b).textContent, /^\[伺服器網速不佳自動優化\] 切換到 upos-sz-mirrorhw\.bilivideo\.com/);
     assert.ok([...toast(b).querySelectorAll("button")].some((x) => x.textContent === "×"));
     assert.doesNotMatch(toast(b).textContent, /過於頻繁/);
     b.mh.applyRescuePick(COS, "test");
@@ -1269,7 +1269,7 @@ describe("spec update after acceptance (2026-11-16)", () => {
     const b = bootPlaying({ autoSpeedHosts: [HOST] });
     b.p.buff(true); b.mh.uiSample(b.clk.now()); b.clk.run(5000);
     assert.ok(b.mh.term());
-    const btn = [...b.env.window.document.querySelectorAll("#cdn-switcher-terminal button")].find((e) => e.textContent === "重新測速選節點");
+    const btn = [...b.env.window.document.querySelectorAll("#cdn-switcher-terminal button")].find((e) => e.textContent === "重新測速選伺服器");
     btn.dispatchEvent(new b.env.window.MouseEvent("click", { bubbles: true }));
     assert.equal(b.mh.term(), null);
     assert.equal(b.mh.FALLBACK.noMore, true);
@@ -1321,7 +1321,7 @@ describe("spec update after acceptance (2026-11-16)", () => {
     b.env.close();
   });
   test("review: a notice saved before a full-page reload comes back after it (3rd+ with the turn-off button; old plain text too)", async () => {
-    const a = boot({}, { session: { "__CDN_SWITCHER_SWITCH_TOAST__": JSON.stringify({ t: "[節點網速不佳自動優化] 切換到 " + HW, n: 3, auto: 1 }) } });
+    const a = boot({}, { session: { "__CDN_SWITCHER_SWITCH_TOAST__": JSON.stringify({ t: "[伺服器網速不佳自動優化] 切換到 " + HW, n: 3, auto: 1 }) } });
     a.p = addPlayer(a.env);
     await a.env.settle(700);
     assert.ok([...toast(a).querySelectorAll("button")].some((x) => x.textContent === "關閉優化"));

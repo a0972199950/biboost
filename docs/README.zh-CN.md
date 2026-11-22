@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="../assets/icons-prod/icon128.png" width="40" height="40" align="center"> 哔速 - 海外视频加速 for bilibili
+# <img src="../assets/icons-prod/icon128.png" width="40" height="40" align="center"> 哔速 - 解决B站卡顿,视频直播加速加载 for bilibili
 
 **语言 / Language：** [繁體中文](README.zh-TW.md)｜简体中文（本页）｜[English](../README.md)｜[日本語](README.ja.md)｜[한국어](README.ko.md)
 

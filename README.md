@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="assets/icons-prod/icon128.png" width="40" height="40" align="center"> BiBoost - Overseas Video Speedup for bilibili
+# <img src="assets/icons-prod/icon128.png" width="40" height="40" align="center"> BiBoost - Fix Slow bilibili Videos & Live
 
 **Language:** [繁體中文](docs/README.zh-TW.md)｜[简体中文](docs/README.zh-CN.md)｜English (this page)｜[日本語](docs/README.ja.md)｜[한국어](docs/README.ko.md)
 

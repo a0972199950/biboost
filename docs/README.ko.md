@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="../assets/icons-prod/icon128.png" width="40" height="40" align="center"> BiBoost - 해외 영상 가속 for bilibili
+# <img src="../assets/icons-prod/icon128.png" width="40" height="40" align="center"> BiBoost - bilibili(빌리빌리) 영상·라이브 끊김 해결
 
 **언어 / Language：** [繁體中文](README.zh-TW.md)｜[简体中文](README.zh-CN.md)｜[English](../README.md)｜[日本語](README.ja.md)｜한국어(이 페이지)
 

@@ -88,7 +88,7 @@ var els = {
 document.title = t("popupTitle");
 document.documentElement.lang = uiLanguage();
 [
-  ["headerTitle", "popupHeaderTitle"], ["gearBtnLabel", "advancedBtnLabel"], ["uiLangLabel", "uiLangLabel"], ["uiThemeLabel", "uiThemeLabel"], ["enabledLabel", "enabledLabel"], ["autoFallbackLabel", "autoFallbackLabel"], ["autoFallbackHint", "autoFallbackHint"], ["cdnHostRowLabel", "cdnHostRowLabel"],
+  ["headerTitle", "brandName"], ["gearBtnLabel", "advancedBtnLabel"], ["uiLangLabel", "uiLangLabel"], ["uiThemeLabel", "uiThemeLabel"], ["enabledLabel", "enabledLabel"], ["autoFallbackLabel", "autoFallbackLabel"], ["autoFallbackHint", "autoFallbackHint"], ["cdnHostRowLabel", "cdnHostRowLabel"],
   ["tabVideo", "tabVideo"], ["tabLive", "tabLive"], ["advHeaderTitle", "advancedTitle"], ["advBackBtn", "stBackBtn"], ["clBackBtn", "stBackBtn"], ["clHeaderTitle", "changelogTitle"],
   ["modeListLabel", "modeListLabel"], ["modeCustomLabel", "modeCustomLabel"], ["modeOffLabel", "modeOffLabel"], ["speedtestBtn", "speedtestBtnLabel"],
   ["liveModeListLabel", "liveModePrefLabel"], ["liveModeOffLabel", "modeOffLabel"], ["liveSpeedtestBtn", "liveSpeedtestBtnLabel"],
@@ -372,7 +372,7 @@ var LOTTERY_SWAP_MS = 480; // 換則時「下面那張翻到上面」的動畫
     if (paused) anim.pause();
   }
 
-  // 下一則（手動；無限循環）：下面那張從後面往右上抽出、翻到最上面再落到前面，原本前面那張退到後面
+  // 下一則（手動；無限循環）：前面那張往上掀起、翻到最後面，露出原本在後面的那張（它往前補上）
   function advance() {
     if (swapping || shown.length < 2) return;
     stop();
@@ -391,18 +391,22 @@ var LOTTERY_SWAP_MS = 480; // 換則時「下面那張翻到上面」的動畫
     if (reduceMotion) { finish(); return; }
     swapping = true;
     var opts = { duration: LOTTERY_SWAP_MS, easing: "ease-in-out" };
-    oldBack.el.animate([
-      { transform: "translate(5px, 5px)" },
-      { transform: "translate(16px, -12px) rotate(1.5deg)", offset: 0.45 },
-      { transform: "translate(0, 0)" }
-    ], opts);
+    // 前面那張：往上掀到最高點，再往後落到後面那張的位置
     oldFront.el.animate([
       { transform: "translate(0, 0)" },
-      { transform: "translate(-3px, 2px)", offset: 0.45 },
+      { transform: "translate(-2px, -16px) rotate(-1.5deg)", offset: 0.45 },
       { transform: "translate(5px, 5px)" }
     ], opts).onfinish = finish;
-    // 抽到最高點時換上下：下面那張蓋到上面
+    // 後面那張：被露出來後往左上補到前面的位置
+    oldBack.el.animate([
+      { transform: "translate(5px, 5px)" },
+      { transform: "translate(3px, 3px)", offset: 0.45 },
+      { transform: "translate(0, 0)" }
+    ], opts);
+    // 掀到最高點時換上下：前面那張壓到後面、內容變淡，後面那張變成最上面
     setTimeout(function () {
+      oldFront.el.style.zIndex = "0";
+      oldFront.el.classList.add("back");
       oldBack.el.style.zIndex = "3";
       oldBack.el.classList.remove("back"); // 內容不再變淡
     }, LOTTERY_SWAP_MS * 0.45);

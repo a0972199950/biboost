@@ -60,15 +60,15 @@
   // DEFAULT_MSGS 是 bridge 尚未推送前的保底文案（繁中，与 _locales/zh_TW 一致）。
   var MSGS_KEY = "__CDN_SWITCHER_MSGS__";
   var DEFAULT_MSGS = {
-    mhTermText: "所有節點都不流暢，你可以繼續觀看，或是關閉擴充介入回到B站預設",
+    mhTermText: "所有伺服器都不流暢，你可以繼續觀看，或是關閉擴充介入回到B站預設",
     mhTermContinue: "繼續觀看",
     mhTermDisable: "關閉介入",
-    mhTermRetest: "重新測速選節點",
+    mhTermRetest: "重新測速選伺服器",
     mhCdnTargetOriginal: "原始（不覆寫）",
     mhCdnTargetBackup: "備用URL（優先）",
     mhToastLiveFallback: "目前直播線路不佳，已自動切換至國際線路(ov)",
     mhToastSwitched: "切換到 {host}",
-    mhToastAutoSwitched: "[節點網速不佳自動優化] 切換到 {host}",
+    mhToastAutoSwitched: "[伺服器網速不佳自動優化] 切換到 {host}",
     mhToastTooFrequent: "如覺得切換過於頻繁，請關閉自動優化",
     mhToastDisableAuto: "關閉優化",
     liveRouteOv: "國際線路(ov)",

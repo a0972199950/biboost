@@ -1,30 +1,30 @@
 {
   "extName": {
-    "message": "BiBoost - Overseas Video Speedup for bilibili"
+    "message": "BiBoost - Fix Slow bilibili Videos & Live"
   },
   "extDescription": {
-    "message": "Smoother 4K playback on web bilibili for overseas users. Unofficial, not affiliated with bilibili."
+    "message": "bilibili slow or buffering? Auto-picks your region's fastest server for smooth 4K and live. No setup. Not affiliated with bilibili."
   },
   "extActionTitle": {
-    "message": "BiBoost - Overseas Video Speedup"
+    "message": "BiBoost - Fix Slow bilibili Videos & Live"
   },
-  "popupHeaderTitle": {
-    "message": "BiBoost - Speedup for bilibili"
+  "brandName": {
+    "message": "BiBoost"
   },
   "popupTitle": {
-    "message": "CDN Route"
+    "message": "Video server"
   },
   "enabledLabel": {
     "message": "Enabled"
   },
   "autoFallbackLabel": {
-    "message": "Auto-optimize node when slow"
+    "message": "Auto-optimize server when slow"
   },
   "autoFallbackHint": {
-    "message": "When a video freezes or fails to load, the nodes in your current list are speed-tested in the background and this tab switches to a fast enough one; if none is fast enough, a prompt lets you keep watching, re-test the nodes, or stop the extension from intervening. Live streams switch to the international route. On an unstable connection (e.g. weak Wi-Fi) it may keep switching, so turn it off."
+    "message": "When a video freezes or fails to load, the servers in your current list are speed-tested in the background and this tab switches to a fast enough one; if none is fast enough, a prompt lets you keep watching, re-test the servers, or stop the extension from intervening. Live streams switch to the international route. On an unstable connection (e.g. weak Wi-Fi) it may keep switching, so turn it off."
   },
   "cdnHostRowLabel": {
-    "message": "CDN node"
+    "message": "Server"
   },
   "modeListLabel": {
     "message": "List"
@@ -33,19 +33,19 @@
     "message": "Custom"
   },
   "customHostPlaceholder": {
-    "message": "Node URL or host"
+    "message": "Server URL or host"
   },
   "customHintInvalid": {
     "message": "Please enter a valid host (with domain, e.g. xxx.bilivideo.com)."
   },
   "speedtestBtnLabel": {
-    "message": "🔍 Test node speeds"
+    "message": "🔍 Test server speeds"
   },
   "rateBtnLabel": {
     "message": "⭐ Like it? Rate 5 stars"
   },
   "donateBtnLabel": {
-    "message": "☕ Tip / Top Patrons"
+    "message": "☕ Buy me a coffee"
   },
   "feedbackBtnLabel": {
     "message": "🐛 Report a bug / Request a feature"
@@ -66,16 +66,16 @@
     "message": "← Back"
   },
   "stHeaderTitle": {
-    "message": "Node speed test"
+    "message": "Server speed test"
   },
   "stRetestBtn": {
     "message": "🔄 Retest"
   },
   "stHintLeave": {
-    "message": "Tests each node using segments from the current video and quality; leaving this page stops the test immediately."
+    "message": "Tests each server using segments from the current video and quality; leaving this page stops the test immediately."
   },
   "stHintBandwidth": {
-    "message": "This measures each node's <b>theoretical maximum bandwidth</b>, not the speed used during playback, so it's normal for it to be higher than the debug overlay."
+    "message": "This measures each server's <b>theoretical maximum bandwidth</b>, not the speed used during playback, so it's normal for it to be higher than the debug overlay."
   },
   "speedtestCannotStart": {
     "message": "Could not start the speed test. Make sure the current tab is a bilibili video page."
@@ -84,13 +84,13 @@
     "message": "No video to test in this tab"
   },
   "stGuideText": {
-    "message": "Open a bilibili video and start playback, then click the extension icon and press \"Test node speeds\"."
+    "message": "Open a bilibili video and start playback, then click the extension icon and press \"Test server speeds\"."
   },
   "stGuideTextIphone": {
-    "message": "Tap the page menu (≡) at the left of the address bar and choose \"Request Desktop Website\", open a bilibili video and start playback, then tap BiBoost in the page menu and press \"Test node speeds\"."
+    "message": "Tap the page menu (≡) at the left of the address bar and choose \"Request Desktop Website\", open a bilibili video and start playback, then tap BiBoost in the page menu and press \"Test server speeds\"."
   },
   "stGuideTextIpad": {
-    "message": "Open a bilibili video and start playback, tap the Extensions icon in the address bar, choose BiBoost, then press \"Test node speeds\"."
+    "message": "Open a bilibili video and start playback, tap the Extensions icon in the address bar, choose BiBoost, then press \"Test server speeds\"."
   },
   "stGuideBtn": {
     "message": "Go to a sample video"
@@ -147,13 +147,13 @@
     "message": "No segment sample yet"
   },
   "cdnNoteBackupUrl": {
-    "message": "Use the backup node provided by bilibili"
+    "message": "Use the backup server provided by bilibili"
   },
   "cdnNameBackupUrl": {
     "message": "Backup URL"
   },
   "mhTermText": {
-    "message": "None of the nodes play smoothly. You can keep watching, or stop the extension from intervening and go back to bilibili's default."
+    "message": "None of the servers play smoothly. You can keep watching, or stop the extension from intervening and go back to bilibili's default."
   },
   "mhTermContinue": {
     "message": "Keep watching"
@@ -162,10 +162,10 @@
     "message": "Stop intervening"
   },
   "mhTermRetest": {
-    "message": "Re-test and pick a node"
+    "message": "Re-test and pick a server"
   },
   "mhToastAutoSwitched": {
-    "message": "[Auto-optimized: slow node] Switched to {host}"
+    "message": "[Auto-optimized: slow server] Switched to {host}"
   },
   "mhToastTooFrequent": {
     "message": "If it switches too often, turn off auto-optimize"
@@ -204,10 +204,10 @@
     "message": "Off"
   },
   "modeOffHintVideo": {
-    "message": "Does not touch CDN selection for regular videos; bilibili's original behavior is kept."
+    "message": "Does not touch server selection for regular videos; bilibili's original behavior is kept."
   },
   "modeOffHintLive": {
-    "message": "Does not touch CDN selection for live streams; bilibili's original behavior is kept."
+    "message": "Does not touch server selection for live streams; bilibili's original behavior is kept."
   },
   "advancedBtnTitle": {
     "message": "Advanced settings"
@@ -309,7 +309,7 @@
     "message": "{ms}ms behind"
   },
   "liveRouteExplain": {
-    "message": "Live streams can't switch nodes freely like videos: bilibili assigns each viewer its own set of nodes, and other sets won't play. So you pick a preferred route type, and the extension switches to it within that set."
+    "message": "Live streams can't switch servers freely like videos: bilibili assigns each viewer its own set of servers, and other sets won't play. So you pick a preferred route type, and the extension switches to it within that set."
   },
   "liveModePrefLabel": {
     "message": "Preference"
@@ -324,10 +324,10 @@
     "message": "Refresh"
   },
   "sortBySpeedLabel": {
-    "message": "Sort nodes by speed test"
+    "message": "Sort servers by speed test"
   },
   "sortBySpeedHint": {
-    "message": "When on, nodes are sorted fastest-first as the test runs, and the order is kept until the next test. Applies to video and live; turn off to restore the default order."
+    "message": "When on, servers are sorted fastest-first as the test runs, and the order is kept until the next test. Applies to video and live; turn off to restore the default order."
   },
   "hvLabel": {
     "message": "Old / new homepage (beta)"
@@ -360,13 +360,13 @@
     "message": "Video speed-test limits"
   },
   "stVideoLimitHint": {
-    "message": "Each node is tested until it downloads this much or this many seconds pass, whichever comes first. Higher values are more accurate but slower."
+    "message": "Each server is tested until it downloads this much or this many seconds pass, whichever comes first. Higher values are more accurate but slower."
   },
   "stVideoMbLabel": {
-    "message": "Max download per node"
+    "message": "Max download per server"
   },
   "stVideoSecLabel": {
-    "message": "Max time per node"
+    "message": "Max time per server"
   },
   "stLiveLimitTitle": {
     "message": "Live speed-test limits"
@@ -420,7 +420,7 @@
     "message": "current"
   },
   "countryLabel": {
-    "message": "Country / region of the node list"
+    "message": "Country / region of the server list"
   },
   "countryYouAreHere": {
     "message": "{name} (you are here)"
@@ -429,28 +429,28 @@
     "message": "All"
   },
   "countryNodeCount": {
-    "message": "{n} nodes"
+    "message": "{n} servers"
   },
   "durationHMS": {
     "message": "{h} h {m} min {s} s"
   },
   "allWarnTitle": {
-    "message": "Testing all nodes takes a long time"
+    "message": "Testing all servers takes a long time"
   },
   "allWarnText": {
-    "message": "Testing all <b>{n}</b> nodes will take about <b>{time}</b> with your current settings."
+    "message": "Testing all <b>{n}</b> servers will take about <b>{time}</b> with your current settings."
   },
   "allWarnAdvice": {
-    "message": "Each country's list already contains its fastest nodes. Pick a country (or the closest one) before testing."
+    "message": "Each country's list already contains its fastest servers. Pick a country (or the closest one) before testing."
   },
   "allWarnQuestion": {
-    "message": "Test all nodes anyway?"
+    "message": "Test all servers anyway?"
   },
   "allWarnCancel": {
     "message": "Cancel and pick a country"
   },
   "allWarnConfirm": {
-    "message": "Test all nodes anyway"
+    "message": "Test all servers anyway"
   },
   "crownRank": {
     "message": "#{n}"
@@ -465,13 +465,13 @@
     "message": "Switched to {host}"
   },
   "customHintDup": {
-    "message": "This node is already in the list."
+    "message": "This server is already in the list."
   },
   "customAddBtn": {
     "message": "Add"
   },
   "customDesc1": {
-    "message": "For when your country isn't listed, or every node in the list is slow."
+    "message": "For when your country isn't listed, or every server in the list is slow."
   },
   "customListEmpty": {
     "message": "Empty list"
@@ -483,13 +483,13 @@
     "message": "Remove from list"
   },
   "autoHostHint": {
-    "message": "Playback stalled, so this tab switched to {host} on its own (this tab only). Click your chosen node to switch back"
+    "message": "Playback stalled, so this tab switched to {host} on its own (this tab only). Click your chosen server to switch back"
   },
   "customClearTitle": {
-    "message": "Clear the custom node list?"
+    "message": "Clear the custom server list?"
   },
   "customClearText": {
-    "message": "All <b>{n} nodes</b> will be removed, and the first node of your current country will be used instead."
+    "message": "All <b>{n} servers</b> will be removed, and the first server of your current country will be used instead."
   },
   "customClearCancel": {
     "message": "Cancel"
@@ -504,37 +504,37 @@
     "message": "Reset all settings?"
   },
   "resetAllText": {
-    "message": "Advanced settings and the video and live node settings will all go back to their defaults, and the custom node list will be <b>cleared</b>."
+    "message": "Advanced settings and the video and live server settings will all go back to their defaults, and the custom server list will be <b>cleared</b>."
   },
   "importToastOk": {
-    "message": "Added {n} nodes recommended by the speed test to your Custom list. Choose \"Custom\" in the extension menu to use them."
+    "message": "Added {n} servers recommended by the speed test to your Custom list. Choose \"Custom\" in the extension menu to use them."
   },
   "importToastNone": {
-    "message": "The nodes recommended by the speed test are already in your Custom node list."
+    "message": "The servers recommended by the speed test are already in your Custom server list."
   },
   "importToastFail": {
-    "message": "Couldn't add the recommended nodes to your Custom node list. Please try again later."
+    "message": "Couldn't add the recommended servers to your Custom server list. Please try again later."
   },
   "autoDetectText": {
-    "message": "Not sure which nodes are fast? The official speed test tool tests 300+ nodes and adds the 10 fastest to this list for you."
+    "message": "Not sure which servers are fast? The official speed test tool tests 300+ servers and adds the 10 fastest to this list for you."
   },
   "autoDetectTextIos": {
-    "message": "Not sure which nodes are fast? Run the official speed test tool on a computer to test 300+ nodes, then scan the QR code it shows with this device to add the 10 fastest to this list."
+    "message": "Not sure which servers are fast? Run the official speed test tool on a computer to test 300+ servers, then scan the QR code it shows with this device to add the 10 fastest to this list."
   },
   "autoDetectBtn": {
     "message": "⚡ Auto-detect & add"
   },
   "countryMissingHint": {
-    "message": "Your country isn't listed, or every node is slow? Try the closest country, or add your own nodes under {link}."
+    "message": "Your country isn't listed, or every server is slow? Try the closest country, or add your own servers under {link}."
   },
   "optimizingTitle": {
-    "message": "Current node is slow, optimizing..."
+    "message": "Current server is slow, optimizing..."
   },
   "listFailTitle": {
-    "message": "Sorry, the node list couldn't be loaded"
+    "message": "Sorry, the bilibili server list couldn't be loaded"
   },
   "listFailBody": {
-    "message": "We can't reach our server right now. Until the node list loads, the extension stays off and bilibili plays as usual. Please check your connection."
+    "message": "We can't reach the BiBoost server right now. Until the bilibili server list loads, the extension stays off and bilibili plays as usual. Please check your connection."
   },
   "listRetryBtn": {
     "message": "Retry"
@@ -654,7 +654,7 @@
     "message": "Prize draws"
   },
   "lotteryWinHow": {
-    "message": "How to join: download the CDN speed test tool, choose \"Join the prize draw\", enter your email, finish the test and send the report."
+    "message": "How to join: download \"BiBoost - Server Speed Test\", choose \"Join the prize draw\", enter your email, finish the test and send the report."
   },
   "lotteryWinCta": {
     "message": "Get the speed test tool"
@@ -693,7 +693,7 @@
     "message": "☕ Buy me a coffee"
   },
   "donateGiveSub": {
-    "message": "BiBoost is maintained by one indie developer after work. Your support keeps the updates coming and helps test nodes in more countries!"
+    "message": "BiBoost is maintained by one indie developer after work. Your support keeps the updates coming and helps test servers in more countries!"
   },
   "donateStepAmount": {
     "message": "Choose an amount"

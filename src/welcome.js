@@ -9,8 +9,9 @@
 document.title = t("welcomeTitle");
 document.documentElement.lang = uiLanguage();
 (function () {
+  // 品牌名用 brandName（中文是「嗶速 | BiBoost」），副標是擴充名稱「 - 」後面那段
   var name = t("extName"), cut = name.indexOf(" - ");
-  $("brand").textContent = cut > 0 ? name.slice(0, cut) : name;
+  $("brand").textContent = t("brandName");
   $("tagline").textContent = cut > 0 ? name.slice(cut + 3) : "";
 })();
 $("welcomeTitle").textContent = t("welcomeTitle");

@@ -62,10 +62,11 @@
       if (!v) { try { v = chrome.i18n.getMessage(UI_KEYS[k]); } catch (e) {} }
       if (v) out[k] = v;
     });
-    // 頁首的品牌名：擴充名稱「嗶速 - 海外影片加速 for bilibili」取「 - 」前面
-    var name = uiMsgs && uiMsgs.extName;
-    if (!name) { try { name = chrome.i18n.getMessage("extName"); } catch (e) {} }
-    if (name) { var cut = name.indexOf(" - "); out.brand = cut > 0 ? name.slice(0, cut) : name; }
+    // 頁首的品牌名用 brandName（中文是「嗶速 | BiBoost」）。uiMsgs 是使用者在 popup 選語言時存的整份文案，
+    // 更新前存的那份沒有 brandName，就用瀏覽器語系的
+    var brand = uiMsgs && uiMsgs.brandName;
+    if (!brand) { try { brand = chrome.i18n.getMessage("brandName"); } catch (e) {} }
+    if (brand) out.brand = brand;
     return out;
   }
 
