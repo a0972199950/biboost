@@ -100,10 +100,14 @@
 
 ### 贊助與乾爹排行榜
 
-彈出視窗的「贊助/乾爹排行榜」會在新分頁開啟網站 `https://biboost.app/donate` 的贊助頁（Safari 版沒有這個功能）。擴充本身沒有贊助頁，贊助都在這個網站上進行；開啟時網址只帶介面語言（例如 `?lang=zh-TW`），不帶其他資料。
+彈出視窗的贊助按鈕會在新分頁開啟網站的贊助頁 `https://biboost.app/donate`（Safari 版沒有這個功能），網址只帶介面語言（例如 `?lang=zh-TW`）；擴充本身不收集、不儲存、不傳送任何贊助相關的資料。舊版擴充曾經存在瀏覽器裡的贊助者 ID 與上榜資料，新版擴充不會讀取或傳送。
+
+### 網站的贊助頁
+
+以下是網站 `biboost.app/donate` 的行為，不是擴充的行為；只有你自己到該網站贊助時才適用。
 
 - 開啟時會從作者架設的接收端（`https://api.biboost.app/v1/donors`）下載排行榜，這是單純的下載（GET），**不帶 Cookie、不附任何資料**。
-- 擴充不會產生、也不會儲存贊助者 ID 或上榜資料。贊助頁會產生一組隨機的贊助者 ID，與你填的上榜名稱、選的頭像一起存在該網站的 localStorage（只在你用的那個瀏覽器）。舊版擴充曾經存在瀏覽器裡的贊助者 ID 與上榜資料，新版擴充不會讀取或傳送。
+- 贊助頁會產生一組隨機的贊助者 ID，與你填的上榜名稱、選的頭像一起存在該網站的 localStorage（只在你用的那個瀏覽器）。
 - **只有在你按下付款時**，才會把贊助者 ID、上榜名稱、頭像（預設頭像的編號，或你上傳、縮成 128×128 的圖片）、金額、幣別、介面語言與瀏覽器種類，以 HTTPS 傳送到上述接收端，由它向 Stripe 建立付款頁並記錄在作者的資料庫（Neon），同時記錄由連線 IP 判斷的**國家**（不記 IP 本身）。付款在 Stripe 的頁面完成，網站與作者**拿不到你的卡號或帳戶資料**；Stripe 會通知作者付款結果（金額、手續費、付款方式、付款時間、帳單地址的國家、你在 Stripe 填的 email），一併記錄，用於排行榜與對帳。在不同裝置用同一個 email 付款，金額會合併到同一位贊助者（email 不會公開）。
 - 排行榜**公開**顯示上榜名稱、頭像、換算成美金的累計金額與次數；贊助者 ID 本身不會公開（只公開它的雜湊值）。名稱留白會顯示為匿名。不雅的名稱或頭像，作者可能將其撤下。
 
@@ -211,10 +215,14 @@ The full diagnostics are shown on the form before sending so you can review them
 
 ### Tips and the supporter leaderboard
 
-"Tip / Top Patrons" in the popup opens the support page on the website `https://biboost.app/donate` in a new tab (not available in the Safari version). The extension itself has no support page; tipping happens entirely on that website. The address carries only your interface language (e.g. `?lang=en`) and nothing else.
+The tip button in the popup opens the support page on the website, `https://biboost.app/donate`, in a new tab (not available in the Safari version); the address carries only your interface language (e.g. `?lang=en`). The extension itself collects, stores and sends no tip-related data at all. Supporter IDs and board details saved in the browser by older versions of the extension are never read or sent by the current version.
+
+### The support page on the website
+
+What follows describes the website `biboost.app/donate`, not the extension; it applies only when you go to that website and tip yourself.
 
 - When opened, it downloads the leaderboard from the author's endpoint (`https://api.biboost.app/v1/donors`). This is a plain download (GET) **with no cookies and no data attached**.
-- The extension neither creates nor stores a supporter ID or leaderboard details. The support page creates a random supporter ID and keeps it, together with the name and avatar you choose for the board, in the website's localStorage (in the browser you use only). Supporter IDs and board details saved in the browser by older versions of the extension are never read or sent by the current version.
+- The support page creates a random supporter ID and keeps it, together with the name and avatar you choose for the board, in the website's localStorage (in the browser you use only).
 - **Only when you press pay** are your supporter ID, display name, avatar (the number of a preset avatar, or the image you upload, resized to 128×128), amount, currency, interface language and browser type sent over HTTPS to the endpoint above, which creates a Stripe payment page and records it in the author's database (Neon), together with the **country** derived from your connection's IP (the IP itself is not stored). Payment is completed on Stripe's page; the website and the author **never see your card or account details**. Stripe notifies the author of the result (amount, fees, payment method, payment time, billing-address country and the email you entered at Stripe), which is recorded for the leaderboard and bookkeeping. Tips paid with the same email from different devices are combined under one supporter (the email is never shown).
 - The leaderboard **publicly** shows your display name, avatar, and total amount (in USD) and number of tips; the supporter ID itself is never shown (only a hash of it). A blank name is shown as anonymous. The author may remove inappropriate names or avatars.
 
