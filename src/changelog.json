@@ -1,5 +1,16 @@
 {
-  "unreleased": [],
+  "unreleased": [
+    {
+      "type": "feature",
+      "text": {
+        "zh_TW": "「請我喝杯咖啡」改成在新分頁開啟 BiBoost 網站的贊助頁",
+        "zh_CN": "「请我喝杯咖啡」改为在新标签页打开 BiBoost 网站的赞助页",
+        "en": "\"Buy me a coffee\" now opens the tip page on the BiBoost website in a new tab",
+        "ja": "「コーヒーを一杯おごる」を押すと、新しいタブで BiBoost ウェブサイトの支援ページが開くようになりました",
+        "ko": "'커피 한 잔 사주기'를 누르면 새 탭에서 BiBoost 웹사이트의 후원 페이지가 열려요"
+      }
+    }
+  ],
   "releases": [
     {
       "version": "2.11.0",

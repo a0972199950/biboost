@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { createEnv, closeAll } from "./helpers/load.mjs";
 
 const DONORS_API = "https://api.biboost.app/v1/donors";
-// Boots donate.html; `board` is what GET /v1/donors answers (null = network error, 404 = not deployed yet)
+// Boots the donate page; `board` is what GET /v1/donors answers (null = network error, 404 = not deployed yet).
+// 贊助頁只在網站上（tools/site/donate.html、donate.js，由 scripts/build-site.mjs 跟 src/ 的 i18n.js、common.js 一起放上網站）；
+// 這裡照舊用擴充的假 chrome API 跑（網站上由 tools/site/web-shim.js 模擬同一組 API）
 async function boot({ storage = {}, board = { ok: true, items: [] }, query = "" } = {}) {
-  const env = createEnv({ htmlFile: "donate.html", url: "chrome-extension://bcs-test/donate.html" + query, storage });
+  const env = createEnv({ htmlFile: "../tools/site/donate.html", url: "chrome-extension://bcs-test/donate.html" + query, storage });
   // jsdom 沒有 crypto.subtle／TextEncoder：換成 Node 的，贊助者的 pid 才算得出來
   Object.defineProperty(env.window, "crypto", { value: globalThis.crypto, configurable: true });
   env.window.TextEncoder = TextEncoder;
@@ -14,7 +16,7 @@ async function boot({ storage = {}, board = { ok: true, items: [] }, query = "" 
     if (board === 404) return { ok: false, status: 404, json: () => Promise.resolve({}) };
     return { ok: true, status: 200, json: () => Promise.resolve(board) };
   };
-  ["i18n.js", "common.js", "donate.js"].forEach((f) => env.load(f));
+  ["i18n.js", "common.js", "../tools/site/donate.js"].forEach((f) => env.load(f));
   await env.settle(30);
   // 機器忙的時候 30 ms 不夠：初始化（算 pid、抓排行榜）還沒跑完測試就關掉頁面，之後的 promise 碰到已關閉的 document 會偶發失敗。
   // 等排行榜載入（或失敗）為止，最多 3 秒

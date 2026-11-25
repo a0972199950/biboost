@@ -23,9 +23,10 @@ describe("report worker: donate", () => {
     assert.equal(checkInput({ ...ok, avatar: { image: "data:text/html;base64,AAAA" } }), "bad_avatar");
   });
 
-  test("minimums match the extension", async () => {
-    const env = createEnv({ htmlFile: "donate.html", url: "chrome-extension://bcs-test/donate.html" });
-    ["i18n.js", "common.js", "donate.js"].forEach((f) => env.load(f));
+  // 贊助頁只在網站上（tools/site/donate.html、donate.js，由 scripts/build-site.mjs 跟 src/ 的 i18n.js、common.js 一起放上網站）
+  test("minimums match the donate page", async () => {
+    const env = createEnv({ htmlFile: "../tools/site/donate.html", url: "chrome-extension://bcs-test/donate.html" });
+    ["i18n.js", "common.js", "../tools/site/donate.js"].forEach((f) => env.load(f));
     await env.settle(30);
     // 等初始化跑完（排行榜載入或失敗）再關頁面：機器忙的時候還在跑的 promise 會碰到已關閉的 document（偶發失敗）
     const bd = env.internals("donate").board;

@@ -536,17 +536,24 @@ if (reviewUrl) {
     openTab(withUtm(reviewUrl, "rate"));
   });
 }
-// 贊助：在新分頁開 donate.html（先顯示乾爹排行榜），跟一般擴充的設定頁一樣是個網址，可以加書籤、重新整理。
-// 已開放（DONATE_DEV_ONLY = false）：商店版接正式的 api.biboost.app，本機載入的開發版接測試環境（donate.js 依 installType 決定）。
-// 要暫時收起來時改回 true：只剩開發版看得到，且開假資料（donate.html?mock，見 donate.js 的 mockBoard）；
+// 贊助：在新分頁開網站的贊助頁（https://biboost.app/donate，先顯示乾爹排行榜）。擴充裡不再有自己的贊助頁。
+// 網址帶 ?lang=：贊助頁跟 popup 用同一個語言（popup 進階設定選的語言；沒選就是 popup 目前跟隨瀏覽器的結果），網站認得這個參數。
+// 網站一律是正式環境：本機載入的開發版按下去也是正式的排行榜與付款。
+// 要暫時收起來時把 DONATE_DEV_ONLY 改回 true：只剩開發版看得到，且帶 mock（網站的贊助頁用假資料，不打 API）；
 // management.getSelf 不需要 management 權限。
 // Safari 版包在 App Store 的 App 裡，App Store 審核規定不能導去外部付款，所以不顯示（見 spec/donate.md 的商店規範），也不受下面的開關影響。
 // 後台「功能管理」可以暫停贊助（功能開關 donate，features.js）：開 popup 先照快取決定（沒有快取＝顯示，預設開），
 // 每次開 popup 都再問一次 API，暫停後最慢約 1 分鐘按鈕收起來。
 var DONATE_DEV_ONLY = false;
+var DONATE_URL = "https://biboost.app/donate";
+// uiLangCode() → 網站 ?lang= 認得的語言（對應 _locales 的資料夾，zh_HK 是粵語）
+var DONATE_LANGS = { zhtw: "zh-TW", zhhk: "zh-HK", zhcn: "zh-CN", en: "en", ja: "ja", ko: "ko" };
+function donateUrl(dev) {
+  return DONATE_URL + "?lang=" + DONATE_LANGS[uiLangCode()] + (dev ? "&mock" : "");
+}
 function bindDonateBtn(dev) {
   els.donateBtn.addEventListener("click", function () {
-    openTab(chrome.runtime.getURL("donate.html" + (dev ? "?mock" : "")));
+    openTab(donateUrl(dev));
     window.close();
   });
 }

@@ -60,7 +60,6 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "donate.html",
         "auth.html"
       ],
       "matches": [

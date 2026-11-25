@@ -1,7 +1,8 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createEnv, readSrcJson, plain, closeAll, testKey, CDN_FIXTURE, CDN_DEFAULT_HOST } from "./helpers/load.mjs";
+import { readFileSync, existsSync } from "node:fs";
+import path from "node:path";
+import { createEnv, readSrcJson, plain, closeAll, testKey, SRC, CDN_FIXTURE, CDN_DEFAULT_HOST } from "./helpers/load.mjs";
 import { signJws } from "../tools/report-worker/src/features.js";
 
 const CDN = CDN_FIXTURE; // 測試用假清單（test/fixtures/cdn-list.json），helpers 預設已經簽章放進 storage
@@ -526,9 +527,9 @@ describe("donate button", () => {
   before(async () => { key = await testKey(); });
   // jsdom 的 User-Agent 會被 detectBrowser 當成 Safari；這裡先換成指定瀏覽器的再載入 popup。
   // features：GET /v1/features 簽章裡的 features（null＝連不上）；storage：預先放進 storage.local 的東西
-  async function bootAs(ua, { features = null, storage = {} } = {}) {
+  async function bootAs(ua, { features = null, storage = {}, uiLanguage } = {}) {
     const jws = features && await signJws({ iat: 1, features }, key.priv, "t1");
-    const env = createEnv({ htmlFile: "popup.html", storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, ...storage } });
+    const env = createEnv({ htmlFile: "popup.html", uiLanguage, storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, ...storage } });
     Object.defineProperty(env.window.navigator, "userAgent", { value: ua, configurable: true });
     env.fetchHandler = (url) => {
       if (url === FEATURES_API && jws) return { ok: true, status: 200, json: () => Promise.resolve({ ok: true, jws }) };
@@ -580,6 +581,44 @@ describe("donate button", () => {
     assert.equal(env.document.getElementById("donateBtn").style.display, "");
     assert.equal(env.storage.donateConfig, undefined);
     env.close();
+  });
+  // 按下去：新分頁開網站的贊助頁（擴充裡沒有自己的贊助頁了），帶 popup 的語言，popup 關掉
+  async function clickDonate(env) {
+    let closes = 0;
+    const realClose = env.window.close;
+    env.window.close = () => { closes++; }; // popup 開完分頁就關自己；這裡只計次，點完還原（env.close() 要用真的 close，不然 jsdom 的計時器會讓測試不結束）
+    const before = env.createdTabs.length;
+    env.document.getElementById("donateBtn").click();
+    env.window.close = realClose;
+    return { tabs: plain(env.createdTabs.slice(before)), closes };
+  }
+  test("opens the website's donate page in a new tab, in the popup's language", async () => {
+    const env = await bootAs(CHROME_UA);
+    assert.deepEqual(await clickDonate(env), { tabs: [{ url: "https://biboost.app/donate?lang=en" }], closes: 1 });
+    env.close();
+  });
+  test("the language follows the browser when the popup has no language picked", async () => {
+    for (const [ui, lang] of [["zh-TW", "zh-TW"], ["zh-CN", "zh-CN"], ["ja", "ja"], ["ko", "ko"], ["en-GB", "en"], ["fr", "en"]]) {
+      const env = await bootAs(CHROME_UA, { uiLanguage: ui });
+      assert.deepEqual((await clickDonate(env)).tabs, [{ url: "https://biboost.app/donate?lang=" + lang }], ui);
+      env.close();
+    }
+  });
+  test("the language picked in advanced settings wins (Cantonese included)", async () => {
+    const env = await bootAs(CHROME_UA, { uiLanguage: "en" });
+    for (const [pref, lang] of [["zh_HK", "zh-HK"], ["zh_CN", "zh-CN"], ["ja", "ja"]]) {
+      env.window.uiLangPref = pref; // i18n.js 從 localStorage 讀進來的設定（jsdom 的 chrome-extension:// 頁面沒有 localStorage）
+      assert.deepEqual((await clickDonate(env)).tabs, [{ url: "https://biboost.app/donate?lang=" + lang }], pref);
+    }
+    env.close();
+  });
+  test("the extension no longer ships its own donate page", () => {
+    for (const f of ["manifest.json", "manifest.firefox.json"]) {
+      const war = readSrcJson(f).web_accessible_resources;
+      assert.ok(war.every((w) => !w.resources.includes("donate.html")), f);
+    }
+    assert.equal(existsSync(path.join(SRC, "donate.html")), false);
+    assert.equal(existsSync(path.join(SRC, "donate.js")), false);
   });
   test("hidden in Safari (App Store rules: no external payment)", async () => {
     const env = await bootAs("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15");

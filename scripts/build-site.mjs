@@ -1,5 +1,7 @@
-// 公開網站 https://biboost.app 的檔案：把擴充的贊助頁（src/donate.html 與它用到的 js、語系、圖示）複製到 tools/site/public/，
-// 前面加上 tools/site/web-shim.js（用 localStorage 模擬擴充 API）。贊助頁只維護 src/ 那一份。
+// 公開網站 https://biboost.app 的檔案：把贊助頁（tools/site/donate.html、donate.js）與它用到的擴充共用檔（src/ 的 common.js、i18n.js、語系、圖示）
+// 複製到 tools/site/public/，前面加上 tools/site/web-shim.js（用 localStorage 模擬擴充 API）。
+// 贊助頁原本是擴充內建的頁面（src/donate.html），擴充改成直接開這個網站之後搬到 tools/site/，只給網站用；內容沒改，所以還留著擴充 API 的寫法。
+// 贊助頁的文案仍在 src/_locales/（donate* 那些 key），網站從那裡複製，不要從擴充的語系檔刪掉。
 // 雲端後台 /admin：admin/（私人 repo）打包（vite build）後複製到 public/admin/；沒有 admin/（只有公開 repo）就略過，部署後 /admin 會不見
 //   npm run site:build    只產生檔案
 //   npm run site:deploy   產生後部署（tools/site/wrangler.toml，網域 biboost.app）
@@ -11,12 +13,14 @@ import { prodCommonJs } from "./lib/prod-env.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "src");
-const OUT = path.join(ROOT, "tools/site/public");
-const FILES = ["donate.js", "common.js", "i18n.js", "logo128.png"];
+const SITE = path.join(ROOT, "tools/site");
+const OUT = path.join(SITE, "public");
+const FILES = ["common.js", "i18n.js", "logo128.png"];
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 for (const f of FILES) fs.copyFileSync(path.join(SRC, f), path.join(OUT, f));
+fs.copyFileSync(path.join(SITE, "donate.js"), path.join(OUT, "donate.js"));
 // 網站是正式環境：common.js 的環境設定換成上架版（只有正式環境，不出現測試環境的網址）
 fs.writeFileSync(path.join(OUT, "common.js"), prodCommonJs(fs.readFileSync(path.join(SRC, "common.js"), "utf8")));
 fs.copyFileSync(path.join(ROOT, "tools/site/web-shim.js"), path.join(OUT, "web-shim.js"));
@@ -25,7 +29,7 @@ for (const lang of fs.readdirSync(path.join(SRC, "_locales"))) {
   fs.copyFileSync(path.join(SRC, "_locales", lang, "messages.json"), path.join(OUT, "_locales", lang, "messages.json"));
 }
 
-let html = fs.readFileSync(path.join(SRC, "donate.html"), "utf8");
+let html = fs.readFileSync(path.join(SITE, "donate.html"), "utf8");
 // web-shim.js 要在 i18n.js 之前（i18n.js 一載入就要用 chrome.runtime）
 const i18nTag = '<script src="i18n.js"></script>';
 if (!html.includes(i18nTag)) throw new Error("donate.html 找不到 i18n.js 的 <script>");
