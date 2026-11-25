@@ -536,25 +536,27 @@ if (reviewUrl) {
     openTab(withUtm(reviewUrl, "rate"));
   });
 }
-// 贊助：在新分頁開網站的贊助頁（https://biboost.app/donate，先顯示乾爹排行榜）。擴充裡不再有自己的贊助頁。
+// 贊助：在新分頁開網站的贊助頁（先顯示乾爹排行榜）。擴充裡不再有自己的贊助頁。
 // 網址帶 ?lang=：贊助頁跟 popup 用同一個語言（popup 進階設定選的語言；沒選就是 popup 目前跟隨瀏覽器的結果），網站認得這個參數。
-// 網站一律是正式環境：本機載入的開發版按下去也是正式的排行榜與付款。
-// 要暫時收起來時把 DONATE_DEV_ONLY 改回 true：只剩開發版看得到，且帶 mock（網站的贊助頁用假資料，不打 API）；
-// management.getSelf 不需要 management 權限。
+// 是不是開發版照 common.js 的 bbIsDevBuild（直接載入 src/ 的是開發版，上架版只有正式環境）。
+// 要暫時收起來時把 DONATE_DEV_ONLY 改回 true：只剩開發版（installType development）看得到；management.getSelf 不需要 management 權限。
 // Safari 版包在 App Store 的 App 裡，App Store 審核規定不能導去外部付款，所以不顯示（見 spec/donate.md 的商店規範），也不受下面的開關影響。
 // 後台「功能管理」可以暫停贊助（功能開關 donate，features.js）：開 popup 先照快取決定（沒有快取＝顯示，預設開），
 // 每次開 popup 都再問一次 API，暫停後最慢約 1 分鐘按鈕收起來。
 var DONATE_DEV_ONLY = false;
-var DONATE_URL = "https://biboost.app/donate";
+// 開發版開本機的網站，避免開發時打到正式的付款
+var DONATE_URLS = { prod: "https://biboost.app/donate", dev: "http://localhost:3200/donate" };
 // uiLangCode() → 網站 ?lang= 認得的語言（對應 _locales 的資料夾，zh_HK 是粵語）
 var DONATE_LANGS = { zhtw: "zh-TW", zhhk: "zh-HK", zhcn: "zh-CN", en: "en", ja: "ja", ko: "ko" };
 function donateUrl(dev) {
-  return DONATE_URL + "?lang=" + DONATE_LANGS[uiLangCode()] + (dev ? "&mock" : "");
+  return DONATE_URLS[dev ? "dev" : "prod"] + "?lang=" + DONATE_LANGS[uiLangCode()];
 }
-function bindDonateBtn(dev) {
+function bindDonateBtn() {
   els.donateBtn.addEventListener("click", function () {
-    openTab(donateUrl(dev));
-    window.close();
+    bbIsDevBuild().then(function (dev) {
+      openTab(donateUrl(dev));
+      window.close();
+    });
   });
 }
 // 兩顆都沒顯示（iPhone / iPad Safari、暫停贊助且沒有評分連結）時整列收起來，不然空的一列會多佔一個間距
@@ -570,11 +572,11 @@ chrome.storage.local.remove("donateConfig");
 var donateByFlag = false; // 贊助按鈕跟著功能開關（Safari 寫死不顯示、開發中只給開發版）
 if (detectBrowser() !== "safari") {
   if (!DONATE_DEV_ONLY) {
-    bindDonateBtn(false);
+    bindDonateBtn();
     setDonateVisible(true);
     donateByFlag = true;
   } else if (chrome.management && chrome.management.getSelf) {
-    chrome.management.getSelf(function (self) { if (self && self.installType === "development") { bindDonateBtn(true); setDonateVisible(true); } });
+    chrome.management.getSelf(function (self) { if (self && self.installType === "development") { bindDonateBtn(); setDonateVisible(true); } });
   }
 }
 syncRateRow();

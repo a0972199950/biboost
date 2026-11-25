@@ -2,7 +2,7 @@
 
 **B 站 CDN 線路重排（Bilibili CDN Switcher）**
 
-最後更新 / Last updated：2026-11-21
+最後更新 / Last updated：2026-11-25
 
 ---
 
@@ -100,11 +100,11 @@
 
 ### 贊助與乾爹排行榜
 
-彈出視窗的「贊助/乾爹排行榜」會在新分頁開啟贊助頁（Safari 版沒有這個功能）；同樣的贊助頁也放在網站 `https://biboost.app/donate`。
+彈出視窗的「贊助/乾爹排行榜」會在新分頁開啟網站 `https://biboost.app/donate` 的贊助頁（Safari 版沒有這個功能）。擴充本身沒有贊助頁，贊助都在這個網站上進行；開啟時網址只帶介面語言（例如 `?lang=zh-TW`），不帶其他資料。
 
 - 開啟時會從作者架設的接收端（`https://api.biboost.app/v1/donors`）下載排行榜，這是單純的下載（GET），**不帶 Cookie、不附任何資料**。
-- 擴充會產生一組隨機的贊助者 ID，存在瀏覽器的 `chrome.storage.sync`（登入同一個瀏覽器帳號、開啟同步的裝置會共用；不支援同步時存在本機），你填的上榜名稱與選的頭像存在本機 `chrome.storage.local`。網站版沒有瀏覽器同步，這些資料存在該網站的 localStorage。
-- **只有在你按下付款時**，才會把贊助者 ID、上榜名稱、頭像（預設頭像的編號，或你上傳、縮成 128×128 的圖片）、金額、幣別、介面語言、瀏覽器種類與擴充版本，以 HTTPS 傳送到上述接收端，由它向 Stripe 建立付款頁並記錄在作者的資料庫（Neon），同時記錄由連線 IP 判斷的**國家**（不記 IP 本身）。付款在 Stripe 的頁面完成，擴充與作者**拿不到你的卡號或帳戶資料**；Stripe 會通知作者付款結果（金額、手續費、付款方式、付款時間、帳單地址的國家、你在 Stripe 填的 email），一併記錄，用於排行榜與對帳。在不同裝置用同一個 email 付款，金額會合併到同一位贊助者（email 不會公開）。
+- 擴充不會產生、也不會儲存贊助者 ID 或上榜資料。贊助頁會產生一組隨機的贊助者 ID，與你填的上榜名稱、選的頭像一起存在該網站的 localStorage（只在你用的那個瀏覽器）。舊版擴充曾經存在瀏覽器裡的贊助者 ID 與上榜資料，新版擴充不會讀取或傳送。
+- **只有在你按下付款時**，才會把贊助者 ID、上榜名稱、頭像（預設頭像的編號，或你上傳、縮成 128×128 的圖片）、金額、幣別、介面語言與瀏覽器種類，以 HTTPS 傳送到上述接收端，由它向 Stripe 建立付款頁並記錄在作者的資料庫（Neon），同時記錄由連線 IP 判斷的**國家**（不記 IP 本身）。付款在 Stripe 的頁面完成，網站與作者**拿不到你的卡號或帳戶資料**；Stripe 會通知作者付款結果（金額、手續費、付款方式、付款時間、帳單地址的國家、你在 Stripe 填的 email），一併記錄，用於排行榜與對帳。在不同裝置用同一個 email 付款，金額會合併到同一位贊助者（email 不會公開）。
 - 排行榜**公開**顯示上榜名稱、頭像、換算成美金的累計金額與次數；贊助者 ID 本身不會公開（只公開它的雜湊值）。名稱留白會顯示為匿名。不雅的名稱或頭像，作者可能將其撤下。
 
 ### 政策異動
@@ -211,11 +211,11 @@ The full diagnostics are shown on the form before sending so you can review them
 
 ### Tips and the supporter leaderboard
 
-"Tip / Top Patrons" in the popup opens the support page in a new tab (not available in the Safari version); the same page is also on the website at `https://biboost.app/donate`.
+"Tip / Top Patrons" in the popup opens the support page on the website `https://biboost.app/donate` in a new tab (not available in the Safari version). The extension itself has no support page; tipping happens entirely on that website. The address carries only your interface language (e.g. `?lang=en`) and nothing else.
 
 - When opened, it downloads the leaderboard from the author's endpoint (`https://api.biboost.app/v1/donors`). This is a plain download (GET) **with no cookies and no data attached**.
-- The extension creates a random supporter ID stored in the browser's `chrome.storage.sync` (shared by devices signed in to the same browser account with sync on; stored locally if sync is unavailable). The name and avatar you choose for the board are stored locally in `chrome.storage.local`. The website version has no browser sync and keeps this data in the site's localStorage.
-- **Only when you press pay** are your supporter ID, display name, avatar (the number of a preset avatar, or the image you upload, resized to 128×128), amount, currency, interface language, browser type and extension version sent over HTTPS to the endpoint above, which creates a Stripe payment page and records it in the author's database (Neon), together with the **country** derived from your connection's IP (the IP itself is not stored). Payment is completed on Stripe's page; the extension and the author **never see your card or account details**. Stripe notifies the author of the result (amount, fees, payment method, payment time, billing-address country and the email you entered at Stripe), which is recorded for the leaderboard and bookkeeping. Tips paid with the same email from different devices are combined under one supporter (the email is never shown).
+- The extension neither creates nor stores a supporter ID or leaderboard details. The support page creates a random supporter ID and keeps it, together with the name and avatar you choose for the board, in the website's localStorage (in the browser you use only). Supporter IDs and board details saved in the browser by older versions of the extension are never read or sent by the current version.
+- **Only when you press pay** are your supporter ID, display name, avatar (the number of a preset avatar, or the image you upload, resized to 128×128), amount, currency, interface language and browser type sent over HTTPS to the endpoint above, which creates a Stripe payment page and records it in the author's database (Neon), together with the **country** derived from your connection's IP (the IP itself is not stored). Payment is completed on Stripe's page; the website and the author **never see your card or account details**. Stripe notifies the author of the result (amount, fees, payment method, payment time, billing-address country and the email you entered at Stripe), which is recorded for the leaderboard and bookkeeping. Tips paid with the same email from different devices are combined under one supporter (the email is never shown).
 - The leaderboard **publicly** shows your display name, avatar, and total amount (in USD) and number of tips; the supporter ID itself is never shown (only a hash of it). A blank name is shown as anonymous. The author may remove inappropriate names or avatars.
 
 ### Changes to this policy

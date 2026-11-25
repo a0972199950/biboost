@@ -527,9 +527,9 @@ describe("donate button", () => {
   before(async () => { key = await testKey(); });
   // jsdom 的 User-Agent 會被 detectBrowser 當成 Safari；這裡先換成指定瀏覽器的再載入 popup。
   // features：GET /v1/features 簽章裡的 features（null＝連不上）；storage：預先放進 storage.local 的東西
-  async function bootAs(ua, { features = null, storage = {}, uiLanguage } = {}) {
+  async function bootAs(ua, { features = null, storage = {}, uiLanguage, devBuild = false } = {}) {
     const jws = features && await signJws({ iat: 1, features }, key.priv, "t1");
-    const env = createEnv({ htmlFile: "popup.html", uiLanguage, storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, ...storage } });
+    const env = createEnv({ htmlFile: "popup.html", uiLanguage, devBuild, storage: { zoneCheckedAt: Date.now(), countryAutoDone: true, ...storage } });
     Object.defineProperty(env.window.navigator, "userAgent", { value: ua, configurable: true });
     env.fetchHandler = (url) => {
       if (url === FEATURES_API && jws) return { ok: true, status: 200, json: () => Promise.resolve({ ok: true, jws }) };
@@ -589,12 +589,24 @@ describe("donate button", () => {
     env.window.close = () => { closes++; }; // popup 開完分頁就關自己；這裡只計次，點完還原（env.close() 要用真的 close，不然 jsdom 的計時器會讓測試不結束）
     const before = env.createdTabs.length;
     env.document.getElementById("donateBtn").click();
+    await env.settle(0); // 先問 bbIsDevBuild（Promise）才開分頁
     env.window.close = realClose;
     return { tabs: plain(env.createdTabs.slice(before)), closes };
   }
   test("opens the website's donate page in a new tab, in the popup's language", async () => {
     const env = await bootAs(CHROME_UA);
     assert.deepEqual(await clickDonate(env), { tabs: [{ url: "https://biboost.app/donate?lang=en" }], closes: 1 });
+    env.close();
+  });
+  test("a development build opens the local website instead of the live payments", async () => {
+    const env = await bootAs(CHROME_UA, { devBuild: true, uiLanguage: "ja" });
+    assert.equal(env.document.getElementById("donateBtn").style.display, "");
+    assert.deepEqual(await clickDonate(env), { tabs: [{ url: "http://localhost:3200/donate?lang=ja" }], closes: 1 });
+    env.close();
+  });
+  test("a store build never opens the local website", async () => {
+    const env = await bootAs(CHROME_UA, { uiLanguage: "ja" });
+    assert.deepEqual(await clickDonate(env), { tabs: [{ url: "https://biboost.app/donate?lang=ja" }], closes: 1 });
     env.close();
   });
   test("the language follows the browser when the popup has no language picked", async () => {
