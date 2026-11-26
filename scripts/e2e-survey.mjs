@@ -79,6 +79,20 @@ async function machine(name, opts = {}) {
       cdp.send("Fetch.fulfillRequest", { requestId: e.requestId, responseCode: 204, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }] }).catch(() => {});
     });
   }
+  // opts.batchTarget：批次端點原樣轉給另一台伺服器（例如本機 API http://127.0.0.1:8788），用它回的狀態碼回覆擴充
+  if (opts.batchTarget) {
+    const cdp = await browser.target().createCDPSession();
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `${API}/v2/surveys/events/batch` }] });
+    cdp.on("Fetch.requestPaused", async (e) => {
+      let code = 502;
+      try {
+        const r = await fetch(opts.batchTarget + "/v2/surveys/events/batch", { method: "POST", headers: { "Content-Type": e.request.headers["Content-Type"] || "text/plain;charset=UTF-8", Origin: e.request.headers.Origin || "" }, body: e.request.postData });
+        code = r.status;
+        console.log(`    [batch-target] ${code} ${(await r.text()).slice(0, 120)}`);
+      } catch (err) { console.log("    [batch-target] error", String(err)); }
+      cdp.send("Fetch.fulfillRequest", { requestId: e.requestId, responseCode: code, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }] }).catch(() => {});
+    });
+  }
   const id = await browser.installExtension(path.join(ROOT, "src"));
   const base = `chrome-extension://${id}/`;
   await browser.waitForTarget((t) => t.type() === "service_worker" && t.url().startsWith(base), { timeout: 15000 });
@@ -359,7 +373,7 @@ async function scenarioBlocked() {
 async function scenarioNetwork() {
   current = "network";
   console.log("\n【網路：沒有預檢、事件合併送出】");
-  const m = await machine("W", { fakeBatch: argv.includes("--fake-batch") });
+  const m = await machine("W", { fakeBatch: argv.includes("--fake-batch"), batchTarget: opt("--batch-target") });
   try {
     const log = await m.netLog();
     const isPreflight = (x) => x.method === "OPTIONS" || /preflight/i.test(x.type);
