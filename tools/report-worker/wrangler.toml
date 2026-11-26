@@ -28,8 +28,9 @@ TELEMETRY_DATASET = "bb_telemetry"
 
 # 每天一次：把前天、昨天（UTC）的匿名統計從 Analytics Engine 彙總回 Neon（src/telemetry.js；覆蓋寫入，重跑不會重複算）。
 # 時間是 UTC：00:20 UTC ＝ 台灣／新加坡 08:20。只有正式環境有，測試環境不排程（不要定時叫醒 staging 的資料庫）
+# 2026-11-26 關掉：每日工作改由另一支 Worker 執行，這裡不再排程（兩邊同時跑雖然無害，但紀錄會有兩筆）。
 [triggers]
-crons = ["20 0 * * *"]
+crons = []
 
 # 公告 API 的下載次數（國家 × 瀏覽器 × 路徑，不記 IP）；查詢：npm run worker:opens
 [[analytics_engine_datasets]]
