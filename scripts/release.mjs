@@ -2,13 +2,22 @@
 //
 //   node scripts/release.mjs next <major|minor|patch>   # 印出升版後的版本號（不改任何檔案）
 //   node scripts/release.mjs prepare <x.y.z>            # 把 unreleased 搬到新版本底下 + 同步所有版本號
+//   node scripts/release.mjs prepare <x.y.z> --no-changelog   # 沒有更新紀錄的版本：只同步版本號，不動 changelog
 //   node scripts/release.mjs notes <x.y.z>              # 印出 GitHub Release 說明（該版 changelog＋下載說明，Markdown）
+//   node scripts/release.mjs notes <x.y.z> --no-changelog     # 沒有更新紀錄的版本：「更新內容」寫成沒有使用者看得到的改動
 //
 // prepare 會做的事：
 //   1. src/changelog.json：unreleased 整批搬到 releases 最前面（日期＝今天），unreleased 清空
 //   2. src/manifest.json、src/manifest.firefox.json 的 version
 //   3. Safari Xcode 工程的 MARKETING_VERSION
 // 要先在 release 分支上跑；不會 commit。
+//
+// --no-changelog（2026-11-26 為 2.12.1 加的）：這版只有使用者看不到的改動、unreleased 刻意留空時用。
+//   prepare 只做上面的 2、3（manifest 與 Safari 工程的版本號），不動 src/changelog.json，releases 也不會多一個空的版本；
+//   unreleased 不是空的就拒絕（有東西要發就照一般流程，不要用這個選項把條目留在 unreleased）。
+//   popup 的「更新內容」只列 releases 裡 (舊版, 目前版本] 的條目：沒有新條目時，從上一版升上來不會跳提示，
+//   只寫入新的版本號（scripts/test-whats-new.mjs 有測這個情境）。
+//   不加這個選項時，unreleased 是空的照舊丟錯，避免忘了寫更新紀錄就發版。
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,7 +56,7 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function prepare(version) {
+function prepare(version, { noChangelog = false } = {}) {
   if (!parseVersion(version)) throw new Error(`版本號必須是 x.y.z：${version}`);
   const current = currentVersion();
   if (compareVersions(version, current) <= 0) throw new Error(`新版本 ${version} 必須大於目前版本 ${current}`);
@@ -55,26 +64,36 @@ function prepare(version) {
   const log = readChangelog();
   const errors = validateChangelog(log);
   if (errors.length) throw new Error("changelog.json 格式有誤：\n" + errors.map((e) => `  - ${e}`).join("\n"));
-  if (!log.unreleased.length) throw new Error("unreleased 是空的，沒有東西可以發版。先把新功能／修正記到 src/changelog.json。");
-
-  log.releases.unshift({ version, date: today(), entries: log.unreleased });
-  log.unreleased = [];
-  writeChangelog(log);
+  if (noChangelog) {
+    if (log.unreleased.length) throw new Error(`--no-changelog：unreleased 還有 ${log.unreleased.length} 條，這版有更新紀錄，請拿掉 --no-changelog。`);
+    if (log.releases.some((r) => r.version === version)) throw new Error(`--no-changelog：changelog.json 已經有 ${version}`);
+  } else {
+    if (!log.unreleased.length) throw new Error("unreleased 是空的，沒有東西可以發版。先把新功能／修正記到 src/changelog.json（這版刻意沒有更新紀錄就加 --no-changelog）。");
+    log.releases.unshift({ version, date: today(), entries: log.unreleased });
+    log.unreleased = [];
+    writeChangelog(log);
+  }
 
   for (const rel of MANIFESTS) replaceInFile(rel, /("version"\s*:\s*")[^"]+(")/, `$1${version}$2`);
   if (fs.existsSync(path.join(ROOT, PBXPROJ))) replaceInFile(PBXPROJ, /MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`);
 
-  console.log(`✔ ${current} → ${version}：changelog 已整理、manifest 與 Safari 工程版本號已同步`);
+  console.log(`✔ ${current} → ${version}：${noChangelog ? "changelog 沒動（--no-changelog）" : "changelog 已整理"}、manifest 與 Safari 工程版本號已同步`);
 }
 
 // GitHub Release 的說明：該版 changelog（繁中＋英文）＋ release/ 各檔案的用途
-function notes(version) {
+function notes(version, { noChangelog = false } = {}) {
   const rel = readChangelog().releases.find((r) => r.version === version);
-  if (!rel) throw new Error(`changelog.json 找不到 ${version}（先跑 prepare）`);
+  if (rel && noChangelog) throw new Error(`--no-changelog：changelog.json 有 ${version} 的紀錄，請拿掉 --no-changelog`);
+  if (!rel && !noChangelog) throw new Error(`changelog.json 找不到 ${version}（先跑 prepare；這版刻意沒有更新紀錄就加 --no-changelog）`);
   const tag = (e, zh) => (e.type === "fix" ? (zh ? "修正" : "Fix") : (zh ? "新功能" : "New"));
   const L = [];
-  L.push("## 更新內容", "", ...rel.entries.map((e) => `- **${tag(e, true)}**　${e.text.zh_TW}`), "");
-  L.push("## What's new", "", ...rel.entries.map((e) => `- **${tag(e, false)}**　${e.text.en}`), "");
+  if (rel) {
+    L.push("## 更新內容", "", ...rel.entries.map((e) => `- **${tag(e, true)}**　${e.text.zh_TW}`), "");
+    L.push("## What's new", "", ...rel.entries.map((e) => `- **${tag(e, false)}**　${e.text.en}`), "");
+  } else {
+    L.push("## 更新內容", "", "- 內部調整，沒有使用者看得到的改動。", "");
+    L.push("## What's new", "", "- Internal improvements only; no user-facing changes.", "");
+  }
   L.push(
     "## 下載 · Downloads", "",
     "一般使用者請從商店安裝擴充（會自動更新）：[Chrome](https://chromewebstore.google.com/detail/dfaddcffoondcendifiljhdbdagebgch) · " +
@@ -95,12 +114,14 @@ function notes(version) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [cmd, arg] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const opts = { noChangelog: argv.includes("--no-changelog") };
+  const [cmd, arg] = argv.filter((a) => a !== "--no-changelog");
   try {
     if (cmd === "next") console.log(nextVersion(currentVersion(), arg));
-    else if (cmd === "prepare") prepare(arg);
-    else if (cmd === "notes") console.log(notes(arg));
-    else throw new Error("用法：node scripts/release.mjs next <major|minor|patch> | prepare <x.y.z> | notes <x.y.z>");
+    else if (cmd === "prepare") prepare(arg, opts);
+    else if (cmd === "notes") console.log(notes(arg, opts));
+    else throw new Error("用法：node scripts/release.mjs next <major|minor|patch> | prepare <x.y.z> [--no-changelog] | notes <x.y.z> [--no-changelog]");
   } catch (e) {
     console.error(e.message);
     process.exit(1);

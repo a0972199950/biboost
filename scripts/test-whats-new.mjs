@@ -89,6 +89,14 @@ try {
     check("按 X 關閉也會寫入新版本號", (await storageGet()) === current, `storage=${await storageGet()}`);
   }
 
+  // 4b. 目前版本沒有更新紀錄（release.mjs prepare --no-changelog）：從上一個有紀錄的版本升上來不跳提示，只寫入新版本號
+  const latestLogged = changelog.releases[0]?.version;
+  if (latestLogged && latestLogged !== current) {
+    await openWith(latestLogged);
+    check(`這版沒有更新紀錄（${latestLogged} → ${current}）：不跳 popup`, !(await overlayShown()));
+    check("這版沒有更新紀錄：直接寫入新版本號", (await storageGet()) === current, `storage=${await storageGet()}`);
+  }
+
   // 5. 版本紀錄壞掉
   await openWith("not-a-version");
   check("版本紀錄壞掉：不跳 popup 並重設成目前版本", !(await overlayShown()) && (await storageGet()) === current, `storage=${await storageGet()}`);
