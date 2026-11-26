@@ -1,6 +1,6 @@
 // 上架版的環境設定：src/ 是開發用的（接測試環境），打包上架時把 src/common.js 的 @env-begin～@env-end 那段換成只有正式環境，
 // manifest 裡含測試環境網域的權限也拿掉，最後檢查打包內容不能再出現測試環境的網址（像圖示一樣，上架時才換）。
-// 用到的地方：scripts/build.mjs（Chrome／Edge／Firefox 的 zip）、scripts/build-site.mjs（biboost.app 的贊助頁）、
+// 用到的地方：scripts/build.mjs（Chrome／Edge／Firefox 的 zip）、scripts/build-safari.mjs、
 // scripts/prod-env.mjs（Safari：xcodebuild 直接讀 src/，上架前先改寫 src/ 再建置，見 .github/workflows/safari-appstore.yml）。
 
 export const STAGING_HOST = "api-staging.biboost.app";

@@ -2,7 +2,7 @@
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { createEnv, plain, closeAll, testKey, CDN_FIXTURE, signCdnList, cdnListStorage } from "./helpers/load.mjs";
-import { signJws } from "../tools/report-worker/src/features.js";
+import { signJws } from "../scripts/lib/jws.mjs";
 
 after(closeAll);
 const clone = (x) => JSON.parse(JSON.stringify(x));

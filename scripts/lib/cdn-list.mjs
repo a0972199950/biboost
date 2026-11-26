@@ -4,16 +4,16 @@
 //       備援：AWS S3 biboost-static ＋ CloudFront（dv1itfovv5waq.cloudfront.net）
 //     檔案：cdn-list/latest.json → { v, file }（快取 60 秒）、cdn-list/v/<v>.jws（內容永遠不變，快取一年）
 //   · 歷史：Neon 的 cdn_lists（version, data, jws, note, published, created_at）。使用者拿清單時不經過資料庫
-//   · 簽章：本機用 .env.local 的 FEATURES_SIGNING_KEY（同 /v1/features，kid f1），payload = { typ: "cdn-list", v, iat, data }
+//   · 簽章：本機用 .env.local 的 FEATURES_SIGNING_KEY（kid f1，scripts/lib/jws.mjs），payload = { typ: "cdn-list", v, iat, data }
 //   · 格式與網域白名單的檢查跟擴充共用同一份程式（在 Node 裡執行 src/cdn-list.js）
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { sql } from "./lotteries.mjs";
+import { sql } from "./neon.mjs";
 import { diff, history, getVersion, ensureTable } from "./cdn-list-history.mjs";
-import { signJws, KID } from "../../tools/report-worker/src/features.js";
+import { signJws, KID } from "./jws.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 export const WORK_FILE = path.join(ROOT, ".cdn-list", "cdn-list.json"); // 本機工作檔（gitignored）：pull 寫入、publish 讀取

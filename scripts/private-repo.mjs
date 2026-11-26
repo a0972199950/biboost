@@ -29,7 +29,6 @@ const PRIVATE_PATHS = [
   "growth-report",
   "cdn-speedtest-results",
   "store",
-  "admin", // 後台畫面（Vite＋React；本機 npm run admin、雲端打包到 biboost.app/admin）
   "src/private", // 擴充的私人模組（不打包，見 scripts/build.mjs）
   // 公開前檢查的工具（pre-push 與 package.json 會呼叫；別人 clone 下來沒有也不影響建置）
   "scripts/sensitive-check.mjs",
@@ -37,9 +36,6 @@ const PRIVATE_PATHS = [
   "scripts/setup-hooks.mjs",
   // 本機憑證
   ".env.local",
-  "tools/report-worker/.dev.vars",
-  "tools/site/.dev.vars",
-  "tools/translate-worker/.dev.vars",
   "tools/cdn-speedtest-app/config.json",
   "tools/cdn-speedtest-app/signing", // Mac 版測速 App 的 Developer ID 簽章憑證（p12＋密碼）
 ];

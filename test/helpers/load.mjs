@@ -13,7 +13,7 @@ import vm from "node:vm";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM, VirtualConsole } from "jsdom";
-import { signJws } from "../../tools/report-worker/src/features.js";
+import { signJws } from "../../scripts/lib/jws.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..", "..");

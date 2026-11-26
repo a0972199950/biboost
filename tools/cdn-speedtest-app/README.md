@@ -87,7 +87,7 @@ npm run package:mac      # = bash tools/cdn-speedtest-app/build-mac.sh → relea
 每個抽獎在 Neon 的 `lotteries` 存一份 metadata：舉辦國家（單一）、每名的面額與幣別、禮物卡種類（該國語言，多種＝擇一）、
 可參加的寬頻業者（該國語言，空＝該國所有使用者）、抽幾名、結束後幾天內抽出、起訖日。顯示的文字由各端自己依 metadata 組：
 
-- **exe**：「測速目的」頁向 report worker 的 `GET /v2/lotteries`（不用 token，見 `tools/report-worker/README.md`；抽獎 v2 的禮物卡各自有面額，
+- **exe**：「測速目的」頁向後端 API 的 `GET /v2/lotteries`（不用 token；後端已移到另一個 repo。抽獎 v2 的禮物卡各自有面額，
   舊版 exe 讀的 `/v1/lotteries` 只有 v1 的抽獎）抓全部進行中的抽獎，
   只留**使用者所在國家**（出口 IP 的國家）的，用 `lottery_text.py` 組成 HTML（標題、參加資格、期間、獎品、抽獎方式、參加方式＋測速教學連結），
   以 [tkinterweb](https://github.com/Andereoo/TkinterWeb) 內嵌顯示（不跑 JavaScript，連結用瀏覽器開；高度跟著內容，最高約 220px，超過就捲動）。
@@ -97,20 +97,12 @@ npm run package:mac      # = bash tools/cdn-speedtest-app/build-mac.sh → relea
   `lottery_text.py` 與 `lottery-text.js` 的範本表（`TEXT`）要一起改。
   測試時要不管國家全部顯示：在 popup 的 DevTools console 執行 `announcementShowAll(true)`（關閉：`announcementShowAll(false)`）。
 - **舊版 exe（1.7.0（含）以前）**：透過 Apps Script（`action: "lotteries"`）讀 `lotteries.html`，而且不分國家、只顯示最新開始的一個。
-  `lottery:add`／`lottery:update` 會用 `lottery_text.py` 產生這份 html 一起寫進去（文字跟新版 exe 一樣），Apps Script 不用改。
+  新增、修改抽獎時會用 `lottery_text.py` 產生這份 html 一起寫進去（文字跟新版 exe 一樣），Apps Script 不用改。
 
-```bash
-npm run lottery:preview -- scripts/lottery-example.json      # 先看五種語言會顯示什麼（不寫資料庫）
-npm run lottery:add -- scripts/lottery-example.json          # 新增
-npm run lottery:update -- 3 scripts/lottery-example.json     # 改了 lottery.json 後覆寫第 3 個（期間、metadata、舊版 html 全部更新）
-npm run lottery:show          # 全部抽獎與狀態（進行中／未開始／已結束／提前結束）
-npm run lottery:end -- 3      # 提前結束第 3 個（資料保留）
-```
+抽獎的新增、修改、結束在後台與管理指令做，這兩樣都已經移到另一個 repo。
 
-- `lottery.json` 的欄位說明在 `scripts/lottery.mjs` 開頭，範例 `scripts/lottery-example.json`。產生舊版 html 需要本機有 `python`。
 - 日期是台灣時間，`end` 當天整天都算。
 - 快取：worker 在 Cloudflare 邊緣快取 1 分鐘（新版 exe）；Apps Script 快取 5 分鐘（舊版 exe）；擴充另外快取 15 分鐘。
-- PowerShell 會吃掉 `--`；在 PowerShell 請直接用 `node scripts/lottery.mjs add …`（或改用 cmd／Git Bash 跑 npm）。
 
 ## 使用紀錄
 
@@ -127,10 +119,7 @@ npm run lottery:end -- 3      # 提前結束第 3 個（資料保留）
 
 每筆含國家（ipinfo，網路檢查拿到的優先）、時間、App 版本、語言、`install.json` 裡的隨機 ID（統計人數用，跟身分無關）、測試模式旗標。送失敗就算了，不影響流程。為了隱私，**按下入口頁的下一步（同意隱私聲明）之前不送**，所以只開了程式就關掉的不會記到。
 
-```bash
-npm run events:show        # 最近 30 天各國各類事件次數（不含測試模式）＋最近 30 筆；第一次執行會建立資料表
-npm run events:show -- 7   # 最近 7 天
-```
+查看紀錄的管理指令已經移到另一個 repo。
 
 Apps Script 端限流：同一個 install_id 每 10 分鐘 30 筆、全部合計 1000 筆（`EVENT_RATE`／`EVENT_RATE_ALL`）。
 
@@ -186,25 +175,19 @@ Apps Script 端限流：同一個 install_id 每 10 分鐘 30 筆、全部合計
 **設定（一次）**
 
 1. Neon 主控台 → 專案 → **Connect** → 複製 Postgres 連線字串（`postgresql://…`）。
-2. 專案根目錄的 `.env.local` 加一行 `DATABASE_URL=<連線字串>`（見 `.env.local.example`）。第一次執行任何 `invite:*` 腳本時會自動建立資料表 `invite_codes`。
+2. 專案根目錄的 `.env.local` 加一行 `DATABASE_URL=<連線字串>`（見 `.env.local.example`）。資料表 `invite_codes` 由管理指令建立（已經移到另一個 repo）。
 3. Apps Script 專案設定 → 指令碼屬性 → 新增 `NEON_URL` = 同一個連線字串。
 4. 編輯器執行 `testNeon` → 授權「連線到外部服務」→ 執行紀錄顯示「Neon 連線正常：邀請碼 N 組」。
 5. 部署 → 管理部署作業 → 編輯 → 版本「新版本」→ 部署（網址不變）。
 
-**管理邀請碼**（在本機終端機，直接連 Neon；Apps Script 只讀取狀態、記錄使用次數，不能新增或作廢）
-
-```bash
-npm run invite:create -- a@x.com b@y.com     # 每個 email 產生一組 8 碼（不含 0/O/1/I）並印出；同一個 email 可以有多組
-npm run invite:delete -- K7QM3XPA H4RT9WCE   # 標記為已失效（不刪資料，紀錄保留）
-npm run invite:show                          # email、邀請碼、有效／已失效、最後驗證、報告數、最後一份報告
-```
+**管理邀請碼**：新增、作廢、查看用管理指令（已經移到另一個 repo，直接連 Neon）；Apps Script 只讀取狀態、記錄使用次數，不能新增或作廢。每個 email 可以有多組 8 碼（不含 0/O/1/I）。
 
 想手動查看或修改，也可以用 Neon 主控台的 Tables／SQL Editor（`invite_codes`：`code`、`email`、`created_at`、`revoked_at`、`last_verified_at`、`report_count`、`last_report_id`、`last_report_at`）。
 
 **規則**
 
 - 邀請碼和 email 相符（email 不分大小寫；邀請碼比對時去掉空白、`-` 並轉大寫）、且 `revoked_at` 是空的，就是有效。
-- 有效期間可以**無限次**驗證、送報告（你自己拿來測試也可以）；驗證和送報告都不會讓它失效。確定發出獎品後，用 `invite:delete` 標記失效。
+- 有效期間可以**無限次**驗證、送報告（你自己拿來測試也可以）；驗證和送報告都不會讓它失效。確定發出獎品後，用管理指令標記失效。
 - 報告送出時，Apps Script 會**再驗證一次**（以伺服器為準），正式報告會累計 `report_count` 並記下 `last_report_id`；測試模式只驗證、不累計。
 - 防暴力猜碼：同一個 email 每 10 分鐘最多 10 次、全部合計 60 次（`INVITE_RATE`／`INVITE_RATE_ALL`）。
 - 驗證失敗（不符、已失效、Neon 連不上）時，測試者仍可繼續，以一般抽獎參加。

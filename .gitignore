@@ -38,13 +38,8 @@ release/
 # Safari 的本機測試建置（npm run build:safari；不進版控）
 dist/*.app/
 
-# Cloudflare Worker 本機密鑰 / 暫存
-tools/report-worker/.dev.vars
-tools/site/.dev.vars
-tools/translate-worker/.dev.vars
 # 簽章憑證，只進私人 repo
 tools/cdn-speedtest-app/signing/
-tools/report-worker/.wrangler/
 
 # 私人資料，只留本機
 promotions/
@@ -63,12 +58,6 @@ promotions/
 # 私人 repo（scripts/private-repo.mjs）：資料庫本身，與 setup 時被覆蓋前的本機檔案備份
 /.git-private/
 /.private-restore-backup/
-
-# 私人模組，只進私人 repo
-/admin/
-tools/site/public/
-tools/site/.wrangler/
-tools/translate-worker/.wrangler/
 
 # 私人模組：只進私人 repo，也不打包
 /src/private/

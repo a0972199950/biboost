@@ -1,7 +1,7 @@
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { createEnv, plain, closeAll, testKey, CDN_FIXTURE, cdnNodesOf, signCdnList, cdnListStorage } from "./helpers/load.mjs";
-import { signJws } from "../tools/report-worker/src/features.js";
+import { signJws } from "../scripts/lib/jws.mjs";
 
 const A = "upos-sz-mirror08ct.bilivideo.com";
 const C = "upos-sz-estgcos.bilivideo.com";

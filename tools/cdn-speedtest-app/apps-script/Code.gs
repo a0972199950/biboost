@@ -7,14 +7,14 @@
  *   4. 若測試者留了 email，用部署者的 Gmail 寄一封確認信給測試者（依 app 語言；每日上限 DAILY_CONFIRM_LIMIT）
  *   5. 若帶了「必中獎邀請碼」：到 Neon 再驗證一次（未被作廢即有效），正式報告會累計使用次數
  * 另外提供 action=verify_invite：app 在「參加方式」頁即時驗證邀請碼與 email 是否相符（不需要自架伺服器）。
- *          action=log：app 的使用紀錄（安裝、執行、測速完成、發送…），寫進 Neon 的 app_events（npm run events:show 查看）。
+ *          action=log：app 的使用紀錄（安裝、執行、測速完成、發送…），寫進 Neon 的 app_events（查看用的管理指令已經移到另一個 repo）。
  *          action=lotteries：進行中的抽獎（Neon 的 v1 lotteries），1.7.0（含）以前的 app 在「測速目的」頁用 HTML 顯示；
  *          新版 app 改讀 report worker 的 /v2/lotteries，這條路與 v1 資料表留給舊版 app，不要移除。
  * 「禮物卡」欄（試算表）與確認信的面額只有舊版 app 送 gift 時才有；新版 app 不送（獎品以抽獎 v2 為準）。
  *
  * 設定：專案設定 → 指令碼屬性 → TOKEN（與 app 的 config.json 的 token 相同）。
  *       NEON_URL：Neon 的 Postgres 連線字串（postgresql://…），邀請碼功能用；設好後在編輯器執行 testNeon 確認連線。
- *       邀請碼的新增／作廢在本機：npm run invite:create / invite:delete / invite:show。
+ *       邀請碼的新增／作廢用本機的管理指令（已經移到另一個 repo）。
  *       SHEET_ID 會在第一次收到報告（或執行 testSend）時自動建立並寫入。
  * 部署：部署 → 新增部署作業 → 網頁應用程式；執行身分「我」、存取權「所有人」。
  *       修改後：管理部署作業 → 編輯 → 版本「新版本」→ 部署（網址不變）。
@@ -329,7 +329,7 @@ function neonQuery(sql, params) {
 
 function normCode(c) { return String(c || '').replace(/[\s-]/g, '').toUpperCase(); }
 
-/** email + 邀請碼相符且尚未被作廢（npm run invite:delete）就有效；有效期間可無限次使用。順便記錄最後驗證時間 */
+/** email + 邀請碼相符且尚未被作廢就有效；有效期間可無限次使用。順便記錄最後驗證時間 */
 function checkInvite(email, code) {
   const rows = neonQuery('update invite_codes set last_verified_at = now() where code = $1 and lower(email) = $2 ' +
                          'and revoked_at is null returning code', [normCode(code), String(email).trim().toLowerCase()]);
@@ -360,7 +360,7 @@ function verifyInvite(email, code) {
   }
 }
 
-// ── 使用紀錄（Neon 的 app_events，資料表由本機 npm run events:show 建立） ─────────
+// ── 使用紀錄（Neon 的 app_events，資料表由本機的管理指令建立） ─────────
 // install 安裝（這台電腦第一次執行）、run 執行、free 純測速、lottery 抽獎、guaranteed 必中抽獎、
 // test_done 測速完成、send 發送、custom_list 更新自訂節點列表
 const EVENT_TYPES = ['install', 'run', 'free', 'lottery', 'guaranteed', 'test_done', 'send', 'custom_list'];
@@ -388,7 +388,7 @@ function logEvent(b) {
   }
 }
 
-// ── 進行中的抽獎（Neon 的 lotteries，資料表由本機 npm run lottery:add 建立） ─────────
+// ── 進行中的抽獎（Neon 的 lotteries，資料表由本機的管理指令建立） ─────────
 const LOTTERY_LANG_FALLBACK = ['en', 'zh-TW'];
 
 /** 現在介於 starts_at 與 ends_at、且沒有提前結束的抽獎中，最新開始的那一個（期間重疊時只顯示它；開始時間相同取後新增的），
@@ -416,7 +416,7 @@ function activeLotteries(lang) {
   return res;
 }
 
-/** 在編輯器執行：確認 NEON_URL 連得上，並印出邀請碼數量（資料表由本機 npm run invite:create 建立） */
+/** 在編輯器執行：確認 NEON_URL 連得上，並印出邀請碼數量（資料表由本機的管理指令建立） */
 function testNeon() {
   const r = neonQuery('select count(*)::int as n, count(*) filter (where revoked_at is null)::int as valid ' +
                       'from invite_codes')[0];

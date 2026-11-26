@@ -1,6 +1,6 @@
 // 節點清單的發布歷史與差異（Neon 的 cdn_lists）。只用資料庫，不碰檔案系統：
-// 後台（scripts/lib/admin-api.mjs，本機與雲端 Worker 共用）跟發布工具（scripts/lib/cdn-list.mjs）都用這份。
-import { sql } from "./lotteries.mjs";
+// 發布工具（scripts/lib/cdn-list.mjs）用。
+import { sql } from "./neon.mjs";
 
 const defaultHost = (d) => ((d && d.countries) || []).find((c) => c.code === "OTHER")?.nodes?.[0] || "";
 
@@ -64,11 +64,3 @@ export async function getVersion(v) {
   return rows[0] || null;
 }
 
-// 某一版跟它前一個已發布版本的差異（後台用）→ { version, prev, lines }
-export async function diffWithPrevious(v) {
-  await ensureTable();
-  const [cur] = await sql("select version, data from cdn_lists where version = $1", [v]);
-  if (!cur) return null;
-  const [prev] = await sql("select version, data from cdn_lists where published and version < $1 order by version desc limit 1", [v]);
-  return { version: cur.version, prev: prev ? prev.version : null, lines: diff(prev && prev.data, cur.data) };
-}

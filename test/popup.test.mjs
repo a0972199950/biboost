@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { createEnv, readSrcJson, plain, closeAll, testKey, SRC, CDN_FIXTURE, CDN_DEFAULT_HOST } from "./helpers/load.mjs";
-import { signJws } from "../tools/report-worker/src/features.js";
+import { signJws } from "../scripts/lib/jws.mjs";
 
 const CDN = CDN_FIXTURE; // 測試用假清單（test/fixtures/cdn-list.json），helpers 預設已經簽章放進 storage
 const DEFAULT_HOST = CDN_DEFAULT_HOST; // = 清單 OTHER 的第一個
