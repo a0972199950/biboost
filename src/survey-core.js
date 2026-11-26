@@ -19,6 +19,7 @@
  *   · 沒有 next、或 next 沒有 else：走陣列裡下一張卡片，最後一張之後結束（後台的流程圖編輯器一律寫出完整的 next）
  *   · inline（選了「其他」才出現的說明框）不是卡片：畫在 showIf 指到的那一題下面，沒有出口；showIf 只給 inline 用
  *   · def.layout：後台流程圖的卡片位置，擴充不用（resolve() 不下發）
+ *   · def.revisions：發布後的修改紀錄，只給後台看（resolve() 不下發；lockedChanges() 不比）
  * 語言代碼用擴充 _locales 的寫法（zh_TW、zh_HK…）。
  */
 var BBSurveyCore = (function () {
@@ -348,6 +349,130 @@ var BBSurveyCore = (function () {
     return errs;
   }
 
+  // ---- 發布後的修改（後台存檔用）----
+  // 已發布的問卷只能改文字與基本設定；回傳不准改的差異 [{ path, message, q }]，空陣列＝可以存。
+  // 寫法是「只列出可以改的欄位」，其他欄位（包含之後新增、還沒分類的）只要有變就算結構變動、一律擋：
+  // 忘了分類的新欄位結果只會是改不了，不會變成漏洞。可以改的：
+  //   · 文字（{ 語言: 文字 }）：title、prompt.invite／prompt.<事件>、題目 text、選項 text、scale.labels.low/high、labels.low/high、
+  //     range.unit、變體的 text 與變體選項的 text（可以新增、刪除語言，也可以從沒有變成有）
+  //   · 基本設定：triggers.invite、triggers.events、audience.countries、audience.langs、weight、name
+  //     （opts.textOnly：已結束的問卷，基本設定也不能改，只剩文字與 name）
+  //   · next：意思一樣就好（exitsOf 展開後相同；沒寫 else＝下一張，跟寫明的一樣）
+  //   · revisions：修改紀錄，伺服器自己維護，不比
+  // 期間、份數上限存在資料表的欄位，不在定義裡，由呼叫端檢查
+  var LOCKED = "發布後不能改";
+  function lockedChanges(oldDef, newDef, opts) {
+    var out = [];
+    if (!isObj(oldDef) || !isObj(newDef)) return [{ path: "", message: "格式錯誤" }];
+    var textOnly = !!(opts && opts.textOnly);
+    var qs = Array.isArray(newDef.questions) ? newDef.questions : [];
+    function lock(path, message) {
+      var m = /^questions\.(\d+)/.exec(path), q = m && qs[+m[1]];
+      out.push({ path: path, message: message || LOCKED, q: isObj(q) && typeof q.id === "string" ? q.id : undefined });
+    }
+    function same(a, b) {
+      if (a === b) return true;
+      if (Array.isArray(a) || Array.isArray(b)) {
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+        for (var i = 0; i < a.length; i++) if (!same(a[i], b[i])) return false;
+        return true;
+      }
+      if (!isObj(a) || !isObj(b)) return false;
+      // 值是 undefined 的欄位當成沒有（JSON 存檔後就不見了）
+      var keys = keysOf(a, b);
+      for (var k = 0; k < keys.length; k++) if (!same(a[keys[k]], b[keys[k]])) return false;
+      return true;
+    }
+    function keysOf(a, b) {
+      var seen = {}, keys = [];
+      [a, b].forEach(function (o) {
+        Object.keys(o).forEach(function (k) { if (o[k] !== undefined && !seen[k]) { seen[k] = true; keys.push(k); } });
+      });
+      return keys;
+    }
+    function isText(v) {
+      if (v == null) return true;
+      if (!isObj(v)) return false;
+      return Object.keys(v).every(function (l) { return v[l] == null || typeof v[l] === "string"; });
+    }
+    // 依欄位表比對一個物件：表裡有的交給它的比對函式，沒有的要一模一樣
+    function fields(a, b, path, table) {
+      if (same(a, b)) return;
+      if (!(a == null || isObj(a)) || !(b == null || isObj(b))) { lock(path); return; }
+      var x = a || {}, y = b || {};
+      keysOf(x, y).forEach(function (k) {
+        var p = path ? path + "." + k : k;
+        if (Object.prototype.hasOwnProperty.call(table, k)) table[k](x[k], y[k], p);
+        else if (!same(x[k], y[k])) lock(p);
+      });
+    }
+    function text(a, b, path) { if (!same(a, b) && !(isText(a) && isText(b))) lock(path); }
+    function setting(a, b, path) { if (!same(a, b)) { if (textOnly) lock(path, "已結束的問卷只能改文字"); } }
+    function ignore() {}
+    function options(a, b, path, message) {
+      if (same(a, b)) return;
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length ||
+          a.some(function (o, j) { return !isObj(o) || !isObj(b[j]) || o.id !== b[j].id; })) {
+        lock(path, message || "發布後不能新增、刪除選項，或改選項的 id、順序");
+        return;
+      }
+      a.forEach(function (o, j) { fields(o, b[j], path + "." + j, { text: text }); });
+    }
+    var LOW_HIGH = { low: text, high: text };
+    function question(i) {
+      return function (a, b, path) {
+        fields(a, b, path, {
+          text: text,
+          options: options,
+          scale: function (x, y, p) { fields(x, y, p, { labels: function (s, t, pp) { fields(s, t, pp, LOW_HIGH); } }); },
+          labels: function (x, y, p) { fields(x, y, p, LOW_HIGH); },
+          range: function (x, y, p) { fields(x, y, p, { unit: text }); },
+          variants: function (x, y, p) {
+            if (same(x, y)) return;
+            if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length) { lock(p, "發布後不能新增或刪除國家變體"); return; }
+            x.forEach(function (v, k) {
+              fields(v, y[k], p + "." + k, {
+                text: text,
+                options: function (s, t, pp) {
+                  if (s == null || t == null) { if (!same(s, t)) lock(pp, "發布後不能開關變體的「換選項」"); return; }
+                  options(s, t, pp);
+                }
+              });
+            });
+          },
+          next: function (x, y, p) {
+            var qa = oldDef.questions[i], qb = newDef.questions[i];
+            if (same(x, y)) return;
+            if (qa.inline || qb.inline || !same(exitsOf(oldDef, qa), exitsOf(newDef, qb))) lock(p);
+          }
+        });
+      };
+    }
+    fields(oldDef, newDef, "", {
+      name: function (a, b, p) { if (!same(a, b) && !((a == null || typeof a === "string") && (b == null || typeof b === "string"))) lock(p); },
+      title: text,
+      prompt: function (a, b, p) {
+        var table = { invite: text };
+        EVENTS.forEach(function (e) { table[e] = text; });
+        fields(a, b, p, table);
+      },
+      triggers: function (a, b, p) { fields(a, b, p, { invite: setting, events: setting }); },
+      audience: function (a, b, p) { fields(a, b, p, { countries: setting, langs: setting }); },
+      weight: setting,
+      revisions: ignore,
+      questions: function (a, b, p) {
+        if (same(a, b)) return;
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length ||
+            a.some(function (q, i) { return !isObj(q) || !isObj(b[i]) || q.id !== b[i].id; })) {
+          lock(p, "發布後不能新增、刪除題目，或改題目的 id、順序");
+          return;
+        }
+        a.forEach(function (q, i) { question(i)(q, b[i], p + "." + i); });
+      }
+    });
+    return out;
+  }
+
   // 流程圖的檢查：出口的格式、只有單選複選能分岔、選項要存在（預設或任一國家變體）、目的地要存在而且在後面（不能繞回前面＝沒有環）、
   // 不會生效的出口、每張卡片都要走得到
   function flowErrors(def, qs, err) {
@@ -563,7 +688,7 @@ var BBSurveyCore = (function () {
     LANGS: LANGS, TYPES: TYPES, CHOICE_TYPES: CHOICE_TYPES, FIELD_TYPES: FIELD_TYPES, AUTO_NEXT_TYPES: AUTO_NEXT_TYPES, EVENTS: EVENTS, ENTRIES: ENTRIES,
     BROWSERS: BROWSERS, INSTALL_DAYS: INSTALL_DAYS, LIMITS: LIMITS, BASE_EXT_VERSION: BASE_EXT_VERSION, FEATURE_SINCE: FEATURE_SINCE,
     pick: pick, asArray: asArray, hasAnswer: hasAnswer, isVisible: isVisible, pagesOf: pagesOf, inlineOf: inlineOf, opensInline: opensInline,
-    END: END, BRANCH_TYPES: BRANCH_TYPES, cardsOf: cardsOf, exitsOf: exitsOf, nextOf: nextOf, pathOf: pathOf, pathIds: pathIds, checkFlow: checkFlow, describeError: describeError,
+    END: END, BRANCH_TYPES: BRANCH_TYPES, cardsOf: cardsOf, exitsOf: exitsOf, nextOf: nextOf, pathOf: pathOf, pathIds: pathIds, checkFlow: checkFlow, lockedChanges: lockedChanges, describeError: describeError,
     optionOrder: optionOrder, cmpVersion: cmpVersion, minExtVersion: minExtVersion, audienceMatch: audienceMatch, resolve: resolve,
     validateDefinition: validateDefinition, isEmail: isEmail,
     optionLists: optionLists, cleanAnswers: cleanAnswers, cleanClient: cleanClient, SurveyError: SurveyError
