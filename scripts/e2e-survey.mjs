@@ -1,5 +1,5 @@
 // 問卷與匿名統計的端對端測試：用 Chrome for Testing（puppeteer）載入 src/，打 staging 後台（api-staging.biboost.app），頁面是真的 bilibili.com。
-//   npm run e2e:survey [-- --only invite|none|quiet|today|announcement|blocked] [--headful] [--out <截圖資料夾>] [--survey <問卷 id>]
+//   npm run e2e:survey [-- --only invite|none|quiet|today|announcement|blocked|network] [--headful] [--out <截圖資料夾>] [--survey <問卷 id>]
 //
 // 問卷照 staging 後台（report worker 的 /v2/surveys）進行中的問卷；需要 staging 有一份發布中、參加頁面邀請與 region_blocked 事件的問卷（SURVEY_ID）。
 // 「沒有問卷」的情境攔截 /v2/surveys 回空清單。會在 staging 的 survey_responses、survey_events 留下測試資料（country 是你目前的 IP）。
@@ -12,6 +12,8 @@
 //   today        出現後沒按 × 也沒填完就重新整理：今天不再出現
 //   announcement 網址帶 #bb-survey=<id> 直接打開（公告連結／新分頁的情況），hash 被拿掉；× 與 Esc 關閉，按 × 記下關掉
 //   blocked      真的打開一集從目前 IP 看不了的番劇（不攔截）→ 計數請求送出 → 出現事件觸發的問卷（說明文字不同）
+//   network      公告連結打開、答一題、按 ×：背景的網路紀錄沒有 CORS 預檢、POST 都是 text/plain；事件合併送出（沒有批次端點時逐筆，不少不重複）
+//                加 --fake-batch：批次端點攔下來回假的 204（伺服器還沒有批次端點時驗合併送出那條路）
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -69,6 +71,28 @@ async function machine(name, opts = {}) {
       }).catch(() => {});
     });
   }
+  // opts.fakeBatch：伺服器還沒有批次端點時，用假的 204 代替（只驗擴充這一端；內容不會到伺服器）
+  if (opts.fakeBatch) {
+    const cdp = await browser.target().createCDPSession();
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `${API}/v2/surveys/events/batch` }] });
+    cdp.on("Fetch.requestPaused", (e) => {
+      cdp.send("Fetch.fulfillRequest", { requestId: e.requestId, responseCode: 204, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }] }).catch(() => {});
+    });
+  }
+  // opts.batchTarget：批次端點原樣轉給另一台伺服器（例如本機 API http://127.0.0.1:8788），用它回的狀態碼回覆擴充
+  if (opts.batchTarget) {
+    const cdp = await browser.target().createCDPSession();
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `${API}/v2/surveys/events/batch` }] });
+    cdp.on("Fetch.requestPaused", async (e) => {
+      let code = 502;
+      try {
+        const r = await fetch(opts.batchTarget + "/v2/surveys/events/batch", { method: "POST", headers: { "Content-Type": e.request.headers["Content-Type"] || "text/plain;charset=UTF-8", Origin: e.request.headers.Origin || "" }, body: e.request.postData });
+        code = r.status;
+        console.log(`    [batch-target] ${code} ${(await r.text()).slice(0, 120)}`);
+      } catch (err) { console.log("    [batch-target] error", String(err)); }
+      cdp.send("Fetch.fulfillRequest", { requestId: e.requestId, responseCode: code, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }] }).catch(() => {});
+    });
+  }
   const id = await browser.installExtension(path.join(ROOT, "src"));
   const base = `chrome-extension://${id}/`;
   await browser.waitForTarget((t) => t.type() === "service_worker" && t.url().startsWith(base), { timeout: 15000 });
@@ -80,6 +104,21 @@ async function machine(name, opts = {}) {
     // 背景腳本送出的請求（頁面看不到）：在 service worker 裡包住 fetch 記下網址
     async hookFetch() { await (await m.sw()).evaluate(() => { if (globalThis.__calls) return; globalThis.__calls = []; const f = globalThis.fetch; globalThis.fetch = function (u) { globalThis.__calls.push(String(u && u.url || u)); return f.apply(this, arguments); }; }); },
     async swCalls() { return (await m.sw()).evaluate(() => globalThis.__calls || []); },
+    // 背景送到 API 的請求（含 CORS 預檢）：在 service worker 上開 CDP 的 Network，記下方法、網址、類型、Content-Type、內容、狀態碼
+    async netLog() {
+      const t = await browser.waitForTarget((x) => x.type() === "service_worker" && x.url().startsWith(base), { timeout: 15000 });
+      const cdp = await t.createCDPSession();
+      const log = [], byId = new Map();
+      cdp.on("Network.requestWillBeSent", (e) => {
+        if (!e.request.url.startsWith(API)) return;
+        const h = e.request.headers || {};
+        const x = { id: e.requestId, method: e.request.method, url: e.request.url, path: new URL(e.request.url).pathname, type: e.type || "", contentType: h["Content-Type"] || h["content-type"] || "", postData: e.request.postData || "", status: 0 };
+        log.push(x); byId.set(e.requestId, x);
+      });
+      cdp.on("Network.responseReceived", (e) => { const x = byId.get(e.requestId); if (x) x.status = e.response.status; });
+      await cdp.send("Network.enable");
+      return log;
+    },
     async shot(p, label) { await p.screenshot({ path: path.join(OUT, `${current}-${label}.png`) }).catch(() => {}); },
     async close() { await browser.close().catch(() => {}); fs.rmSync(dir, { recursive: true, force: true }); },
   };
@@ -329,7 +368,75 @@ async function scenarioBlocked() {
   } finally { await m.close(); }
 }
 
-const scenarios = { invite: scenarioInvite, none: scenarioNone, quiet: scenarioQuiet, today: scenarioToday, announcement: scenarioAnnouncement, blocked: scenarioBlocked };
+// 網路紀錄（service worker 的 CDP Network）：POST 都是 text/plain、沒有 CORS 預檢；事件合併送 /v2/surveys/events/batch，
+// 伺服器沒有批次端點（404／405）時逐筆送 /v2/surveys/events，一筆不少、不重複
+async function scenarioNetwork() {
+  current = "network";
+  console.log("\n【網路：沒有預檢、事件合併送出】");
+  const m = await machine("W", { fakeBatch: argv.includes("--fake-batch"), batchTarget: opt("--batch-target") });
+  try {
+    const log = await m.netLog();
+    const isPreflight = (x) => x.method === "OPTIONS" || /preflight/i.test(x.type);
+    // 對照組：帶自訂標頭的 GET 一定會先預檢（GET /v2/surveys 不寫任何東西），確認這份紀錄看得到預檢，下面的「沒有預檢」才有意義
+    await (await m.sw()).evaluate((api) => fetch(api + "/v2/surveys?lang=en&v=0", { headers: { "X-BB-E2E-Probe": "1" }, credentials: "omit", cache: "no-store" }).then(() => 0, () => 0), API);
+    await until(() => log.some(isPreflight), 5000);
+    check("對照組：網路紀錄看得到 CORS 預檢", log.some(isPreflight), log.map((x) => `${x.method} ${x.type} ${x.path}`).join(", "));
+    const mark = log.length;
+    const p = await open(m, `https://www.bilibili.com/#bb-survey=${SURVEY_ID}`);
+    const s = await until(() => modal(p), 40000);
+    if (!check("公告連結打開問卷", !!s)) return;
+    await clickIn(p, ".opt", 0); await sleep(300);
+    await clickBtn(p, (await btnLabels(p)).find((l) => /^(Next|下一題)$/.test(l)) || "Next");
+    await sleep(800);
+    await clickIn(p, ".x");
+    const singlesOf = () => log.slice(mark).filter((x) => x.method === "POST" && x.path === "/v2/surveys/events");
+    await until(() => singlesOf().some((x) => /"kind":"closed"/.test(x.postData)) || log.slice(mark).some((x) => x.path === "/v2/surveys/events/batch" && x.status === 204 && /"kind":"closed"/.test(x.postData)), 15000);
+    // 地區限定計數（沒有內容的 POST）也不能有預檢；staging 多記一筆計數
+    await (await m.sw()).evaluate(() => BBSurvey.blocked());
+    await sleep(1500);
+    const after = log.slice(mark);
+    console.log("    requests:", after.map((x) => `${x.method} ${x.path} ${x.status}`).join(" | "));
+    check("問卷的請求沒有任何 CORS 預檢（OPTIONS）", !after.some(isPreflight), after.filter(isPreflight).map((x) => x.path).join(","));
+    const pings = after.filter((x) => x.path === "/v1/telemetry/blocked");
+    check("地區限定計數：POST、沒有內容也沒有 Content-Type、伺服器照收", pings.length === 1 && pings[0].method === "POST" && !pings[0].contentType && !pings[0].postData && pings[0].status >= 200 && pings[0].status < 300, pings.map((x) => `${x.method} ${x.status} ${x.contentType}`).join(","));
+    const posts = after.filter((x) => x.method === "POST" && x.path.startsWith("/v2/"));
+    check("所有 POST 都是 text/plain;charset=UTF-8", posts.length > 0 && posts.every((x) => x.contentType === "text/plain;charset=UTF-8"), [...new Set(posts.map((x) => `${x.path}=${x.contentType}`))].join(", "));
+    const resp = posts.filter((x) => x.path === "/v2/surveys/responses");
+    check("作答照舊每題送一次、伺服器照收（200）", resp.length >= 1 && resp.every((x) => x.status === 200), resp.map((x) => x.status).join(","));
+    const batches = posts.filter((x) => x.path === "/v2/surveys/events/batch");
+    const singles = singlesOf();
+    const evKey = (e) => JSON.stringify([e.kind, e.page ?? null, e.question ?? null, e.ms ?? null]);
+    if (batches.length && batches.every((x) => x.status === 204)) {
+      const sent = batches.flatMap((x) => JSON.parse(x.postData).events);
+      check("伺服器有批次端點：事件合併送出（204），沒有逐筆", singles.length === 0, `${batches.length} 批、${sent.length} 筆`);
+      check("事件：出現在最前、關掉在最後，沒有重複", sent[0].kind === "shown" && sent.at(-1).kind === "closed" && new Set(sent.map(evKey)).size === sent.length, sent.map((e) => e.kind).join(","));
+    } else {
+      check("伺服器沒有批次端點：只試了一次批次（404／405）", batches.length === 1 && (batches[0].status === 404 || batches[0].status === 405), batches.map((x) => x.status).join(","));
+      const want = batches.length ? JSON.parse(batches[0].postData).events : [];
+      const got = singles.map((x) => JSON.parse(x.postData));
+      check("退回逐筆：批次裡的每一筆都送了、順序相同、沒有重複", got.length === want.length && got.every((e, i) => evKey(e) === evKey(want[i])) && new Set(got.map(evKey)).size === got.length,
+        `批次 ${want.map((e) => e.kind).join(",")}｜逐筆 ${got.map((e) => e.kind).join(",")}`);
+      check("逐筆的事件伺服器照收（204）", singles.length > 0 && singles.every((x) => x.status === 204), singles.map((x) => x.status).join(","));
+      check("事件：出現在最前、關掉在最後，帶同一個 response_id 與 entry", got.length >= 3 && got[0].kind === "shown" && got.at(-1).kind === "closed" && new Set(got.map((e) => e.response_id + e.entry)).size === 1 && got[0].entry === "announcement");
+    }
+    // 問卷開著時直接關掉分頁（pagehide）：還在佇列的「出現」馬上送出，不等計時器
+    const mark2 = log.length;
+    const p2 = await open(m, `https://www.bilibili.com/#bb-survey=${SURVEY_ID}`);
+    if (check("再從公告連結打開", !!(await until(() => modal(p2), 40000)))) {
+      await sleep(1000);
+      const before = log.slice(mark2).filter((x) => x.method === "POST" && x.path.startsWith("/v2/surveys/events")).length;
+      const t0 = Date.now();
+      await p2.close();
+      const sent2 = await until(() => { const x = log.slice(mark2).filter((y) => y.method === "POST" && y.path.startsWith("/v2/surveys/events")); return x.length ? x : null; }, 8000, 100);
+      const secs = (Date.now() - t0) / 1000;
+      await sleep(2000);
+      check("關掉分頁：佇列裡的「出現」立刻送出（不等計時器）、伺服器照收", before === 0 && sent2 && sent2.some((x) => /"kind":"shown"/.test(x.postData)) && sent2.every((x) => x.status === 204) && secs < 8,
+        sent2 ? `${sent2.map((x) => `${x.path} ${x.status}`).join(", ")}，${secs.toFixed(1)} 秒` : "沒有送出");
+    }
+  } finally { await m.close(); }
+}
+
+const scenarios = { invite: scenarioInvite, none: scenarioNone, quiet: scenarioQuiet, today: scenarioToday, announcement: scenarioAnnouncement, blocked: scenarioBlocked, network: scenarioNetwork };
 for (const [name, fn] of Object.entries(scenarios)) {
   if (ONLY && ONLY !== name) continue;
   try { await fn(); } catch (e) { check(`${name} 執行中出錯`, false, String(e && e.message || e).slice(0, 200)); }

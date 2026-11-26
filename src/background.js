@@ -534,6 +534,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (msg.type === "BB_SURVEY_SUBMIT") { BBSurvey.submit(msg).then(sendResponse); return true; }
   if (msg.type === "BB_SURVEY_PAGE") { BBSurvey.pageEvent(msg).then(sendResponse); return true; }
   if (msg.type === "BB_SURVEY_CLOSED") { BBSurvey.closed(msg).then(sendResponse); return true; }
+  if (msg.type === "BB_SURVEY_FLUSH") { BBSurvey.flushEvents({ keepalive: true }).then(function () { sendResponse({ ok: true }); }); return true; }
   if (msg.type === "BB_SURVEY_OPEN_FROM_ANNOUNCEMENT") { openSurveyFromAnnouncement(msg.surveyId, "announcement"); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_ANNOUNCEMENT_WINDOW") { openAnnouncementWindow(msg.id); sendResponse({ ok: true }); return true; }
   if (msg.type === "CDN_SWITCHER_OPEN_SURVEY_WINDOW") { openSurveyWindow(msg.surveyId); sendResponse({ ok: true }); return true; }

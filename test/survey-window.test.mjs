@@ -69,6 +69,17 @@ describe("問卷視窗", () => {
     assert.equal(t.closed(), 1);
     t.env.close();
   });
+  test("視窗關掉（pagehide）或縮到背景（visibilitychange → hidden）：請背景立刻送出問卷事件", async () => {
+    const t = boot();
+    await t.env.settle();
+    assert.equal(t.sent("BB_SURVEY_FLUSH").length, 0);
+    t.env.window.dispatchEvent(new t.env.window.Event("pagehide"));
+    assert.equal(t.sent("BB_SURVEY_FLUSH").length, 1);
+    Object.defineProperty(t.env.document, "visibilityState", { value: "hidden", configurable: true });
+    t.env.document.dispatchEvent(new t.env.window.Event("visibilitychange"));
+    assert.equal(t.sent("BB_SURVEY_FLUSH").length, 2);
+    t.env.close();
+  });
   test("Esc 一樣；提示上再按 Esc 直接關視窗", async () => {
     const t = boot();
     await t.env.settle();

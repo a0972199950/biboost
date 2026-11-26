@@ -14,7 +14,8 @@
 //     invite 另外要：安裝滿 3 天、距離上次「關掉或填完」任何問卷滿 3 天。事件不看這兩個 3 天
 //   · 有好幾份候選時依 weight 隨機挑一份；觸發機會的結果（出現了／冷卻中…）每次都計數
 //   · 每答一題送一次 POST <API>/v2/surveys/responses（response_id 每份問卷每台安裝一個亂數，中途離開再開接著填）；
-//     出現、換頁、關掉、完成送 POST <API>/v2/surveys/events
+//     出現、換頁、關掉、完成先放在記憶體，合併送 POST <API>/v2/surveys/events/batch（伺服器沒有這個端點時逐筆送 /v2/surveys/events；見 trackEvent）
+//   · 所有 POST 都用 text/plain（見 postJson）
 // storage.local：surveyList = { api, lang, v, at, surveys }、surveyStates = { <id>: { shownAt, closedAt, doneAt, responseId, answers, order } }、
 //   surveyLastEndedAt（上次關掉或填完的時間）、surveyLastShown = { day, id }（本機日期）
 // storage.sync：surveyDone = { <id>: { d: doneAt, r: responseId } }（最近 SYNC_MAX 份）
@@ -68,12 +69,65 @@ var BBSurvey = (function () {
       return fetch(base + path, Object.assign({ credentials: "omit", cache: "no-store" }, init || {}));
     }).catch(function () { return null; });
   }
-  function postJson(path, body) {
-    return request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  // 內容是 JSON，但標成 text/plain：擴充沒有 API 網域的主機權限，application/json 會讓每個 POST 先多一次 CORS 預檢（OPTIONS）。
+  // 伺服器讀原始文字再解析，不看 Content-Type
+  function postJson(path, body, keepalive) {
+    var init = { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(body) };
+    if (keepalive) init.keepalive = true;
+    return request(path, init);
   }
   // 使用情形（事件、觸發機會）：Firefox 要同意匿名統計才送；失敗靜默
   function track(path, body) {
     return fxHas(["technicalAndInteraction"]).then(function (ok) { return ok ? postJson(path, body) : null; }).then(function () {}, function () {});
+  }
+
+  // ---- 問卷事件：先放在記憶體，合併送到 /v2/surveys/events/batch ----
+  // 同一批只能是同一份問卷、同一個 response_id、entry、client；換了就先把前一批送出。順序照加入的順序（送出也一批接一批）。
+  // 送出時機：滿 EVENT_BATCH_MAX 筆、closed／completed、頁面關掉或隱藏（flushEvents({ keepalive: true })）、第一筆加入後 eventFlushMs。
+  // eventFlushMs 要比 MV3 Service Worker 閒置被停掉的 30 秒短：每個訊息都會重算閒置時間，計時器在那之前一定跑得到。
+  // 批次端點回 404／405（伺服器還沒有這個端點）：這批改逐筆送 /v2/surveys/events，這次執行期間不再試批次。
+  // 其他失敗（網路、400、429、5xx）跟單筆一樣靜默丟掉、不重試
+  var EVENT_PATH = "/v2/surveys/events", EVENT_BATCH_PATH = "/v2/surveys/events/batch", EVENT_BATCH_MAX = 50;
+  var eventFlushMs = 15000;
+  var pendingEvents = null, eventTimer = null, eventBatchUnsupported = false;
+  var eventQueue = Promise.resolve(), eventSend = Promise.resolve();
+  function noop() {}
+  function eventSerial(fn) { var p = eventQueue.then(fn); eventQueue = p.catch(noop); return p; }
+  // head：{ survey_id, response_id, entry, client }；ev：{ kind, page?, question?, ms? }
+  function trackEvent(head, ev) {
+    return eventSerial(function () {
+      return fxHas(["technicalAndInteraction"]).then(function (ok) {
+        if (!ok) return;
+        var key = JSON.stringify([head.survey_id, head.response_id, head.entry, head.client]);
+        if (pendingEvents && pendingEvents.key !== key) sendPending(false);
+        if (!pendingEvents) pendingEvents = { key: key, head: head, events: [] };
+        pendingEvents.events.push(ev);
+        if (pendingEvents.events.length >= EVENT_BATCH_MAX || ev.kind === "closed" || ev.kind === "completed") sendPending(false);
+        else if (!eventTimer) eventTimer = setTimeout(function () { eventTimer = null; eventSerial(function () { sendPending(false); }); }, eventFlushMs);
+      });
+    }).then(noop, noop);
+  }
+  function sendPending(keepalive) {
+    if (eventTimer) { clearTimeout(eventTimer); eventTimer = null; }
+    var batch = pendingEvents;
+    pendingEvents = null;
+    if (batch) eventSend = eventSend.then(function () { return sendBatch(batch, keepalive); }).catch(noop);
+  }
+  function sendBatch(batch, keepalive) {
+    if (eventBatchUnsupported) return sendEach(batch, keepalive);
+    return postJson(EVENT_BATCH_PATH, Object.assign({}, batch.head, { events: batch.events }), keepalive).then(function (r) {
+      if (r && (r.status === 404 || r.status === 405)) { eventBatchUnsupported = true; return sendEach(batch, keepalive); }
+    });
+  }
+  function sendEach(batch, keepalive) {
+    return batch.events.reduce(function (p, ev) {
+      return p.then(function () { return postJson(EVENT_PATH, Object.assign({}, batch.head, ev), keepalive); });
+    }, Promise.resolve());
+  }
+  // 把佇列裡的事件立刻送出；opts.keepalive：頁面要關掉或隱藏時。回傳的 Promise 等到已經排進去的都送完
+  function flushEvents(opts) {
+    var keepalive = !!(opts && opts.keepalive);
+    return eventSerial(function () { sendPending(keepalive); }).then(function () { return eventSend; }).then(noop, noop);
   }
 
   // ---- 匿名統計 ----
@@ -273,7 +327,7 @@ var BBSurvey = (function () {
     return putStates(states, extra).then(function () {
       if (auto) track("/v2/surveys/triggers", { trigger: entry, result: "shown" });
       return clientInfo(lang).then(function (client) {
-        track("/v2/surveys/events", { survey_id: survey.id, response_id: st.responseId, kind: "shown", entry: entry, client: client });
+        trackEvent({ survey_id: survey.id, response_id: st.responseId, entry: entry, client: client }, { kind: "shown" });
         return fxHas(["technicalAndInteraction"]).then(function (has) {
           return { ok: true, def: survey, answers: st.answers || {}, order: st.order || {}, responseId: st.responseId, entry: entry, needTelemetryConsent: isFirefox() && !has };
         });
@@ -304,7 +358,7 @@ var BBSurvey = (function () {
       var st = g.states[opts.surveyId];
       if (!st || !st.responseId) return { ok: false };
       return clientInfo(opts.lang).then(function (client) {
-        track("/v2/surveys/events", { survey_id: opts.surveyId, response_id: st.responseId, kind: "page", page: opts.page, question: opts.question, ms: opts.ms, entry: opts.entry, client: client });
+        trackEvent({ survey_id: opts.surveyId, response_id: st.responseId, entry: opts.entry, client: client }, { kind: "page", page: opts.page, question: opts.question, ms: opts.ms });
         return { ok: true };
       });
     });
@@ -318,7 +372,7 @@ var BBSurvey = (function () {
       var extra = {}; extra[ENDED_KEY] = st.closedAt;
       return putStates(g.states, extra).then(function () {
         return clientInfo(opts.lang).then(function (client) {
-          track("/v2/surveys/events", { survey_id: opts.surveyId, response_id: st.responseId, kind: "closed", page: opts.page, entry: opts.entry, client: client });
+          trackEvent({ survey_id: opts.surveyId, response_id: st.responseId, entry: opts.entry, client: client }, { kind: "closed", page: opts.page });
           return { ok: true };
         });
       });
@@ -362,7 +416,7 @@ var BBSurvey = (function () {
             if (opts.final) {
               s2.doneAt = Date.now(); s2.answers = {};
               extra[ENDED_KEY] = s2.doneAt;
-              track("/v2/surveys/events", { survey_id: opts.surveyId, response_id: st.responseId, kind: "completed", entry: entry, client: client });
+              trackEvent({ survey_id: opts.surveyId, response_id: st.responseId, entry: entry, client: client }, { kind: "completed" });
             } else s2.answers = answers;
             g2.states[opts.surveyId] = s2;
             return putStates(g2.states, extra).then(function () {
@@ -384,11 +438,14 @@ var BBSurvey = (function () {
   function dropListCache() { return new Promise(function (r) { chrome.storage.local.remove([LIST_KEY], function () { void chrome.runtime.lastError; r(); }); }); }
 
   var out = {
-    begin: begin, submit: submit, pageEvent: pageEvent, closed: closed, heartbeat: heartbeat, blocked: blocked, getList: getList, getStates: getStates,
+    begin: begin, submit: submit, pageEvent: pageEvent, closed: closed, flushEvents: flushEvents, heartbeat: heartbeat, blocked: blocked, getList: getList, getStates: getStates,
     reset: reset, dropListCache: dropListCache, installDays: installDays, localDay: localDay, gate: gate, candidates: candidates, pickWeighted: pickWeighted,
-    SAMPLE_RATE: SAMPLE_RATE, LIST_KEY: LIST_KEY, STATES_KEY: STATES_KEY, ENDED_KEY: ENDED_KEY, SHOWN_KEY: SHOWN_KEY, SYNC_KEY: SYNC_KEY, SYNC_MAX: SYNC_MAX
+    SAMPLE_RATE: SAMPLE_RATE, LIST_KEY: LIST_KEY, STATES_KEY: STATES_KEY, ENDED_KEY: ENDED_KEY, SHOWN_KEY: SHOWN_KEY, SYNC_KEY: SYNC_KEY, SYNC_MAX: SYNC_MAX,
+    EVENT_BATCH_MAX: EVENT_BATCH_MAX, EVENT_FLUSH_MS: eventFlushMs
   };
   // Test seam: only the unit-test harness (test/helpers/load.mjs) defines __BCS_TEST__.
-  if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") globalThis.__BCS_TEST__.register("survey", out);
+  if (globalThis.__BCS_TEST__ && typeof globalThis.__BCS_TEST__.register === "function") {
+    globalThis.__BCS_TEST__.register("survey", Object.assign({}, out, { setEventFlushMs: function (ms) { eventFlushMs = ms; } }));
+  }
   return out;
 })();

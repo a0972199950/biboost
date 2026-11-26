@@ -43,19 +43,31 @@ function bootBg({ storage = {}, surveys = [DEF], server = {}, ua, welcome = fals
   env.load("features.js").load("survey-core.js").load("survey.js");
   env.chrome.runtime.getContexts = () => Promise.resolve(welcome ? [{ contextType: "TAB", documentUrl: "chrome-extension://bcs-test/welcome.html" }] : []);
   const calls = [];
-  const srv = { list: () => fakeResponse({ body: { surveys } }), responses: () => fakeResponse({ body: { ok: true } }), ...server };
+  const srv = { list: () => fakeResponse({ body: { surveys } }), responses: () => fakeResponse({ body: { ok: true } }), batch: () => fakeResponse({ status: 204 }), event: () => fakeResponse({ status: 204 }), ...server };
   env.fetchHandler = (url, init = {}) => {
     const u = new URL(url);
-    const call = { method: init.method || "GET", path: u.pathname, query: u.search, body: init.body ? JSON.parse(init.body) : undefined };
+    const call = {
+      method: init.method || "GET", path: u.pathname, query: u.search, body: init.body ? JSON.parse(init.body) : undefined,
+      contentType: init.headers && init.headers["Content-Type"], keepalive: !!init.keepalive
+    };
     calls.push(call);
     if (u.pathname === "/v2/surveys") return srv.list(call);
     if (u.pathname === "/v2/surveys/responses") return srv.responses(call);
+    if (u.pathname === "/v2/surveys/events/batch") return srv.batch(call);
+    if (u.pathname === "/v2/surveys/events") return srv.event(call);
     return fakeResponse({ status: 204 });
   };
   const S = env.internals("survey");
   const begin = (entry, more = {}) => S.begin({ entry, lang: "en", ...more }).then(plain);
   const posted = (path) => calls.filter((c) => c.path === path).map((c) => c.body);
-  return { env, S, calls, begin, posted, states: () => env.storage.surveyStates || {} };
+  // 送到伺服器的問卷事件（批次拆開、逐筆照原樣），依送出順序
+  const events = () => plain(calls.flatMap((c) => {
+    if (c.path === "/v2/surveys/events") return [c.body];
+    if (c.path !== "/v2/surveys/events/batch") return [];
+    const { events: list, ...head } = c.body;
+    return list.map((e) => ({ ...head, ...e }));
+  }));
+  return { env, S, calls, begin, posted, events, states: () => env.storage.surveyStates || {} };
 }
 
 describe("匿名統計：心跳與地區限定計數", () => {
@@ -166,7 +178,8 @@ describe("問卷：什麼時候出現（門檻與輪替）", () => {
     assert.equal(t.env.storage.surveyLastShown.id, "sample-a");
     await t.env.settle(20);
     assert.deepEqual(plain(t.posted("/v2/surveys/triggers")), [{ trigger: "invite", result: "shown" }]);
-    const ev = t.posted("/v2/surveys/events")[0];
+    await t.S.flushEvents();
+    const ev = t.events()[0];
     assert.equal(ev.kind, "shown");
     assert.equal(ev.survey_id, "sample-a");
     assert.equal(ev.response_id, r.responseId);
@@ -202,7 +215,7 @@ describe("問卷：什麼時候出現（門檻與輪替）", () => {
     assert.equal(ev.ok, true, "事件不受 3 天冷卻");
     assert.equal(ev.def.id, "sample-c", "關掉的那份不會再出現");
     await t.env.settle(20);
-    const closedEv = t.posted("/v2/surveys/events").find((e) => e.kind === "closed");
+    const closedEv = t.events().find((e) => e.kind === "closed");
     assert.deepEqual([closedEv.survey_id, closedEv.page], ["sample-a", 2]);
     t.env.close();
   });
@@ -336,7 +349,7 @@ describe("問卷：送出 submit 與事件", () => {
     assert.equal(again.ok, true, "填過的從公告照樣能開（重填）");
     assert.deepEqual(again.answers, {});
     await t.env.settle(20);
-    assert.ok(t.posted("/v2/surveys/events").some((e) => e.kind === "completed"));
+    assert.ok(t.events().some((e) => e.kind === "completed"));
     t.env.close();
   });
   test("送出失敗（網路、5xx、限流）：不記填完，讓使用者重試；問卷已經不存在回 gone", async () => {
@@ -363,8 +376,8 @@ describe("問卷：送出 submit 與事件", () => {
     const t = bootBg();
     await t.begin("invite");
     await t.S.pageEvent({ surveyId: "sample-a", page: 1, question: "q_devices", ms: 3200, entry: "invite", lang: "en" });
-    await t.env.settle(20);
-    const e = t.posted("/v2/surveys/events").find((x) => x.kind === "page");
+    await t.S.flushEvents();
+    const e = t.events().find((x) => x.kind === "page");
     assert.deepEqual([e.page, e.question, e.ms, e.entry], [1, "q_devices", 3200, "invite"]);
     t.env.close();
   });
@@ -401,6 +414,182 @@ describe("問卷：送出 submit 與事件", () => {
     for (const k of ["surveyList", "surveyStates", "surveyLastEndedAt", "surveyLastShown", "surveyState", "surveyDef"]) assert.equal(t.env.storage[k], undefined, k);
     assert.equal(t.env.storage.installedAt, 5);
     t.env.close();
+  });
+});
+
+describe("問卷：請求的 Content-Type（不觸發 CORS 預檢）", () => {
+  test("作答、觸發機會、事件都用 text/plain；心跳與計數不帶內容也不帶標頭", async () => {
+    const t = bootBg({ storage: { telemetrySample: true } });
+    await t.begin("invite");
+    await t.S.submit({ surveyId: "sample-a", answers: { q_devices: ["pc"] }, final: false, entry: "invite", lang: "en" });
+    await t.S.flushEvents();
+    await t.S.heartbeat();
+    await t.S.blocked();
+    await t.env.settle(20);
+    const posts = t.calls.filter((c) => c.method === "POST" && c.path.startsWith("/v2/"));
+    assert.deepEqual([...new Set(posts.map((c) => c.path))].sort(), ["/v2/surveys/events/batch", "/v2/surveys/responses", "/v2/surveys/triggers"]);
+    for (const c of posts) assert.equal(c.contentType, "text/plain;charset=UTF-8", c.path);
+    const pings = t.env.fetchCalls.filter((c) => /\/v1\/telemetry\//.test(c.url));
+    assert.equal(pings.length, 2);
+    for (const p of pings) { assert.equal(p.init.method, "POST"); assert.equal(p.init.headers, undefined); assert.equal(p.init.body, undefined); }
+    t.env.close();
+  });
+});
+
+describe("問卷：事件合併送出（/v2/surveys/events/batch）", () => {
+  const FX = "Mozilla/5.0 (Windows NT 10.0; rv:140.0) Gecko/20100101 Firefox/140.0";
+  const page = (t, n, more = {}) => t.S.pageEvent({ surveyId: "sample-a", page: n, question: "q" + n, ms: n * 100, entry: "invite", lang: "en", ...more });
+  const batches = (t) => t.calls.filter((c) => c.path === "/v2/surveys/events/batch");
+  const singles = (t) => t.calls.filter((c) => c.path === "/v2/surveys/events");
+
+  test("出現、換頁先放在佇列不送；關掉時整批一次送出，順序照發生的順序", async () => {
+    const t = bootBg();
+    const r = await t.begin("invite");
+    await page(t, 1); await page(t, 2);
+    await t.env.settle(50);
+    assert.equal(batches(t).length, 0, "還沒到送出的時機");
+    await t.S.closed({ surveyId: "sample-a", page: 3, entry: "invite", lang: "en" });
+    await t.env.settle(20);
+    assert.equal(batches(t).length, 1);
+    assert.equal(singles(t).length, 0);
+    const b = batches(t)[0];
+    assert.equal(b.method, "POST");
+    assert.deepEqual(Object.keys(b.body).sort(), ["client", "entry", "events", "response_id", "survey_id"]);
+    assert.deepEqual([b.body.survey_id, b.body.response_id, b.body.entry], ["sample-a", r.responseId, "invite"]);
+    assert.deepEqual(Object.keys(b.body.client).sort(), ["browser", "custom_nodes", "ext_version", "install_days", "lang"]);
+    assert.deepEqual(plain(b.body.events), [
+      { kind: "shown" },
+      { kind: "page", page: 1, question: "q1", ms: 100 },
+      { kind: "page", page: 2, question: "q2", ms: 200 },
+      { kind: "closed", page: 3 }
+    ]);
+    assert.equal(b.keepalive, false);
+    t.env.close();
+  });
+  test("作答完成（completed）時送出", async () => {
+    const t = bootBg();
+    await t.begin("invite");
+    await page(t, 1);
+    await t.S.submit({ surveyId: "sample-a", answers: { q_devices: ["pc"], q_freq: "rarely" }, final: true, entry: "invite", lang: "en" });
+    await t.env.settle(20);
+    assert.equal(batches(t).length, 1);
+    assert.deepEqual(plain(batches(t)[0].body.events.map((e) => e.kind)), ["shown", "page", "completed"]);
+    t.env.close();
+  });
+  test("滿 50 筆就送出，第 51 筆留到下一批", async () => {
+    const t = bootBg();
+    await t.begin("invite");
+    for (let i = 1; i <= 49; i++) await page(t, i);
+    await t.env.settle(20);
+    assert.equal(t.S.EVENT_BATCH_MAX, 50);
+    assert.equal(batches(t).length, 1);
+    assert.equal(batches(t)[0].body.events.length, 50);
+    await page(t, 50);
+    await t.env.settle(20);
+    assert.equal(batches(t).length, 1, "第 51 筆還在佇列");
+    await t.S.flushEvents();
+    assert.equal(batches(t).length, 2);
+    assert.deepEqual(plain(batches(t)[1].body.events), [{ kind: "page", page: 50, question: "q50", ms: 5000 }]);
+    assert.deepEqual(t.events().map((e) => e.kind === "page" ? e.page : e.kind), ["shown", ...Array.from({ length: 50 }, (_, i) => i + 1)], "一筆不少、順序不變");
+    t.env.close();
+  });
+  test("換了問卷（或 response_id、entry）：先把前一批送出，再開新的一批；整體順序不變", async () => {
+    const t = bootBg({ surveys: [DEF, DEF_B] });
+    const a = await t.begin("invite", { rand: () => 0 });
+    await page(t, 1);
+    const b = await t.begin("announcement", { surveyId: "sample-b" });
+    await t.S.flushEvents();
+    assert.equal(batches(t).length, 2);
+    assert.deepEqual(plain(batches(t).map((c) => [c.body.survey_id, c.body.response_id, c.body.entry, c.body.events.map((e) => e.kind)])), [
+      ["sample-a", a.responseId, "invite", ["shown", "page"]],
+      ["sample-b", b.responseId, "announcement", ["shown"]]
+    ]);
+    t.env.close();
+  });
+  test("第一筆加入後過一段時間（EVENT_FLUSH_MS）自動送出", async () => {
+    const t = bootBg();
+    assert.ok(t.S.EVENT_FLUSH_MS > 0 && t.S.EVENT_FLUSH_MS < 30000, "比 Service Worker 閒置被停掉的 30 秒短");
+    t.S.setEventFlushMs(40);
+    await t.begin("invite");
+    await page(t, 1);
+    assert.equal(batches(t).length, 0);
+    await t.env.settle(120);
+    assert.equal(batches(t).length, 1);
+    assert.deepEqual(plain(batches(t)[0].body.events.map((e) => e.kind)), ["shown", "page"]);
+    await t.env.settle(120);
+    assert.equal(batches(t).length, 1, "送完就沒有計時器了，不會送空的批次");
+    t.env.close();
+  });
+  test("頁面關掉或隱藏（flushEvents({ keepalive: true })）：立刻送出，用 keepalive；佇列空的時候不送", async () => {
+    const t = bootBg();
+    await t.S.flushEvents({ keepalive: true });
+    assert.equal(t.calls.filter((c) => c.path.startsWith("/v2/surveys/events")).length, 0);
+    await t.begin("invite");
+    await page(t, 1);
+    await t.S.flushEvents({ keepalive: true });
+    assert.equal(batches(t).length, 1);
+    assert.equal(batches(t)[0].keepalive, true);
+    assert.equal(batches(t)[0].body.events.length, 2);
+    t.env.close();
+  });
+  for (const status of [404, 405]) {
+    test(`批次端點回 ${status}（伺服器還沒有）：這批逐筆送舊的 /v2/surveys/events（順序、內容同舊版），之後不再試批次`, async () => {
+      const t = bootBg({ server: { batch: () => fakeResponse({ status, body: { ok: false, error: "not_found" } }) } });
+      const r = await t.begin("invite");
+      await page(t, 1);
+      await t.S.closed({ surveyId: "sample-a", page: 2, entry: "invite", lang: "en" });
+      await t.env.settle(20);
+      assert.equal(batches(t).length, 1);
+      const client = batches(t)[0].body.client;
+      assert.deepEqual(plain(singles(t).map((c) => c.body)), [
+        { survey_id: "sample-a", response_id: r.responseId, entry: "invite", client, kind: "shown" },
+        { survey_id: "sample-a", response_id: r.responseId, entry: "invite", client, kind: "page", page: 1, question: "q1", ms: 100 },
+        { survey_id: "sample-a", response_id: r.responseId, entry: "invite", client, kind: "closed", page: 2 }
+      ]);
+      for (const c of singles(t)) assert.equal(c.contentType, "text/plain;charset=UTF-8");
+      await t.begin("announcement", { surveyId: "sample-a" });
+      await t.S.flushEvents({ keepalive: true });
+      assert.equal(batches(t).length, 1, "這次執行期間不再試批次");
+      assert.equal(singles(t).length, 4);
+      assert.equal(singles(t)[3].body.kind, "shown");
+      assert.equal(singles(t)[3].keepalive, true);
+      t.env.close();
+    });
+  }
+  test("網路錯誤、5xx、400、429：靜默丟掉、不重試、不改送逐筆；下一批照樣用批次", async () => {
+    for (const fail of [() => { throw new TypeError("offline"); }, () => fakeResponse({ status: 500 }), () => fakeResponse({ status: 400, body: { ok: false, error: "bad_kind" } }), () => fakeResponse({ status: 429 })]) {
+      const t = bootBg({ server: { batch: fail } });
+      await t.begin("invite");
+      await t.S.flushEvents();
+      await t.env.settle(20);
+      assert.equal(batches(t).length, 1);
+      assert.equal(singles(t).length, 0);
+      await page(t, 1);
+      await t.S.flushEvents();
+      assert.equal(batches(t).length, 2, "沒有重送第一批，第二批照樣試批次");
+      assert.deepEqual(plain(batches(t)[1].body.events), [{ kind: "page", page: 1, question: "q1", ms: 100 }]);
+      t.env.close();
+    }
+  });
+  test("Firefox：沒同意匿名統計就不放進佇列、什麼都不送；同意了才送", async () => {
+    const a = bootBg({ ua: FX });
+    a.env.window.browser = { permissions: { contains: async () => false, request: async () => false } };
+    await a.begin("invite");
+    await page(a, 1);
+    await a.S.closed({ surveyId: "sample-a", page: 2, entry: "invite", lang: "en" });
+    await a.S.flushEvents({ keepalive: true });
+    await a.env.settle(20);
+    assert.equal(a.calls.filter((c) => c.path.startsWith("/v2/surveys/events")).length, 0);
+    a.env.close();
+    const b = bootBg({ ua: FX });
+    b.env.window.browser = { permissions: { contains: async () => true, request: async () => true } };
+    await b.begin("invite");
+    await page(b, 1);
+    await b.S.flushEvents();
+    assert.equal(batches(b).length, 1);
+    assert.deepEqual(plain(batches(b)[0].body.events.map((e) => e.kind)), ["shown", "page"]);
+    assert.equal(batches(b)[0].body.client.browser, "firefox");
+    b.env.close();
   });
 });
 
@@ -1365,6 +1554,23 @@ describe("survey-page.js：公告連結與 console", () => {
     assert.equal(t.sent("BB_SURVEY_CLOSED").length, 1);
     t.env.close();
   });
+  test("問卷開著時頁面關掉（pagehide）或切到背景（visibilitychange → hidden）：請背景立刻送出事件；沒開問卷時不叫醒背景", async () => {
+    const idle = bootPage();
+    idle.env.window.dispatchEvent(new idle.env.window.Event("pagehide"));
+    assert.equal(idle.sent("BB_SURVEY_FLUSH").length, 0);
+    idle.env.close();
+    const t = bootPage({ url: "https://www.bilibili.com/#bb-survey" });
+    await t.env.settle();
+    assert.equal(t.P.isOpen(), true);
+    t.env.window.dispatchEvent(new t.env.window.Event("pagehide"));
+    assert.equal(t.sent("BB_SURVEY_FLUSH").length, 1);
+    t.env.document.dispatchEvent(new t.env.window.Event("visibilitychange"));
+    assert.equal(t.sent("BB_SURVEY_FLUSH").length, 1, "還是 visible：不送");
+    Object.defineProperty(t.env.document, "visibilityState", { value: "hidden", configurable: true });
+    t.env.document.dispatchEvent(new t.env.window.Event("visibilitychange"));
+    assert.equal(t.sent("BB_SURVEY_FLUSH").length, 2);
+    t.env.close();
+  });
   test("背景回其他原因（例如舊版背景回 done）：公告入口不出聲，只有 ended 才顯示「已經結束」", async () => {
     const t = bootPage({ url: "https://www.bilibili.com/#bb-survey", begin: () => ({ ok: false, reason: "done" }) });
     await t.env.settle();
@@ -1609,8 +1815,27 @@ describe("background.js：問卷與統計的訊息", () => {
     assert.equal((await ask(env, { type: "BB_SURVEY_PAGE", surveyId: "sample-a", page: 1, question: "q_devices", ms: 10, entry: "invite", lang: "en" })).ok, true);
     assert.equal((await ask(env, { type: "BB_SURVEY_CLOSED", surveyId: "sample-a", page: 1, entry: "invite", lang: "en" })).ok, true);
     await env.settle(20);
-    assert.ok(calls.includes("/v2/surveys") && calls.includes("/v2/surveys/responses") && calls.includes("/v2/surveys/events"));
+    assert.ok(calls.includes("/v2/surveys") && calls.includes("/v2/surveys/responses") && calls.includes("/v2/surveys/events/batch"));
     assert.ok(env.storage.surveyStates["sample-a"].closedAt > 0);
+    env.close();
+  });
+  test("BB_SURVEY_FLUSH：佇列裡的事件用 keepalive 立刻送出", async () => {
+    const env = bootBackground();
+    const calls = [];
+    env.chrome.runtime.getContexts = () => Promise.resolve([]);
+    env.fetchHandler = (url, init = {}) => {
+      const u = new URL(url);
+      calls.push({ path: u.pathname, keepalive: !!init.keepalive, body: init.body ? JSON.parse(init.body) : null });
+      return u.pathname === "/v2/surveys" ? fakeResponse({ body: { surveys: [DEF] } }) : fakeResponse({ status: 204 });
+    };
+    assert.equal((await ask(env, { type: "BB_SURVEY_BEGIN", entry: "invite", lang: "en" })).ok, true);
+    await env.settle(20);
+    assert.equal(calls.filter((c) => c.path === "/v2/surveys/events/batch").length, 0);
+    assert.deepEqual(plain(await ask(env, { type: "BB_SURVEY_FLUSH" })), { ok: true });
+    const b = calls.filter((c) => c.path === "/v2/surveys/events/batch");
+    assert.equal(b.length, 1);
+    assert.equal(b[0].keepalive, true);
+    assert.deepEqual(plain(b[0].body.events), [{ kind: "shown" }]);
     env.close();
   });
   test("BB_TELEMETRY_BLOCKED／HEARTBEAT 都回 ok（失敗也靜默）", async () => {
