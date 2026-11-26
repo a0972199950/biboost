@@ -196,6 +196,11 @@
     });
   } catch (e) {}
 
+  // 問卷開著時頁面要關掉或切到背景：請背景把還沒送的事件立刻送出（背景合併事件，見 survey.js 的 trackEvent）
+  function flushIfOpen() { if (open) send({ type: "BB_SURVEY_FLUSH" }); }
+  window.addEventListener("pagehide", flushIfOpen);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushIfOpen(); });
+
   armHome();
   scheduleSlot();
 

@@ -80,6 +80,10 @@ function startSurveyWindow(surveyId) {
   });
 }
 
+// 視窗要關掉或被縮到背景：請背景把還沒送的問卷事件立刻送出（背景合併事件，見 survey.js 的 trackEvent）
+window.addEventListener("pagehide", function () { sendBg({ type: "BB_SURVEY_FLUSH" }); });
+document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") sendBg({ type: "BB_SURVEY_FLUSH" }); });
+
 var SURVEY_WINDOW_PARAM = new URLSearchParams(location.search).get("id") || "";
 startSurveyWindow(SURVEY_WINDOW_PARAM);
 
